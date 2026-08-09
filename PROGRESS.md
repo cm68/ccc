@@ -52,6 +52,46 @@ identical from every compiler, being a table and not code.  It went
 left in there, measured: ~1200 bytes of duplicated pattern and template
 strings, and ~3800 bytes held by rules that never match.
 
+## It self-hosts in a 62K TPA
+
+Every source of every program in the tree — `cpp`, `c0`, `c1`, `peep`,
+`ccclib` and the tools — compiles under CP/M 3 with the BDOS at
+`f900`, and agrees with the host byte for byte. That is about what a
+banked CP/M 3 gives, so it is a machine that exists rather than one
+that is convenient. `src/cpm3/README.md` says how to measure it and
+where the measurement lies to you.
+
+**The binding constraint is compile-time heap, not text.** All four
+images had room to spare long before the sources would go through
+them. What ran out was the memory the passes need while compiling, and
+the two passes do not pay for the same things:
+
+- `c0` keeps every **name** it has seen for the whole translation
+  unit. Declarations cost; macros cost nothing, because `cpp` has
+  already substituted them. An enum of 77 error codes cost it nothing
+  at all — it does not materialise an enumerator nobody mentions.
+- `cpp` interns every **identifier it lexes** and holds every macro's
+  name and body. So the same enum cost it 1935 bytes in every source
+  that included the header, and turning the codes into defines gave
+  that back.
+
+Which means a header is charged to everyone who includes it, whether
+they use it or not, and measuring the wrong pass sends you after the
+wrong file. The rule that fell out, and it is worth keeping:
+
+> **A source includes what it uses.** Not what its neighbours use, and
+> not what a header thinks its consumers might want.
+
+Four sources were over budget at the end and every one was carrying a
+header for a single word — `NULL`, three times. `<stdlib.h>` is 35
+names, `<string.h>` 47, `<stdio.h>` 36, and a plain `0` is a null
+pointer constant.
+
+When looking for an unused include, **look for a call, not for the
+name.** `index`, `free` and `qsort` all appear in files that never
+call them, in comments. A first pass at this found six unused includes
+and missed the six that mattered for exactly that reason.
+
 ## The kinds of bug that keep turning up
 
 Worth reading before adding anything, because the same shapes recur.
@@ -210,6 +250,27 @@ came from, so a regression leads back to the original.
   directories hold hand-written assembly under a name a `.c` file also
   uses - `libcpm/getargs.s` next to `libcpm/getargs.c`.  A script that
   compiles a corpus must put back what it found.
+* **`$?` after a pipeline is the last command's.**  `sim ... | tail -2;
+  echo $?` reports on `tail`.  Two separate claims about `c0`'s exit
+  status were wrong for this reason before anyone checked it properly.
+* **An option a script accepts is not an option it applies.**
+  `selfhost.sh` took `TPA=` and appended `-t` to `$sim` two lines
+  before the assignment that set `$sim` overwrote it.  Every run used
+  the default BDOS while the summary named the one that was asked for.
+  Caught only because a bisect and the survey disagreed about the same
+  source - one measurement cannot check itself.
+* **A skip is not a pass, and a summary that counts two things counts
+  neither.**  When the same script could not find a header,
+  twenty-nine sources came out "skip (host)" and it printed "21 agree,
+  0 do not".  The zero is the eye-catching number and it means nothing.
+* **CP/M filenames are 8.3 and case-folded.**  Scratch files called
+  `rt_quarter.c` or `rshortC.c` fail to open, and the run that cannot
+  read its input reports a small heap and a clean exit.  Three
+  measurements were quietly wrong before the exit status made it
+  obvious.
+* **A pass writing its output is not a pass succeeding.**  `c0` writes
+  `.1` and `.2` after diagnosing an error, and `c1` reads them without
+  complaint.  Check the status, not the file.
 
 ## Floating point is gone, and `float` is an ordinary word
 

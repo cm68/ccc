@@ -6,12 +6,25 @@ enough of a CP/M 3 BDOS behind it that the compiler's own passes work:
 host compiler does.
 
 ```
-cpm3 [-v] [-v] [-u] [-d dir] program.com [args...]
+cpm3 [options] program.com [args...]
 
-  -v       trace the interesting bdos calls; twice traces every one
-  -u       fold the command tail to upper case, the way a CCP does
-  -d dir   the directory the drive maps to (default .)
+  -v          trace the interesting bdos calls; twice traces every one
+  -u          fold the command tail to upper case, the way a CCP does
+  -d dir      the directory drive A maps to (default .)
+  -d X=dir    the directory drive X maps to
+  -t addr     put the bdos here, and so size the TPA (default fe00)
+  -M          on exit, report the heap and stack high-water marks
+  -p          on exit, report the busiest addresses
+  -w          report writes to page zero; twice to stop on the first
+  -l n        stop after n instructions
 ```
+
+The exit status is the program's own: `cpm3` returns what bdos
+function 108 was last set to, which is what `exit()` sets. A pass that
+gripes and stops fails the script that ran it. Without that, `cpp`
+reporting "out of memory" and stopping looks exactly like `cpp`
+succeeding, and a survey of what does and does not compile counts the
+failures as passes - which it did, until this was wired up.
 
 ## What it is
 
@@ -49,11 +62,18 @@ BDOS function 255.
 fe00  the two trap bytes
 ```
 
-The TPA runs to `fe03`, which is the point of aiming at CP/M 3 rather
-than 2: `c1` ends at `ea55` and does not fit under a 2.2 BDOS at
-`e406`. Nothing had to be told this number — the startup code reads
-`0006` and puts its stack below whatever it finds, and `sbrk` grows
-the heap up towards it.
+The BDOS sits at `fe00` by default and `-t` moves it, which is the
+only knob that matters for asking whether something fits: everything
+below follows from it. Nothing had to be told the number — the startup
+code reads `0006` and puts its stack below whatever it finds, and
+`sbrk` grows the heap up towards it.
+
+`fe00` is more memory than any real machine has once the system is in
+it. A banked CP/M 3 gives about 62K, which is `-t 0xf900`, and that is
+the figure worth quoting: the whole compiler self-hosts there, all
+fifty sources agreeing with the host byte for byte. Aiming at CP/M 3
+rather than 2 is what makes that possible at all — `c1` ends at `e555`
+and would not fit under a 2.2 BDOS at `e406` whatever else was done.
 
 The two default FCBs overlap, which is how CP/M laid page zero out:
 the first is a whole 36-byte FCB at `005c` running to `007f`, and the
@@ -112,6 +132,55 @@ By hand, the same thing:
 cpm3 -d work cpp.com -DCCC -o t t.c      # t.c -> t.x, t.n
 cpm3 -d work c0.com  t.x t.1 t.2         # -> the AST and the string pool
 cpm3 -d work c1.com  t.1 t.2 t.s         # -> Z80 assembly
+```
+
+## Asking whether something fits
+
+`-M` reports two marks on exit: how far up the heap got and how far
+down the stack got. A write counts as heap if it lands well below the
+deepest the stack has ever been — the stack sets a new low-water by
+writing there, so a plain "below the stack pointer" test calls every
+push a heap write and the mark climbs to meet the stack. No
+instruction moves the stack 64 bytes in one step, which is the margin
+used.
+
+```
+cpm3 -M -t 0xf900 -d work c0.com t.x t.1 t.2
+cpm3: heap high f045  stack low f980  gap 2363  depth 1152  fits under f4c5
+```
+
+**"Fits under" is for ranking, not for quoting.** It is the heap top
+plus the stack depth, and it does not know what `sbrk` keeps in
+reserve, so it always reads low — by about 210 bytes for `c0`, 270 for
+`c1`, and as much as 900 for `cpp`. The error is not a constant and
+not the same per pass. To get a number you can put in a commit
+message, bisect `-t` until the run both succeeds and produces the same
+bytes as the host:
+
+```
+l=0xf000; h=0xfe00
+while [ $((h-l)) -gt 64 ]; do
+    m=$(( (l+h)/2 & 0xffc0 ))
+    if cpm3 -t $m ... && cmp -s out ref; then h=$m; else l=$m; fi
+done
+```
+
+Two things that will waste an afternoon if they are not known:
+
+- **Bisect below `fe00`.** Higher is not always better. The BDOS needs
+  room above it, so a run can fail at `ff80` and succeed at `fe00`,
+  and a bisect that assumes monotonicity over the whole range reports
+  the ceiling and calls it the answer.
+- **Compare the output, not just the exit status.** `c0` writes its
+  `.1` and `.2` even when it has diagnosed an error, and `c1` reads
+  them without complaint. A check that only asks whether the file
+  appeared will call a broken build green.
+
+`selfhost.sh` takes `TPA=` to run the whole survey at one BDOS
+address:
+
+```
+TPA=0xf900 sh selfhost.sh          # every source, at a real 62K TPA
 ```
 
 ## What building this found
