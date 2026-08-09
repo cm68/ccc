@@ -88,6 +88,27 @@ ansivoid(void)
 	return 5;
 }
 
+/*
+ * And mixed, which the compiler accepts without a word - an ansi
+ * declaration against a K&R definition and the other way round.  This
+ * is not a contrived pairing: it is what porting Bell Labs sources into
+ * a tree whose headers have been modernised produces, one file at a
+ * time, and neither half is wrong on its own.
+ */
+extern	mixa(int a);            /* ansi declaration, K&R definition */
+extern	mixb();                 /* K&R declaration, ansi definition */
+
+mixa(a)
+	int a;
+{
+	return a + 7;
+}
+
+mixb(int a)
+{
+	return a + 8;
+}
+
 main()
 {
 	CHECK(1, implicitfn(), 42);
@@ -110,6 +131,10 @@ main()
 	CHECK(6, knrfn(20, 3), 23);
 	CHECK(7, ansifn(40), 42);
 	CHECK(8, ansivoid(), 5);
+
+	/* mixed, in both directions */
+	CHECK(9, mixa(1), 8);
+	CHECK(10, mixb(1), 9);
 
 	return 0;
 }
