@@ -314,6 +314,32 @@ declaration()
 	/* Initialize once, then shared across comma-separated declarators */
 	basetype = 0;
 
+	/*
+	 * K&R implicit int, after a storage class.
+	 *
+	 *	extern _exit();		extern foo;		static bar;
+	 *
+	 * all mean int, and the Bell Labs headers are written that way.
+	 * Our own stdio.h declares _exit and exit like this, so every
+	 * program that included it failed - silently, with nothing said,
+	 * because the parse gave up before anything could report.
+	 *
+	 * Without a storage class the same spelling never comes here: a
+	 * leading SYM is dispatched as an expression statement, so
+	 * "foo();" parses as a call and always worked.  It is the storage
+	 * class that brings it down this path with no type to work from.
+	 *
+	 * The test is what follows rather than what is missing.  A
+	 * declarator starts with a name, a star or a parenthesis, and any
+	 * of those means the type was left out; anything else - struct,
+	 * union, unsigned, a type keyword, a typedef name - is left to
+	 * getbasetype(), which is the one place that should know what a
+	 * type looks like.
+	 */
+	if (sclass && (cur.type == SYM || cur.type == STAR ||
+	    cur.type == LPAR))
+		basetype = inttype;
+
 	while (1) {
         v = declare(&basetype, 0);
 #ifdef DEBUG
