@@ -1,0 +1,2 @@
+sizeof_typedef_simple.c:11: error: typedef of unnamed struct needs a tag
+cpp: brace mismatch at EOF: -1 unmatched {

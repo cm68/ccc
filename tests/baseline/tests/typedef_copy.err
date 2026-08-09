@@ -1,0 +1,2 @@
+typedef_copy.c:16: error: typedef of unnamed struct needs a tag
+cpp: brace mismatch at EOF: -1 unmatched {

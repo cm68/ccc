@@ -1,0 +1,2 @@
+typedef_scope_test.c:14: error: typedef of a typedef
+typedef_scope_test.c:20: error: typedef of a typedef

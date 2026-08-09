@@ -1,0 +1,2 @@
+typedef_struct_test.c:8: error: typedef of unnamed struct needs a tag
+cpp: brace mismatch at EOF: -1 unmatched {

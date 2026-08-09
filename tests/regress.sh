@@ -88,11 +88,11 @@ fi
 CORPUS='
 src/cpp/test       | *.c | -DCCC -I.. -I../../include
 src/cpp            | cpp.c lex.c io.c macro.c kw.c emit.c util.c norm.c filtutil.c knr.c cfold.c tdsrc.c lexdata.c xdump.c | -DCCC -I. -I../ccclib -I../include
-src/pass1          | *.c | -DCCC -I. -I../ccclib -I../include
-src/pass2          | *.c | -DCCC -I. -I../ccclib -I../include
+src/pass1          | *.c | -DCCC -I. -I../ccclib -I../include -I../cpp
+src/pass2          | *.c | -DCCC -I. -I../ccclib -I../include -I../cpp
 src/peep           | *.c | -DCCC -I. -I../ccclib -I../include
 src/ccclib         | *.c | -DCCC -I../include
-src/tools          | *.c | -DCCC -I. -I../ccclib -I../include
+src/tools          | *.c | -DCCC -I. -I../ccclib -I../include -I../cpp
 src/libc           | *.c | -DCCC -I../include
 src/libcpm         | *.c | -DCCC -I../include
 src/libu           | *.c | -DCCC -I../include
