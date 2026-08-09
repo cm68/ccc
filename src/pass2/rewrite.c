@@ -240,6 +240,34 @@ label(Expr *e)
 			e->regs = 1;
 		return;
 
+	/*
+	 * A pointer plus a constant is normally free: it becomes the
+	 * (ix+d) operand of whatever dereferences it, and costs what a
+	 * leaf costs.  Past the 7-bit window it is not an addressing
+	 * mode at all - the address has to be formed with 16-bit
+	 * arithmetic, which needs HL and DE - so it costs two, the same
+	 * as the far LOCALVAR above and for the same reason.
+	 *
+	 * Getting this wrong does not produce wrong addresses; it
+	 * produces a bad choice about which side to work out first, and
+	 * the damage shows up somewhere else entirely.
+	 */
+	case PLUS:
+		if (e->left && e->left->op == REGVAR &&
+		    e->right && e->right->op == NUMBER) {
+			short poff = (short)e->right->u.val;
+
+			if (poff < -126 || poff > 124) {
+				e->regs = 2;
+				return;
+			}
+		}
+		if (l == r)
+			e->regs = l + 1;
+		else
+			e->regs = l > r ? l : r;
+		return;
+
 	/* Binary ops: Sethi-Ullman formula */
 	default:
 		if (l == r)
@@ -995,6 +1023,31 @@ tryrule(struct rule *rp, Expr *e)
 		} else {
 			outf("\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
 			    off);
+			n = mkcode(e->width, R_HL);
+		}
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
+	/*
+	 * PLUS(REGVAR, NUMBER) -> CODE: a member past the (ix+d)
+	 * window.  Same shape as the far LOCALVAR above, with the
+	 * pointer's own register in place of the frame pointer.  Only
+	 * reached when the INDEX conversion refused the displacement.
+	 */
+	if (newop == CODE && oldop == PLUS && e->left &&
+	    e->left->op == REGVAR && e->right && e->right->op == NUMBER) {
+		reg = e->left->u.var.reg ? e->left->u.var.reg : R_IX;
+		off = (short)e->right->u.val;
+		if (e->tgt == R_DE) {
+			/* sibling value lives in HL - preserve it */
+			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    idxregname(reg), off);
+			n = mkcode(e->width, R_DE);
+		} else {
+			outf("\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
+			    idxregname(reg), off);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;

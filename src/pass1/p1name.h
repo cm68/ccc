@@ -58,7 +58,13 @@ struct name {
 	 */
 	union {
 		struct {
-			unsigned char offset;   // offset inside the struct (0-255)
+			unsigned short offset;  // offset inside the struct
+			                        // (short, not char: the disk
+			                        // superblock is 480 bytes and
+			                        // its later members live past
+			                        // 255.  Free - the r arm of
+			                        // this union is 7 bytes and
+			                        // this one was 3.)
 			unsigned char bitoff;   // bit offset (0-7)
 			unsigned char width;    // bitfield width (1-32)
 		} m;

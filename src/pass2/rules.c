@@ -1159,6 +1159,20 @@ struct rule rules[] = {
 
 	/* Address rules: IX+offset -> INDEX */
 	R(PLUS,REGVAR,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
+
+	/*
+	 * The same, past the 7-bit (ix+d) window: form the address with
+	 * 16-bit arithmetic (special-cased in tryrule).  Only reached
+	 * when the INDEX rule above refuses.
+	 *
+	 * A struct big enough to need this is ordinary - v6's filsys is
+	 * 478 bytes and its later members are all past 127 - and before
+	 * this rule existed there was NOTHING for the shape: "p->hi = 2"
+	 * with p in IX matched no rule, left an XXXXXX comment, and the
+	 * assignment was simply gone from the output.  A comment is not
+	 * an instruction and asz never saw it.
+	 */
+	R(PLUS,REGVAR,P_NUM,0,0,0, CODE, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
 	R(PLUS,DEREF,P_NUM,REGVAR,0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, 0, 0),
 	R(PLUS,INDEX,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, 0, 0),
 	/*
