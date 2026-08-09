@@ -71,12 +71,20 @@ wslib: wslib.o
 wssize: wssize.o
 	$(CC) $(CFLAGS) -o $@ wssize.o
 
-# ROOTDIR is the prefix holding unix/, micronix/ and cpm/ - the
-# driver picks host tools out of unix/bin and the target runtime out
-# of whichever tree -m names.  The ROOTDIR environment variable
-# overrides it, which is how a build tests an uninstalled compiler.
+# The driver finds the passes and the runtime from argv[0] - see the
+# comment on libdir in ccc.c - so nothing about where the tree lives
+# is compiled in.  DEFTARGET names the system this driver produces
+# binaries for when -m does not say; a driver built to run ON Micronix
+# would set it to micronix, one built for CP/M to cpm.
+# DEFLIB is only reached when argv[0] has no slash - a bare "ccc"
+# typed at a shell, which is what a real installation gets.  A driver
+# for Micronix wants /lib; a host install wants the prefix it was
+# installed under.
+CCCPREFIX ?= $(TOP)/unix
+
 ccc: ccc.c
-	$(CC) $(CFLAGS) -DROOTDIR=$(TOP) -o $@ $<
+	$(CC) $(CFLAGS) -DDEFTARGET='"micronix"' \
+		-DDEFLIB='"$(CCCPREFIX)/lib"' -o $@ $<
 
 # astpp walks the AST pass1 writes; format.h is the shape of it and
 # lives in ccclib because pass2 reads it too.
@@ -103,9 +111,17 @@ clobber: clean
 	rm -f $(ALL) $(CRUFTLOG)
 	rm -rf $(CRUFTDIRS)
 
+# The driver is the user command; the assembler, the linker and the
+# AST printer are things the driver runs, so they go in lib beside the
+# passes.  wslib, wsnm and wssize are ordinary tools a person uses on
+# an object file and stay on the path.
+LIBTOOLS = asz wsld astpp
+BINTOOLS = ccc wslib wsnm wssize
+
 install: all
-	@mkdir -p $(UNIXDIR)/bin
-	cp $(ALL) $(UNIXDIR)/bin
+	@mkdir -p $(UNIXDIR)/bin $(UNIXDIR)/lib
+	cp $(BINTOOLS) $(UNIXDIR)/bin
+	cp $(LIBTOOLS) $(UNIXDIR)/lib
 
 CCCFLAGS = -DCCC -i../include
 

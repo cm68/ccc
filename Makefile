@@ -32,7 +32,28 @@ host:
 target:
 	$(SUBMAKE) -C src target
 
-install: all
+# Install an actual toolchain: the driver in bin, everything it runs
+# in the lib beside it.  PREFIX is where it will finally live and is
+# compiled into the driver as the fallback for a bare "ccc" typed at a
+# shell - argv[0] is the typed command, so that case cannot be worked
+# out at run time and there is no environment to ask.  Invoked by a
+# path, the install stays relocatable regardless.
+#
+# DESTDIR stages it somewhere else for packaging; the driver still
+# believes it lives at PREFIX, which is what you want.
+PREFIX ?= /usr/local
+
+install: all micronix cpm
+	@# forced: the driver's fallback prefix is a -D, and make cannot
+	@# see that changing it makes the existing binary wrong
+	rm -f src/tools/ccc
+	$(SUBMAKE) -C src/tools ccc CCCPREFIX=$(PREFIX)
+	mkdir -p $(DESTDIR)$(PREFIX)/bin $(DESTDIR)$(PREFIX)/lib
+	cp src/tools/ccc $(DESTDIR)$(PREFIX)/bin
+	cp -r unix/lib/. $(DESTDIR)$(PREFIX)/lib
+	@echo "installed: $(DESTDIR)$(PREFIX)/bin/ccc, libraries in $(PREFIX)/lib"
+
+old-install: all
 
 clean:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clean; done
@@ -87,6 +108,17 @@ cpm: all
 selfcheck:
 	$(SUBMAKE) -C src selfcheck
 
+# libc.a and libccc.a are system-independent by construction: the
+# system-call layer is libu.a on Micronix and libcpm.a on CP/M, and
+# nothing target-specific belongs above that line.  Every install
+# holds one copy of each under the same name, so if they ever diverge
+# the two targets silently get different code from the same filename.
+# That is a bug, and this is where it gets caught.
+libcheck:
+	@cmp micronix/lib/libc.a   cpm/lib/libc.a && \
+	 cmp micronix/lib/libccc.a cpm/lib/libccc.a && \
+	 echo "libcheck: libc.a and libccc.a are the same for both targets"
+
 # THE CROSS-TARGET GATE.  Compile every source of every pass three
 # ways - host, Micronix under the usersim, CP/M 3 on the cpm3 machine -
 # and assert the two simulated legs emit exactly what the host does.
@@ -113,7 +145,8 @@ prodtest: all
 	$(SUBMAKE) -C tests/gen
 
 .PHONY: all host target install clean clobber stage1 test tests valgrind \
-	tags sizecheck micronix cpm selfcheck selfhost regression prodtest
+	tags sizecheck micronix cpm selfcheck selfhost libcheck \
+	regression prodtest
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

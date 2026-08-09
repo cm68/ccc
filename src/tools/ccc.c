@@ -9,16 +9,71 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <libgen.h>
 
 #define MAX_ARGS 2560
 
 char *progname;
 
-#define stringify2(s) #s
-#define stringify(s) stringify2(s)
+/*
+ * Where everything else lives, worked out from argv[0].
+ *
+ * There is no environment to read: v6 has none, so the usual INCDIR
+ * or ROOTDIR hack cannot work on the machine this has to run on.
+ * argv[0] is what the system does give us, and it is enough - strip
+ * the program name to get the directory it was found in, and the
+ * library sits beside that directory rather than under it:
+ *
+ *	/bin/ccc		->  /lib
+ *	/usr/local/bin/ccc	->  /usr/local/lib
+ *	unix/bin/ccc		->  unix/lib
+ *	ccc			->  ./../lib
+ *
+ * which is v7's arrangement - /bin/cc finding /lib/c0 - and means an
+ * installation can be moved anywhere without being rebuilt.
+ *
+ * A name with no slash in it is the awkward one.  argv[0] is what the
+ * user typed, so "ccc hello.c" gives us "ccc" and nothing about where
+ * it was found - the shell searched for it and did not say where it
+ * looked.  There is no PATH to consult on the system this has to run
+ * on.  So that case falls back to DEFLIB, which is where this driver
+ * was built to be installed: /lib on Micronix, and whatever prefix a
+ * host install was configured with.  Invoke it by a path and it is
+ * relocatable again.
+ *
+ * The path is left with the ".." in it rather than resolved: realpath
+ * is a POSIX function and this program has to compile for a system
+ * that predates it.  open() and exec() do not care.
+ */
+#define LIBDIRMAX 512
+char libdir[LIBDIRMAX];
 
-char *rootdir = stringify(ROOTDIR);
+/*
+ * The target this installation is for, when -m does not say.  A
+ * driver built for Micronix produces Micronix binaries by default,
+ * one built for CP/M produces .com files; -m is the override for
+ * cross-building, and only picks which runtime is linked - every
+ * target's libraries live side by side in the one lib directory.
+ */
+#ifndef DEFTARGET
+#define DEFTARGET "micronix"
+#endif
+
+/*
+ * Where the temporaries go.  /tmp exists on every system this runs
+ * on, Micronix included.
+ */
+#ifndef TMPDIR
+#define TMPDIR "/tmp"
+#endif
+
+/*
+ * Where to look when argv[0] has no slash and so says nothing about
+ * where we were found.  This is the one thing that is compiled in,
+ * and it is only a fallback.
+ */
+#ifndef DEFLIB
+#define DEFLIB "/lib"
+#endif
 
 /*
  * Duplicate a string (strdup is POSIX, not C99)
@@ -32,60 +87,7 @@ strdup_(char *s)
     return p;
 }
 
-/*
- * Resolve a path to an absolute path, handling . and .. components.
- * Returns resolved path in 'resolved' buffer, or NULL on failure.
- */
-char *
-realpath_(char *path, char *resolved)
-{
-    char *parts[64];
-    char temp[1024];
-    int nparts = 0;
-    char *p, *tok;
-    int i;
-
-    if (!path || !resolved)
-        return NULL;
-
-    /* Start with cwd for relative paths */
-    if (path[0] != '/') {
-        if (!getcwd(temp, sizeof(temp)))
-            return NULL;
-        strcat(temp, "/");
-        strcat(temp, path);
-    } else {
-        strcpy(temp, path);
-    }
-
-    /* Parse path components */
-    p = temp;
-    while ((tok = strtok(p, "/")) != NULL) {
-        p = NULL;
-        if (strcmp(tok, ".") == 0) {
-            continue;
-        } else if (strcmp(tok, "..") == 0) {
-            if (nparts > 0)
-                nparts--;
-        } else {
-            parts[nparts++] = tok;
-        }
-    }
-
-    /* Rebuild path */
-    resolved[0] = '\0';
-    for (i = 0; i < nparts; i++) {
-        strcat(resolved, "/");
-        strcat(resolved, parts[i]);
-    }
-    if (resolved[0] == '\0')
-        strcpy(resolved, "/");
-
-    return resolved;
-}
-
 #define strdup strdup_
-#define realpath realpath_
 
 void
 usage(void)
@@ -122,14 +124,16 @@ usage(void)
 char *
 getBaseNoExt(char *filename)
 {
-    char *temp = strdup(filename);
-    char *base = basename(temp);
+    char *slash = strrchr(filename, '/');
     char *result;
     char *dot;
 
-    /* Make a copy since basename() result points into temp */
-    result = strdup(base);
-    free(temp);
+    /*
+     * The last component, found here rather than with basename():
+     * that is in <libgen.h>, which neither Micronix nor CP/M has, and
+     * this driver has to compile for both.
+     */
+    result = strdup(slash ? slash + 1 : filename);
 
     /* Remove known extensions */
     dot = strrchr(result, '.');
@@ -377,7 +381,7 @@ main(int argc, char **argv)
      * the startup object come from.  Micronix is the default because
      * that is what the simulator runs and what every test here links.
      */
-    char *target = "micronix";
+    char *target = DEFTARGET;
     int cpm_target = 0;      /* target is CP/M: image layout differs */
 
     /* Input files by type */
@@ -419,29 +423,39 @@ main(int argc, char **argv)
 
     progname = argv[0];
 
-    /* Check for ROOTDIR env var override, normalize path */
+    /*
+     * Strip the program name off argv[0] to get the directory it was
+     * found in, then take the lib beside it.  A name with no slash in
+     * it was found on the search path or in the current directory;
+     * "." is what that means here.
+     */
     {
-        char *env_rootdir;
-        char resolved[1024];
+        char *slash = strrchr(progname, '/');
 
-        env_rootdir = getenv("ROOTDIR");
-        if (env_rootdir)
-            rootdir = env_rootdir;
-        if (realpath(rootdir, resolved))
-            rootdir = strdup(resolved);
+        if (slash) {
+            int n = slash - progname;
+
+            if (n > LIBDIRMAX - 16)
+                n = LIBDIRMAX - 16;
+            strncpy(libdir, progname, n);
+            libdir[n] = '\0';
+            strcat(libdir, "/../lib");
+        } else {
+            strcpy(libdir, DEFLIB);
+        }
     }
 
     /*
-     * The tools that do the work all run on this machine and come
-     * out of unix/bin, whichever system the output is for.
+     * The passes, the assembler and the linker all live there.  They
+     * are not user commands and do not belong on a search path.
      */
-    sprintf(cpp_path, "%s/unix/bin/cpp", rootdir);
-    sprintf(cc1_path, "%s/unix/bin/c0", rootdir);
-    sprintf(cc2_path, "%s/unix/bin/c1", rootdir);
-    sprintf(asm_path, "%s/unix/bin/asz", rootdir);
-    sprintf(ld_path, "%s/unix/bin/wsld", rootdir);
-    sprintf(astpp_path, "%s/unix/bin/astpp", rootdir);
-    sprintf(peep_path, "%s/unix/bin/peep", rootdir);
+    sprintf(cpp_path, "%s/cpp", libdir);
+    sprintf(cc1_path, "%s/c0", libdir);
+    sprintf(cc2_path, "%s/c1", libdir);
+    sprintf(asm_path, "%s/asz", libdir);
+    sprintf(ld_path, "%s/wsld", libdir);
+    sprintf(astpp_path, "%s/astpp", libdir);
+    sprintf(peep_path, "%s/peep", libdir);
 
     /*
      * The runtime is per target and cannot be resolved until -m has
@@ -653,14 +667,14 @@ main(int argc, char **argv)
      * and the startup object are not, so they are named per target.
      */
     cpm_target = (strcmp(target, "cpm") == 0);
-    sprintf(libc_path, "%s/%s/lib/libc.a", rootdir, target);
-    sprintf(sysinc_path, "-i%s/%s/include", rootdir, target);
-    if (strcmp(target, "cpm") == 0) {
-        sprintf(libu_path, "%s/%s/lib/libcpm.a", rootdir, target);
-        sprintf(chdr_path, "%s/%s/lib/crtcpm.o", rootdir, target);
+    sprintf(libc_path, "%s/libc.a", libdir);
+    sprintf(sysinc_path, "-i%s/include", libdir);
+    if (cpm_target) {
+        sprintf(libu_path, "%s/libcpm.a", libdir);
+        sprintf(chdr_path, "%s/crtcpm.o", libdir);
     } else {
-        sprintf(libu_path, "%s/%s/lib/libu.a", rootdir, target);
-        sprintf(chdr_path, "%s/%s/lib/crt0.o", rootdir, target);
+        sprintf(libu_path, "%s/libu.a", libdir);
+        sprintf(chdr_path, "%s/crt0.o", libdir);
     }
 
     /* Check for input files */
@@ -688,38 +702,61 @@ main(int argc, char **argv)
         char *temp2_file;
         char *asm_file;
         char *obj_file;
+        char *tmpbase;
         char *cpp_args[MAX_ARGS];
         char *cc1_args[MAX_ARGS];
         char *cc2_args[MAX_ARGS];
         char *as_args[8];
         int cpp_argc, cc1_argc, cc2_argc, j;
 
-        /* Generate intermediate filenames */
-        lex_file = malloc(strlen(base) + 10);
-        sprintf(lex_file, "%s.x", base);
-        prep_file = malloc(strlen(base) + 10);
-        sprintf(prep_file, "%s.i", base);
-        name_file = malloc(strlen(base) + 10);
-        sprintf(name_file, "%s.n", base);
-        temp1_file = malloc(strlen(base) + 10);
-        sprintf(temp1_file, "%s.1", base);
-        temp2_file = malloc(strlen(base) + 10);
-        sprintf(temp2_file, "%s.2", base);
-        asm_file = malloc(strlen(base) + 10);
-        sprintf(asm_file, "%s.s", base);
+        /*
+         * The intermediates go in /tmp; only what the user asked to
+         * keep is written beside the source.  Compiling a file out of
+         * a directory you cannot write to is ordinary, and five
+         * temporaries per source landing in the middle of someone's
+         * tree is not something a compiler should do.
+         *
+         * The name carries the pid and the file's position on the
+         * command line: two ccc's running at once must not collide,
+         * and neither must two sources in the one run when -k asks
+         * for the temporaries to be left behind.
+         *
+         * .s is the exception.  Under -s it is the OUTPUT, and goes
+         * where the user expects to find it.
+         */
+        tmpbase = malloc(64);
+        sprintf(tmpbase, "%s/ccc%d_%d", TMPDIR, (int)getpid(), i);
+
+        lex_file = malloc(strlen(tmpbase) + 10);
+        sprintf(lex_file, "%s.x", tmpbase);
+        prep_file = malloc(strlen(tmpbase) + 10);
+        sprintf(prep_file, "%s.i", tmpbase);
+        name_file = malloc(strlen(tmpbase) + 10);
+        sprintf(name_file, "%s.n", tmpbase);
+        temp1_file = malloc(strlen(tmpbase) + 10);
+        sprintf(temp1_file, "%s.1", tmpbase);
+        temp2_file = malloc(strlen(tmpbase) + 10);
+        sprintf(temp2_file, "%s.2", tmpbase);
+
+        asm_file = malloc(strlen(base) + strlen(tmpbase) + 10);
+        if (asm_only)
+            sprintf(asm_file, "%s.s", base);
+        else
+            sprintf(asm_file, "%s.s", tmpbase);
+
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
-        /* Build cpp args: base options + -DCCC + sysinc + -o base + source */
+        /* Build cpp args: base options + -DCCC + sysinc + -o tmp + source */
         cpp_argc = 0;
         for (j = 0; j < cpp_base_argc; j++)
             cpp_args[cpp_argc++] = cpp_base[j];
         cpp_args[cpp_argc++] = "-DCCC";
         cpp_args[cpp_argc++] = sysinc_path;
         cpp_args[cpp_argc++] = "-o";
-        cpp_args[cpp_argc++] = base;
+        cpp_args[cpp_argc++] = tmpbase;
         cpp_args[cpp_argc++] = src;
         cpp_args[cpp_argc] = NULL;
 
@@ -800,8 +837,14 @@ main(int argc, char **argv)
             char *peep_file;
             char *peep_args[8];
 
-            peep_file = malloc(strlen(base) + 10);
-            sprintf(peep_file, "%s.ps", base);
+            /*
+             * Beside the assembly it replaces, not beside the source:
+             * rename() does not cross a filesystem, and under -s the
+             * assembly is in the source directory while under -c it
+             * is in /tmp.
+             */
+            peep_file = malloc(strlen(asm_file) + 10);
+            sprintf(peep_file, "%s.ps", asm_file);
 
             peep_args[0] = peep_path;
             peep_args[1] = asm_file;

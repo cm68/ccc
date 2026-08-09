@@ -169,9 +169,9 @@ for p in $passes; do
 		( cd "$work" && rm -f h.x h.n h.1 h.2 h.s g.x g.n g.1 g.2 g.s )
 
 		if ! ( cd "$work" &&
-		       "$top"/unix/bin/cpp -DCCC $inc -o h "$b.c" &&
-		       "$top"/unix/bin/c0 h.x h.1 h.2 &&
-		       "$top"/unix/bin/c1 h.1 h.2 h.s ) >/dev/null 2>&1; then
+		       "$top"/unix/lib/cpp -DCCC $inc -o h "$b.c" &&
+		       "$top"/unix/lib/c0 h.x h.1 h.2 &&
+		       "$top"/unix/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1; then
 			printf '%-8s %-12s %7s %6s  %s\n' \
 				"$p" "$b" "$sz" - "skip (host)"
 			continue

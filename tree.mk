@@ -31,17 +31,24 @@ CPMDIR  = $(TOP)/cpm
 # found on PATH: they are built in this tree and a stale copy of an
 # older install sitting on PATH is exactly the failure that made a
 # clean checkout unbuildable.
+# An installation is bin/ and lib/ beside each other: the driver is
+# the only thing a user runs, and it finds everything else in the lib
+# next to its own directory - see libdir in tools/ccc.c.  That is why
+# the passes install to lib and not bin.  It is v7's arrangement, and
+# it is what lets /usr/local/bin/ccc work without being rebuilt.
+UNIXLIB = $(UNIXDIR)/lib
+
 CCC     = $(UNIXDIR)/bin/ccc
-AS      = $(UNIXDIR)/bin/asz
-LD      = $(UNIXDIR)/bin/wsld
+AS      = $(UNIXLIB)/asz
+LD      = $(UNIXLIB)/wsld
 LIB     = $(UNIXDIR)/bin/wslib
 SIZE    = $(UNIXDIR)/bin/wssize
 
 # The compiler proper.  A runtime rebuild depends on these, because
 # these objects exist to be run and a codegen fix that leaves a stale
 # one behind reads as a fix that did not work.
-CCDEP   = $(UNIXDIR)/bin/cpp $(UNIXDIR)/bin/c0 \
-	  $(UNIXDIR)/bin/c1 $(UNIXDIR)/bin/peep
+CCDEP   = $(UNIXLIB)/cpp $(UNIXLIB)/c0 \
+	  $(UNIXLIB)/c1 $(UNIXLIB)/peep
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

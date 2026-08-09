@@ -78,9 +78,10 @@ $(Z80DIR)/$(ARCHIVE): $(Z80DIR)/libutil.o
 z80: $(Z80DIR)/$(ARCHIVE)
 
 target-install: z80
-	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
 	cp $(Z80DIR)/$(ARCHIVE) $(MXDIR)/lib
 	cp $(Z80DIR)/$(ARCHIVE) $(CPMDIR)/lib
+	cp $(Z80DIR)/$(ARCHIVE) $(UNIXDIR)/lib
 
 clean:
 	rm -f $(OBJECTS) $(ARCHIVE) $(CRUFT) $(CRUFTASM)

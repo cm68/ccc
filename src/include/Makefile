@@ -17,12 +17,24 @@ HDRS = $(wildcard *.h)
 
 all:
 
+# One header tree, the same for every target - what differs is
+# handled by ifdefs inside the headers, not by two copies that have to
+# be kept in step.  It goes in lib/include so the driver finds it
+# beside everything else it owns.
 target-install:
 	@mkdir -p $(MXDIR)/include/sys $(CPMDIR)/include/sys
+	@mkdir -p $(MXDIR)/lib/include/sys $(CPMDIR)/lib/include/sys
+	@mkdir -p $(UNIXDIR)/lib/include/sys
 	cp $(HDRS) $(MXDIR)/include
 	cp $(HDRS) $(CPMDIR)/include
 	cp sys/*.h $(MXDIR)/include/sys
 	cp sys/*.h $(CPMDIR)/include/sys
+	cp $(HDRS) $(MXDIR)/lib/include
+	cp $(HDRS) $(CPMDIR)/lib/include
+	cp $(HDRS) $(UNIXDIR)/lib/include
+	cp sys/*.h $(MXDIR)/lib/include/sys
+	cp sys/*.h $(CPMDIR)/lib/include/sys
+	cp sys/*.h $(UNIXDIR)/lib/include/sys
 
 install: target-install
 

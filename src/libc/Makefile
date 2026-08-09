@@ -100,10 +100,16 @@ $(BUILD)/$(ARCHIVE): $(OBJS)
 	rm -f $@
 	$(LIB) -cr $@ $(OBJS)
 
+# Every install gets every target's runtime, because any host can
+# cross-build for any target - a Micronix machine builds .com files
+# with -m cpm and needs libcpm.a sitting beside its own libu.a.  They
+# do not collide: the names differ, and libc.a is the same file for
+# both.  If it ever is not, that is a bug - see "make libcheck".
 target-install: all
-	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
 	cp $(BUILD)/$(ARCHIVE) $(MXDIR)/lib
 	cp $(BUILD)/$(ARCHIVE) $(CPMDIR)/lib
+	cp $(BUILD)/$(ARCHIVE) $(UNIXDIR)/lib
 install: target-install
 
 clean:

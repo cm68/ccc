@@ -67,8 +67,10 @@ $(BUILD)/crtcpm.o: crtcpm.s
 	$(AS) $< -o $@
 
 target-install: all
-	@mkdir -p $(CPMDIR)/lib
+	@mkdir -p $(CPMDIR)/lib $(MXDIR)/lib $(UNIXDIR)/lib
 	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(CPMDIR)/lib
+	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(MXDIR)/lib
+	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(UNIXDIR)/lib
 install: target-install
 
 clean:

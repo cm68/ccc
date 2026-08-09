@@ -108,7 +108,8 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: cpp xdump
-	cp cpp xdump $(UNIXDIR)/bin
+	cp cpp $(UNIXDIR)/lib
+	cp xdump $(UNIXDIR)/bin
 
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: cpp

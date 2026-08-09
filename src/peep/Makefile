@@ -55,7 +55,7 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: peep
-	cp peep $(UNIXDIR)/bin
+	cp peep $(UNIXDIR)/lib
 
 # Stage1: build each source through the compiler being developed
 stage1: peep

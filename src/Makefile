@@ -3,10 +3,10 @@
 #
 # The compiler is four passes and a shared support library:
 #
-#   cpp     preprocessor and token normalizer   -> unix/bin/cpp
-#   pass1   parser, emits the AST               -> unix/bin/c0
-#   pass2   code generator                      -> unix/bin/c1
-#   peep    peephole optimizer                  -> unix/bin/peep
+#   cpp     preprocessor and token normalizer   -> unix/lib/cpp
+#   pass1   parser, emits the AST               -> unix/lib/c0
+#   pass2   code generator                      -> unix/lib/c1
+#   peep    peephole optimizer                  -> unix/lib/peep
 #   ccclib  support code the passes share       -> libccc.a
 #
 # tools is the Whitesmith's object toolchain plus the ccc driver and

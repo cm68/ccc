@@ -108,7 +108,7 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: c0
-	cp c0 $(UNIXDIR)/bin
+	cp c0 $(UNIXDIR)/lib
 
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: c0
