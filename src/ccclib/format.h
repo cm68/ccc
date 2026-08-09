@@ -89,6 +89,26 @@ opName(int c)
 	case SEXT: return "SEXT";
 	case DEREF: return "DEREF";
 	case NEG: return "NEG";
+	/*
+	 * The rest of what the stream can carry.  An unnamed opcode
+	 * printed as "???" told the reader nothing; these are the ones
+	 * that turned up while walking real ASTs.
+	 */
+	case NOT: return "NOT";
+	case INCR: return "INCR";
+	case DECR: return "DECR";
+	case AMPER: return "ADDR";
+	case DOT: return "DOT";
+	case ARROW: return "ARROW";
+	case INITLIST: return "INITLIST";
+	case ARGNODE: return "ARG";
+	case TERNBRANCH: return "TERNBR";
+	case AST_FUNC: return "FUNC";
+	case AST_BLOCK: return "BLOCK";
+	case AST_GLOBAL: return "GLOBAL";
+	case AST_DECL: return "DECL";
+	case AST_EMPTY: return "EMPTY";
+	case TOK_NONE: return "NONE";
 	case CALL: return "CALL";
 	case PREINC: return "PREINC";
 	case POSTINC: return "POSTINC";

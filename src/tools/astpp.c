@@ -159,22 +159,6 @@ static void parseExpr(void) {
         return;
     }
 
-    /* Ternary: three children, the COLON flattened away by pass1 */
-    if (c == QUES) {
-        advance();
-        int w = read1();
-        exprApp("(QUES:");
-        exprApp(widthName(w));
-        exprApp(" ");
-        parseExpr();
-        exprApp(" ");
-        parseExpr();
-        exprApp(" ");
-        parseExpr();
-        exprApp(")");
-        return;
-    }
-
     /* Sign extend */
     if (c == SEXT) {
         advance();
@@ -204,8 +188,15 @@ static void parseExpr(void) {
     if (c == LOCALVAR) {
         advance();
         int w = read1();
-        int off = read1();
-        if (off > 127) off -= 256;
+        /*
+         * TWO bytes - emitExpr writes emit2 for a frame offset,
+         * because a local below the callee-save slots passes -128.
+         * Reading one printed the right number for a small offset
+         * and left the high byte to be read as the NEXT opcode: a
+         * parameter at IY+4 is "04 00", and the stray zero came back
+         * as E_O_F in the middle of an expression.
+         */
+        int off = (short)read2();
         char buf[32];
         sprintf(buf, "(LOCALVAR:%s IY%+d)", widthName(w), off);
         exprApp(buf);
