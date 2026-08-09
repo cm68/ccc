@@ -434,9 +434,20 @@ drain(struct token *t, struct tokarray *sink)
 			}
 			continue;
 		}
-		if (t->type == LPAR || t->type == LBRACK) {
+		/*
+		 * BEGIN and END count too.  A comma inside braces
+		 * separates initializers, not declarators - "T a[2] =
+		 * { 1, 2 }" ended the declarator at the comma, and the
+		 * caller then emitted it a second time as the one that
+		 * introduces the next declarator, so pass1 was handed
+		 * "{ 1 , , 2 }".  A single-element initializer has no
+		 * comma and was fine, which is why this survived.
+		 */
+		if (t->type == LPAR || t->type == LBRACK ||
+		    t->type == BEGIN) {
 			d++;
-		} else if (t->type == RPAR || t->type == RBRACK) {
+		} else if (t->type == RPAR || t->type == RBRACK ||
+		    t->type == END) {
 			if (!d) {
 				sink1(sink, t);
 				return;
