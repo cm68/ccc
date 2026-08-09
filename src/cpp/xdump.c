@@ -141,6 +141,7 @@ main(int argc, char **argv)
 {
     FILE *f;
     int c, len, i;
+    int sawend;		/* met the E_O_F token, or just ran out of file */
     long val;
     char buf[256];
     char *fname;
@@ -191,9 +192,11 @@ usage:
         return 1;
     }
 
+    sawend = 0;
     while ((c = fgetc(f)) != EOF) {
         switch (c) {
         case E_O_F:
+            sawend = 1;
             goto done;
 
         case SEMI:
@@ -437,6 +440,36 @@ usage:
     }
 
 done:
+    /*
+     * E_O_F is a token in the stream, not the end of the file, and
+     * the two agreeing is the only evidence that every payload was
+     * read at the length it was written.  A reader that consumed one
+     * byte too few for a name or a number carries on producing
+     * plausible text from the wrong offset - which is exactly how
+     * astpp printed a whole function of nonsense and looked merely
+     * unhelpful rather than wrong.  Say so instead.
+     */
+    {
+        long here = ftell(f);
+        long size;
+
+        fseek(f, 0, SEEK_END);
+        size = ftell(f);
+        if (!sawend) {
+            fprintf(stderr, "xdump: ran off the end at %ld of %ld "
+                "bytes without meeting E_O_F - truncated stream, or "
+                "a payload read at the wrong length\n", here, size);
+            fclose(f);
+            return 1;
+        }
+        if (here != size) {
+            fprintf(stderr, "xdump: E_O_F at %ld with %ld bytes left "
+                "- the reader and the stream disagree about a payload "
+                "length\n", here, size - here);
+            fclose(f);
+            return 1;
+        }
+    }
     fclose(f);
     return 0;
 }
