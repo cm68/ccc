@@ -774,12 +774,21 @@ main(int argc, char **argv)
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
-        /* Build cpp args: base options + -DCCC + sysinc + -o tmp + source */
+        /*
+         * Build cpp args: sysinc + -DCCC + base options + -o tmp + source.
+         *
+         * Ours goes first so that the user's -i and -I come after it and
+         * win.  It used to go last, which made the headers we ship
+         * impossible to override: building for Micronix picked up the
+         * stub sys/stat.h out of lib/include rather than the real one,
+         * and nothing on the command line could say otherwise.
+         */
         cpp_argc = 0;
-        for (j = 0; j < cpp_base_argc; j++)
-            cpp_args[cpp_argc++] = cpp_base[j];
-        cpp_args[cpp_argc++] = "-DCCC";
+        cpp_args[cpp_argc++] = cpp_base[0];     /* argv[0], the program */
         cpp_args[cpp_argc++] = sysinc_path;
+        cpp_args[cpp_argc++] = "-DCCC";
+        for (j = 1; j < cpp_base_argc; j++)
+            cpp_args[cpp_argc++] = cpp_base[j];
         cpp_args[cpp_argc++] = "-o";
         cpp_args[cpp_argc++] = tmpbase;
         cpp_args[cpp_argc++] = src;
