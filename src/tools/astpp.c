@@ -52,15 +52,19 @@ static void prln(char *s) { prIndent(); puts(s); }
 #include "format.h"
 
 /* opArity returns -1 for special cases handled separately in parseExpr */
+/*
+ * -1 means the opcode has its own record shape and is handled by its
+ * own block above; everything else is one child or two, and which is
+ * which comes from astBinary() in format.h - the same table pass2
+ * reads the stream with.  This used to default to two, so any unary
+ * operator the list had not been told about ate its sibling.
+ */
 static int opArityPP(int c) {
     if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC)
         return -1; /* inc/dec special */
     if (c == BFEXTRACT || c == BFASSIGN) return -1;
-    if (c == CALL) return -1;
-    /* Unary operators */
-    if (c == DEREF || c == NARROW || c == WIDEN || c == SEXT) return 1;
-    if (c == NEG || c == TWIDDLE || c == BANG) return 1;
-    return 2;
+    if (c == CALL || c == QUES) return -1;
+    return astBinary(c) ? 2 : 1;
 }
 
 #define EXPR_BUF_SIZE 4096
@@ -155,6 +159,22 @@ static void parseExpr(void) {
         return;
     }
 
+    /* Ternary: three children, the COLON flattened away by pass1 */
+    if (c == QUES) {
+        advance();
+        int w = read1();
+        exprApp("(QUES:");
+        exprApp(widthName(w));
+        exprApp(" ");
+        parseExpr();
+        exprApp(" ");
+        parseExpr();
+        exprApp(" ");
+        parseExpr();
+        exprApp(")");
+        return;
+    }
+
     /* Sign extend */
     if (c == SEXT) {
         advance();
@@ -232,7 +252,19 @@ static void parseExpr(void) {
     int arity = opArityPP(opChar);
 
     exprApp("(");
-    exprApp(opName(opChar));
+    /*
+     * An opcode with no name is the interesting case, so say WHICH:
+     * "???" alone means the reader has fallen behind and gives
+     * nothing to chase it with.  The number is what identifies the
+     * record shape that is missing.
+     */
+    if (opName(opChar)[0] == '?') {
+        char ub[16];
+        sprintf(ub, "?op%d?", opChar);
+        exprApp(ub);
+    } else {
+        exprApp(opName(opChar));
+    }
     exprApp(":");
     exprApp(widthName(w));
     exprApp(" ");
@@ -531,7 +563,15 @@ static void parseFunction(void) {
 
     int paramCnt = read1();
     int localCnt = read1();
-    int frmSize = read1();
+    /*
+     * frm_size is TWO bytes and frameSaveBase follows it - see
+     * emitFunc() in pass1/outfn.c.  Reading one byte and skipping
+     * the save base left this two bytes behind at the top of every
+     * function, and a stream reader that is behind does not misprint
+     * a field, it turns everything after into noise.
+     */
+    int frmSize = read2();
+    (void)read1();		/* frameSaveBase - printed by nothing here */
 
     /* Params */
     char paramsBuf[1024];
@@ -572,8 +612,13 @@ static void parseFunction(void) {
         lname = readName();
         strcpy(lnameCopy, lname);
         lreg = read1();
-        loff = read1();
-        if (loff > 127) loff -= 256;
+        /*
+         * Two bytes here and one for a parameter above: emitLocals()
+         * writes emit2, emitParams() writes emit1.  The asymmetry is
+         * real - a local can sit below the callee-save slots and pass
+         * -128, a parameter cannot.
+         */
+        loff = (short)read2();
 
         if (llen > 0) { localsBuf[llen++] = ','; localsBuf[llen++] = ' '; }
         llen += sprintf(localsBuf + llen, "%s:%s@", lnameCopy, widthName(ltype));
