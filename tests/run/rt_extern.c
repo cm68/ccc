@@ -60,6 +60,34 @@ implicitfn()
 	return 42;
 }
 
+/*
+ * Both flavours, because the fix turns on the token after the storage
+ * class and an ansi prototype puts a different one there.  Each is
+ * declared with the return type left out and defined to match, so a
+ * wrong return type would show up as a wrong value rather than as a
+ * diagnostic.
+ */
+extern	knrfn();
+extern	ansifn(int a);
+extern	ansivoid(void);
+
+knrfn(a, b)
+	int a;
+	int b;
+{
+	return a + b;
+}
+
+ansifn(int a)
+{
+	return a + 2;
+}
+
+ansivoid(void)
+{
+	return 5;
+}
+
 main()
 {
 	CHECK(1, implicitfn(), 42);
@@ -77,6 +105,11 @@ main()
 	/* an int, so it must be two bytes wide and signed */
 	implicitvar = -1;
 	CHECK(5, implicitvar, -1);
+
+	/* both flavours return what they computed, so both were typed int */
+	CHECK(6, knrfn(20, 3), 23);
+	CHECK(7, ansifn(40), 42);
+	CHECK(8, ansivoid(), 5);
 
 	return 0;
 }
