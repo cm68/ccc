@@ -50,6 +50,7 @@ static void prIndent(void) {
 static void prln(char *s) { prIndent(); puts(s); }
 
 #include "format.h"
+#include "astops.h"
 
 /* opArity returns -1 for special cases handled separately in parseExpr */
 /*

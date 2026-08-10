@@ -4,6 +4,7 @@
 #include "pass2.h"
 #include "lexeme.h"
 #include "expr.h"
+#include "astops.h"
 #include "opcodes.h"
 #include <stdlib.h>
 
@@ -274,18 +275,13 @@ freeexpr(Expr *e)
 int
 isbinary(int op)
 {
-	switch (op) {
-	case PLUS: case MINUS: case TIMES: case STAR:
-	case DIV: case MOD: case AND: case OR: case XOR:
-	case LSHIFT: case RSHIFT: case URSHIFT:
-	case EQ: case NEQ: case LT: case LE: case GT: case GE:
-	case LAND: case LOR: case ASSIGN:
-	case PLUSEQ: case SUBEQ: case MULTEQ: case DIVEQ: case MODEQ:
-	case ANDEQ: case OREQ: case XOREQ: case LSHIFTEQ: case RSHIFTEQ:
-	case COMMA:
-		return 1;
-	}
-	return 0;
+	/*
+	 * The table lives in astops.h so that astpp reads the stream
+	 * with the same one.  A reader that disagrees about arity does
+	 * not misprint a node, it loses sync and turns everything after
+	 * it into noise - which is what astpp did for years.
+	 */
+	return astBinary(op);
 }
 
 Expr *
