@@ -18,6 +18,20 @@
 #include "opcodes.h"
 #include "lexeme.h"
 
+/*
+ * How many shapes the rules could not build code for.
+ *
+ * A marker is a COMMENT.  asz never sees it, so a statement the rules
+ * cannot match is simply absent from the output while the compiler
+ * exits 0 and the object file looks fine.  "*(int *)0x50 = &cmd" cost
+ * two hours of looking at a disk controller before anyone read the
+ * assembly, because everything upstream of it was plausible.
+ *
+ * A compiler is allowed not to implement something.  It is not
+ * allowed to say it did.  pass2 counts them and fails.
+ */
+int nincomplete;
+
 extern int labelcnt;
 Expr *rewrite1(Expr *e);
 char *idxregname(unsigned char reg);
@@ -399,6 +413,14 @@ ccguard(Expr *e)
 	    op == INA || op == INHL || op == INDE ||
 	    op == INBC || op == INE)
 		return;
+	/*
+	 * NOT counted as a failure.  Five runtime tests emit this and
+	 * all five compute the right answer - the condition is reduced
+	 * by something else further on.  Whether this marker is ever a
+	 * real fault is a separate question; what is certain is that it
+	 * does not mean a statement was dropped, and only that kind can
+	 * be made fatal without failing correct code.
+	 */
 	out("; XXXXXX unreduced condition\n");
 }
 
@@ -620,6 +642,7 @@ docompound(Expr *e)
 	 * it always owed.
 	 */
 	if (!sum || (isbyte ? sum->op != INA : sum->op != INHL)) {
+		nincomplete++;
 		out("; XXXXXX incomplete: compound rhs");
 #ifdef DEBUG
 		if (sum) {
@@ -1947,7 +1970,8 @@ spilled:	;
 			 */
 			if (!reduced(addr)) {
 				e->right = rewrite1(e->right);
-				out("; XXXXXX incomplete: ");
+				nincomplete++;
+		out("; XXXXXX incomplete: ");
 #ifdef DEBUG
 				dumpexpr(addr);
 #endif
@@ -2545,6 +2569,7 @@ rewrite(Expr *e)
 	 * nothing said.
 	 */
 	if (r && !reduced(r)) {
+		nincomplete++;
 		out("; XXXXXX incomplete: ");
 #ifdef DEBUG
 		/* dumpexpr ends the line */

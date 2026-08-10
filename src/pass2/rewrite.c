@@ -785,7 +785,12 @@ emitasm(char *tpl, Expr *e)
 					out(n->u.symref.name);
 					val = n->u.symref.off + offadj;
 					if (val != 0) {
-						if (val > 0)
+						/*
+						 * "+80" is only right after a
+						 * name; a nameless symref IS
+						 * the address and prints bare.
+						 */
+						if (val > 0 && n->u.symref.name[0])
 							outc('+');
 						outd(val);
 					}
@@ -1097,11 +1102,15 @@ tryrule(struct rule *rp, Expr *e)
 			name = e->u.name;
 			soff = 0;
 		} else if (e->left->op == SYMREF) {
-			/* SYMREF + NUMBER -> combine offsets */
+			/* SYMREF +/- NUMBER -> combine offsets */
 			name = e->left->u.symref.name;
 			soff = e->left->u.symref.off;
-			if (e->right)
-				soff += (short)e->right->u.val;
+			if (e->right) {
+				if (e->op == MINUS)
+					soff -= (short)e->right->u.val;
+				else
+					soff += (short)e->right->u.val;
+			}
 		} else {
 			/* SYM + NUMBER */
 			name = e->left->u.name;

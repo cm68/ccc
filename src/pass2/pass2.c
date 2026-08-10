@@ -2,6 +2,9 @@
  * pass2.c - Code generator main
  */
 #include "pass2.h"
+
+/* counted in lower.c, one per shape the rules could not match */
+extern int nincomplete;
 #include "libutil.h"
 #include <fcntl.h>
 #include <unistd.h>
@@ -150,6 +153,27 @@ main(int argc, char **argv)
 	close(infd);
 	close(in2fd);
 	close(outfd);
+
+	/*
+	 * A shape the rules could not match left a comment in the
+	 * output and nothing else - no instruction, and until now no
+	 * complaint either.  Fail, so a build stops here rather than
+	 * linking a program with a statement missing from it.
+	 */
+	if (nincomplete) {
+		char nbuf[12];
+		char *q = nbuf + 11;
+		int n = nincomplete;
+
+		*q = 0;
+		do { *--q = '0' + n % 10; n /= 10; } while (n);
+		errout(argv[2]);
+		errout(": ");
+		errout(q);
+		errout(" expression(s) that no rule could build code for -"
+		    " the output is missing them\n");
+		return 1;
+	}
 	return 0;
 }
 

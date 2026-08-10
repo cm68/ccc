@@ -1094,6 +1094,7 @@ struct rule rules[] = {
 	/* bare SYM -> SYMREF+0, so the address rules below can see it */
 	R(SYM,0,0,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
+
 	/* REGVAR -> IN* (value is in register) */
 	R(REGVAR,0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, 0, 0),
 	R(REGVAR,0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, 0, 0),
@@ -1193,6 +1194,13 @@ struct rule rules[] = {
 
 	/* symbol + constant offset folds into the SYMREF */
 	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
+	/*
+	 * And the same going down.  "tab - 1" had no rule, so it left a
+	 * marker and no instruction - rt_ixcmp2 has computed the right
+	 * answer all along only because the value it dropped was
+	 * reloaded by the comparison that followed.
+	 */
+	R(MINUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 	/*
 	 * The same for a global array, where the base is a link-time
 	 * constant and the scaled subscript is in a register - one add,
