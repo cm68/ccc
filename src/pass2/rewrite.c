@@ -780,6 +780,7 @@ emitasm(char *tpl, Expr *e)
 			offadj = 0;
 			if (*p == 'l' || *p == 'h' ||
 			    *p == '2' || *p == '3' ||
+			    *p == 'a' || *p == 'w' || *p == 'W' ||
 			    *p == 'o' || *p == 'r') {
 				mod = *p++;
 			}
@@ -803,10 +804,33 @@ emitasm(char *tpl, Expr *e)
 				if (n->op == NUMBER) {
 					val = n->u.val;
 					/* l h 2 3 select the four bytes */
-					if (mod == 'l') val = val & 0xff;
+					/*
+					 * w and W are the two WORDS of a
+					 * long, as l h 2 3 are its bytes.
+					 * Without them a long constant had
+					 * to be laid down a byte at a time
+					 * through (hl) - fourteen bytes
+					 * where two ld (nn),hl are twelve.
+					 */
+					if (mod == 'w') val = val & 0xffff;
+					else if (mod == 'W')
+						val = (val >> 16) & 0xffff;
+					else if (mod == 'l') val = val & 0xff;
 					else if (mod == 'h') val = (val >> 8) & 0xff;
 					else if (mod == '2') val = (val >> 16) & 0xff;
 					else if (mod == '3') val = (val >> 24) & 0xff;
+					/*
+					 * 'a' - an ADDRESS.  Sixteen bits
+					 * with no sign to them, because
+					 * outd() spells a word signed and
+					 * asz will not take "ld (-4096),hl".
+					 * offadj reaches the second word of
+					 * a long, as it does for a SYMREF.
+					 */
+					if (mod == 'a') {
+						outu((int)(val + offadj));
+						continue;
+					}
 					outd(val);
 				} else if (n->op == SYMREF) {
 					/* honour $L+ here too - without it a

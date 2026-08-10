@@ -39,11 +39,29 @@
 
 int *wp;
 char *bp;
+long *lp;
+
+/*
+ * Never called, and it still has to compile and ASSEMBLE.  A literal
+ * address above 0x7fff is the ordinary case - it is where memory
+ * mapped hardware lives - and pass1 hands the constant down narrowed
+ * to a short, so 0xf000 arrived as -4096 and asz said "invalid
+ * operand".  Nothing here can be run: writing to 0xf000 under the
+ * simulator lands on the operating system.  Compiling it is the test.
+ */
+hiaddr()
+{
+	*(int *)0xF000 = 1;
+	*(char *)0xFFFE = 2;
+	*(long *)0xF100 = 0x11223344L;
+	return *(int *)0xF000;
+}
 
 main()
 {
 	wp = (int *)0x50;
 	bp = (char *)0x60;
+	lp = (long *)0x70;
 
 	/* a word through a literal address */
 	*(int *)0x50 = 0x1234;
@@ -63,6 +81,23 @@ main()
 
 	*bp = 0x39;
 	CHECK(5, *(char *)0x60 & 0xff, 0x39);
+
+	/*
+	 * A long, which is four bytes through one literal address and
+	 * was the width nobody had written.  There is no ld (nn),n on
+	 * this machine, so the constant form has to point HL at the
+	 * address and walk it - the word and byte forms above get away
+	 * with ld (nn),hl and ld (nn),a and the long cannot.
+	 */
+	*(long *)0x70 = 0x11223344L;
+	CHECK(6, *lp == 0x11223344L, 1);
+
+	*lp = 0x55667788L;
+	CHECK(7, *(long *)0x70 == 0x55667788L, 1);
+
+	/* the halves land in the right order, low word first */
+	CHECK(8, *(int *)0x70 & 0xffff, 0x7788);
+	CHECK(9, *(int *)0x72 & 0xffff, 0x5566);
 
 	return 0;
 }

@@ -184,6 +184,33 @@ outd(int n)
 }
 
 /*
+ * The same word, spelled without a sign.
+ *
+ * outd() narrows to a signed short so both builds spell a word alike,
+ * and for an ADDRESS that canonical choice is the wrong one: pass1
+ * hands 0xf000 down as -4096, and asz answers "invalid operand" to
+ *
+ *	ld (-4096),hl
+ *
+ * which is every memory mapped device on the machine.  Unsigned is
+ * just as canonical - 16 bits either way, and the host narrows to
+ * the same 16 - so this is the same guarantee with the sign dropped.
+ * A displacement like (ix-5) still goes through outd, where the sign
+ * is the point.
+ */
+void
+outu(int n)
+{
+	char buf[8];
+	register char *p = buf + 7;
+	unsigned int v = (unsigned short)n;
+
+	*p = 0;
+	do { *--p = '0' + v % 10; v /= 10; } while (v);
+	out(p);
+}
+
+/*
  * Copy pass1's assembly output (globals, string literals, file-scope
  * asm) through to our output, then select .text for the code we are
  * about to generate.  The .2 stream starts in .text and emits its own

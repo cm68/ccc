@@ -424,12 +424,14 @@ char *rulepat[] = {
 	"=(B,V)",
 	"=(E,V)",
 	"+(V,num)",
+	"+(V,num)",
 	"+(D(V),num)",
 	"+(I,num)",
 	"+(I,H)",
 	"+(I,E)",
 	"+(I,B)",
 	"+(O,num)",
+	"-(O,num)",
 	"+(O,H)",
 	"+(O,E)",
 	"+(O,B)",
@@ -482,6 +484,17 @@ char *rulepat[] = {
 	"=(I,B):s",
 	"=(O,A):b",
 	"=(O,num):b",
+	"=(D(num),num):s",
+	"=(D(num),O):s",
+	"=(D(num),num):b",
+	"=(D(num),H):s",
+	"=(D(num),A):b",
+	"=(D(num),H):lV",
+	"=(D(num),H):l",
+	"=(D(num),C):lV",
+	"=(D(num),C):l",
+	"=(D(num),num):l",
+	"=(D(num),num):b",
 	"=(O,H):s",
 	"=(O,H):b",
 	"=(O,B):b",
@@ -827,6 +840,9 @@ char *rulepat[] = {
 	"D(I):bF",
 	"D(I):sF",
 	"D(I):s",
+	"D(num):s",
+	"D(num):b",
+	"D(num):l",
 	"D(O):b",
 	"D(O):b",
 	"D(I):b",
@@ -1000,6 +1016,10 @@ char *rulepat[] = {
 	"<(H,num)",
 	"p(H,num)",
 	"cmpx(H,num)",
+	"e(C,E)",
+	"n(C,E)",
+	"e(C,O)",
+	"n(C,O)",
 	"e(H,E)",
 	"cmpx(H,E)",
 	"n(H,E)",
@@ -1385,15 +1405,46 @@ struct rule rules[] = {
 	 * instruction the SYMREF form is.
 	 */
 	R(ASSIGN,DEREF,P_NUM,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld hl,$R\n\tld ($LL),hl\n", R_HL),
+	    "\tld hl,$R\n\tld ($LLa),hl\n", R_HL),
 	R(ASSIGN,DEREF,SYMREF,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld hl,$R\n\tld ($LL),hl\n", R_HL),
+	    "\tld hl,$R\n\tld ($LLa),hl\n", R_HL),
 	R(ASSIGN,DEREF,P_NUM,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld a,$R\n\tld ($LL),a\n", R_A),
+	    "\tld a,$R\n\tld ($LLa),a\n", R_A),
 	R(ASSIGN,DEREF,INHL,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LL),hl\n", R_HL),
+	    "\tld ($LLa),hl\n", R_HL),
 	R(ASSIGN,DEREF,INA,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LL),a\n", R_A),
+	    "\tld ($LLa),a\n", R_A),
+
+	/*
+	 * The long at a literal address.  Same four bytes the SYMREF
+	 * forms write, with the constant where the name goes: the value
+	 * lives in HL:HL', so the low word goes down, exx, the high word,
+	 * exx back.  The CODE forms are here because the long helpers
+	 * hand back a CODE that never passed through the step() loop
+	 * that would have made it an INHL.
+	 */
+	R(ASSIGN,DEREF,INHL,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, R_HL),
+	R(ASSIGN,DEREF,INHL,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, 0),
+	R(ASSIGN,DEREF,CODE,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, R_HL),
+	R(ASSIGN,DEREF,CODE,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, 0),
+	/*
+	 * A long constant.  There is no ld (nn),n on this machine - the
+	 * word and byte forms above get away with ld (nn),hl and
+	 * ld (nn),a, and there is no such instruction for an immediate -
+	 * so point HL at the address and walk it, exactly as the SYMREF
+	 * form does for a global.
+	 */
+	R(ASSIGN,DEREF,P_NUM,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld hl,$Rw\n\tld ($LLa),hl\n"
+	    "\tld hl,$RW\n\tld ($LLa++),hl\n", R_HL),
+	R(ASSIGN,DEREF,P_NUM,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld hl,$LLa\n" F_LDHLRL F_INCHL F_LDHLRH
+	    F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
+	    "\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 
 	R(ASSIGN,SYMREF,INHL,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
 	/* narrowing store: a word result keeps only its low byte */
@@ -2496,9 +2547,12 @@ struct rule rules[] = {
 	 */
 	/* and reading one back - see the store rules above */
 	R(DEREF,P_NUM,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0,
-	    "\tld hl,($L)\n", R_HL),
+	    "\tld hl,($La)\n", R_HL),
 	R(DEREF,P_NUM,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0,
-	    "\tld a,($L)\n", R_A),
+	    "\tld a,($La)\n", R_A),
+	/* and the long, both words */
+	R(DEREF,P_NUM,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
+	    "\tld hl,($La)\n" F_EXX "\tld hl,($La++)\n" F_EXX, R_HL),
 
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
