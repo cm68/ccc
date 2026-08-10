@@ -414,13 +414,24 @@ ccguard(Expr *e)
 	    op == INBC || op == INE)
 		return;
 	/*
-	 * NOT counted as a failure.  Five runtime tests emit this and
-	 * all five compute the right answer - the condition is reduced
-	 * by something else further on.  Whether this marker is ever a
-	 * real fault is a separate question; what is certain is that it
-	 * does not mean a statement was dropped, and only that kind can
-	 * be made fatal without failing correct code.
+	 * Counted, because it is the same fault as the one above wearing
+	 * a different word.  "if (*(char *)0x50 == 1)" says unreduced
+	 * condition and "v = *(char *)0x50" says incomplete: the wording
+	 * records where it surfaced, not what went wrong.
+	 *
+	 * I excluded it once, reasoning that four tests emitted it and
+	 * all four passed.  They pass on STALE FLAGS.  "ub != 200" came
+	 * out as
+	 *
+	 *	ld a,(_ub)
+	 *	jp z,no12_3
+	 *
+	 * with no cp - and ld a,(nn) sets no flags, so the branch reads
+	 * whatever was left further back and happens to go the right
+	 * way.  A green test is not the same as correct code, which is
+	 * the entire lesson of this bug.
 	 */
+	nincomplete++;
 	out("; XXXXXX unreduced condition\n");
 }
 
