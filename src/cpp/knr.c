@@ -46,6 +46,7 @@ static struct tokarray ptype_a;
 static struct tokarray tail_a;
 static struct tokarray ptail_a;
 static int kp_stars;
+static int kp_adim;	/* [] groups seen on the declarator in hand */
 static int kp_pdepth;
 static int kp_preopen;
 static char *cur_pname;
@@ -277,6 +278,7 @@ abort_knr(int st)
 		tarr_reset(&ptype_a);
 		tarr_reset(&ptail_a);
 		kp_stars = 0;
+		kp_adim = 0;
 		kp_pdepth = 0;
 		cur_pname = 0;
 	}
@@ -476,6 +478,7 @@ knr(struct token *t)
 				cur_pname = 0;
 				tarr_reset(&ptype_a);
 				kp_stars = 0;
+				kp_adim = 0;
 				continue;
 			}
 			if (cur.type == COMMA && ptype_a.count == 0 &&
@@ -570,6 +573,7 @@ knr(struct token *t)
 					save_ptype(cur_pname, kp_stars);
 				cur_pname = 0;
 				kp_stars = 0;
+				kp_adim = 0;
 				if (had_tail) {
 					/* fn-ptr `( *` prefix is
 					 * per-declarator, no sharing */
@@ -585,8 +589,75 @@ knr(struct token *t)
 				tarr_reset(&ptype_a);
 				tarr_reset(&ptail_a);
 				kp_stars = 0;
+				kp_adim = 0;
 				kp_pdepth = 0;
 				st = K_PDECL;
+				continue;
+			}
+			/*
+			 * An array parameter IS a pointer - "int a[]" as a
+			 * parameter means "int *a", and the bound, if one is
+			 * written, means nothing.  So a [] group is one more
+			 * star and the tokens inside it are dropped, which
+			 * puts "main(ac, av) int ac; char *av[];" - how every
+			 * program of that vintage spells argv - into exactly
+			 * the ANSI form c0 already compiles.
+			 *
+			 * Without this the [ matched nothing here and fell
+			 * into abort_knr below: the normalizer gave up, put
+			 * the original K&R text back, and ANSI-only c0 met
+			 * "int foo(a) int a[];" and answered "fn array" -
+			 * an honest complaint about a shape it should never
+			 * have been shown.
+			 *
+			 * Only the FIRST group decays.  "char a[][10]" is
+			 * "char (*a)[10]", which is neither a star nor a
+			 * suffix, and emit_ansi can spell neither - so that
+			 * one has to go back to abort_knr rather than
+			 * quietly become char **a.
+			 *
+			 * Which means the group cannot be thrown away until
+			 * the token AFTER it has been seen.  It is buffered
+			 * in ptail_a - guaranteed empty here, a fn-ptr tail
+			 * and an array suffix cannot both be in hand - and
+			 * only then turned into a star.  If a second [
+			 * follows, ptail_a still holds the first group
+			 * verbatim, abort_knr flushes it where it belongs,
+			 * and the text that goes to c0 is the text that came
+			 * in.  Decaying first and discovering the second
+			 * dimension afterwards would have handed c0
+			 * "char *a[10]" - a shape it compiles WITHOUT
+			 * complaint, and the wrong one.
+			 */
+			if (cur.type == LBRACK && cur_pname &&
+			    kp_pdepth == 0 && ptail_a.count == 0 &&
+			    kp_adim == 0) {
+				int depth = 1;
+
+				tarr_push(&ptail_a, &cur);
+				while (depth > 0) {
+					pull(&cur);
+					if (cur.type == E_O_F)
+						return;
+					if (cur.type == LBRACK)
+						depth++;
+					else if (cur.type == RBRACK)
+						depth--;
+					tarr_push(&ptail_a, &cur);
+				}
+				kp_adim++;
+				pull(&cur);
+				if (cur.type == E_O_F)
+					return;
+				if (cur.type == LBRACK) {
+					abort_knr(st);
+					kout(&cur);
+					return;
+				}
+				/* a plain [] after all: it is one star */
+				tarr_reset(&ptail_a);
+				kp_stars++;
+				pushb(&cur);
 				continue;
 			}
 			abort_knr(st);
@@ -608,6 +679,7 @@ knrinit(void)
 	tarr_setup(&ptail_a, 8);
 	kp_cnt = 0;
 	kp_stars = 0;
+	kp_adim = 0;
 	kp_pdepth = 0;
 	kp_preopen = 0;
 	cur_pname = 0;

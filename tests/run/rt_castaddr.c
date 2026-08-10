@@ -99,6 +99,66 @@ main()
 	CHECK(8, *(int *)0x70 & 0xffff, 0x7788);
 	CHECK(9, *(int *)0x72 & 0xffff, 0x5566);
 
+	/*
+	 * Storing a VALUE THE TREE HAS TO WORK OUT, which every store
+	 * above avoids: each of them stores a constant or an address,
+	 * and a constant right operand takes a different path through
+	 * pass2 than a variable does.  That is why this file passed
+	 * while the shape the bug report opens with
+	 *
+	 *	*(int *)0x54 = v;
+	 *
+	 * was still emitting a marker.  A constant fails the gate that
+	 * sends address and value to separate registers and never
+	 * reaches the code that dropped the store; anything computed
+	 * goes straight into it.
+	 */
+	{
+		register int r;
+		int v;
+		char c;
+		long l;
+
+		v = 0x2468;
+		*(int *)0x50 = v;
+		CHECK(10, *wp, 0x2468);
+
+		c = 0x6b;
+		*(char *)0x60 = c;
+		CHECK(11, *bp & 0xff, 0x6b);
+
+		l = 0x0a0b0c0dL;
+		*(long *)0x70 = l;
+		CHECK(12, *lp == 0x0a0b0c0dL, 1);
+
+		/* a computed value, not just a copy of one */
+		*(int *)0x50 = v + 1;
+		CHECK(13, *wp, 0x2469);
+
+		/*
+		 * A REGISTER variable, which lives in BC rather than HL.
+		 * The store rules named HL and A and nothing else, so
+		 * this one shape still had no rule after the others were
+		 * written - and a register variable is exactly what a
+		 * loop counter in a driver is.
+		 */
+		r = 0x1357;
+		*(int *)0x50 = r;
+		CHECK(14, *wp, 0x1357);
+
+		/* the same register narrowed to a byte */
+		*(char *)0x60 = r;
+		CHECK(15, *bp & 0xff, 0x57);
+
+		/* literal address to literal address, both ends */
+		*(int *)0x52 = *(int *)0x50;
+		CHECK(16, *(int *)0x52, 0x1357);
+
+		/* an address that folds, with a value that does not */
+		*(int *)(0x40 + 0x10) = v;
+		CHECK(17, *wp, 0x2468);
+	}
+
 	return 0;
 }
 

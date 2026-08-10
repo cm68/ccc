@@ -489,12 +489,15 @@ char *rulepat[] = {
 	"=(D(num),num):b",
 	"=(D(num),H):s",
 	"=(D(num),A):b",
+	"=(D(num),B):s",
+	"=(D(num),E):s",
+	"=(D(num),B):b",
 	"=(D(num),H):lV",
 	"=(D(num),H):l",
 	"=(D(num),C):lV",
 	"=(D(num),C):l",
 	"=(D(num),num):l",
-	"=(D(num),num):b",
+	"=(D(num),num):lV",
 	"=(O,H):s",
 	"=(O,H):b",
 	"=(O,B):b",
@@ -1414,6 +1417,23 @@ struct rule rules[] = {
 	    "\tld ($LLa),hl\n", R_HL),
 	R(ASSIGN,DEREF,INA,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 	    "\tld ($LLa),a\n", R_A),
+
+	/*
+	 * The same store from the OTHER two register pairs, because the
+	 * value put there need not be in HL: a register variable lives
+	 * in BC, and "*(int *)0xc000 = v" with v in BC is exactly the
+	 * shape the second level boot writes.  The SYMREF family has
+	 * carried ld (nn),bc and ld (nn),de for a while; a literal
+	 * address reaches memory the same one instruction, and without
+	 * these the store found no rule and left a marker.
+	 */
+	R(ASSIGN,DEREF,INBC,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),bc\n", R_BC),
+	R(ASSIGN,DEREF,INDE,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LLa),de\n", R_DE),
+	/* the narrowing store: a word register keeps only its low byte */
+	R(ASSIGN,DEREF,INBC,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	    F_LDAC "\tld ($LLa),a\n", R_A),
 
 	/*
 	 * The long at a literal address.  Same four bytes the SYMREF

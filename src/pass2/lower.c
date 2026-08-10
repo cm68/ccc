@@ -1955,6 +1955,31 @@ spilled:	;
 			 * no temporary, so it is simply used where it is.
 			 */
 			addr = rewrite1(e->left);
+			/*
+			 * A literal address - "*(int *)0x54 = v" - is a
+			 * place as much as a frame slot is, and costs no
+			 * register to name: ld (84),hl reaches it whole.
+			 * But it arrives as a BARE NUMBER on the lvalue
+			 * side, because an lvalue in this tree IS its
+			 * address, while the load of one - the shape
+			 * islocdesc names - is DEREF(NUMBER).  So the test
+			 * just above does not see it here, the address is
+			 * not in HL for the push either, and the store fell
+			 * through to the marker below.
+			 *
+			 * Give it the DEREF the =(D(num),H) family expects,
+			 * exactly as the sibling branch does for an address
+			 * that folded to a descriptor, and the one
+			 * instruction comes out.  Storing a CONSTANT there
+			 * always worked, which is why this survived the
+			 * first pass over the bug: a constant right operand
+			 * fails the gate above and never comes here.
+			 */
+			if (addr->op == NUMBER) {
+				e->left = mkunary(DEREF, e->width, addr);
+				e->right = rewrite1(e->right);
+				goto children_done;
+			}
 			if (islocdesc(addr)) {
 				e->left = addr;
 				e->right = rewrite1(e->right);
