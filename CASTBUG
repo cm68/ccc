@@ -1,3 +1,44 @@
+two address shapes pass2 has no rule for, dropped silently
+==========================================================
+
+Both emit an XXXXXX marker into the assembler output, produce an object
+file, and exit 0.  The statement is simply absent from the code.
+
+	1.  a literal used as an address
+
+		v = *(int *)0x50;		BAD
+		v = ((int *)0x50)[0];		BAD
+		v = *(int *)0;			BAD
+		v = *(int *)(0x40+0x10);	BAD
+		int *p = (int *)0x50; v = *p;	ok
+		int i; i = 0x50; v = *(int *)i;	ok
+
+	    Any constant.  A pointer variable or an int variable holding
+	    the same value is fine, which is the workaround.
+
+	2.  subtraction from an address
+
+		e = buf - 1;			BAD
+		e = &buf[15] - 1;		BAD
+		e = buf + 15 - 1;		BAD
+		e = &buf[15] + 1;		ok
+		e = &buf[14];			ok
+
+	    Addition folds to the symbol-plus-offset shape pass2 wants.
+	    Subtraction does not.
+
+The two marker texts are not two bugs.  XXXXXX incomplete is what an
+expression produces and XXXXXX unreduced condition is what the same
+thing produces inside a condition:
+
+	if (*(char *)0x50 == 1)		unreduced condition
+	v = *(char *)0x50;		incomplete
+
+so the wording says where it surfaced, not what is wrong.
+
+What follows is how the first one was found.
+
+
 a store through a cast constant is dropped, silently
 ====================================================
 
