@@ -22,7 +22,7 @@ char dchainreg(struct expr *e);
 int truncok(unsigned char op);
 int bytevalued(struct expr *e);
 int candemote(struct expr *e, int size);
-void demote(struct expr *e, struct type *t);
+struct expr *demote(struct expr *e, struct type *t);
 int iscmpop(unsigned char op);
 unsigned char valwidth(struct type *t);
 struct type *opwidth(struct expr *e);

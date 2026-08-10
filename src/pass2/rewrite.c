@@ -289,6 +289,24 @@ label(Expr *e)
 }
 
 /*
+ * The comparisons, which read their operands as values.
+ */
+static int
+iscmpop(unsigned char op)
+{
+	switch (op) {
+	case EQ:
+	case NEQ:
+	case LT:
+	case GT:
+	case LE:
+	case GE:
+		return 1;
+	}
+	return 0;
+}
+
+/*
  * Register assignment: top-down pass to set target registers
  * Most ops are HL-centric on Z80, so:
  *   - Binary ops: left→HL, right→DE
@@ -386,6 +404,19 @@ assign(Expr *e, unsigned char tgt)
 
 	/* Binary ops: left→HL, right→DE (Z80 is HL-centric) */
 	default:
+		/*
+		 * A comparison reads its operands as VALUES, so an address
+		 * among them has to be formed rather than left as a place
+		 * to read through.  Marked here because rewrite runs bottom
+		 * up: by the time the (ix+d) form is chosen the node no
+		 * longer knows what asked for it.
+		 */
+		if (iscmpop(e->op)) {
+			if (e->left)
+				e->left->nored |= NR_ADDR;
+			if (e->right)
+				e->right->nored |= NR_ADDR;
+		}
 		if (e->regs >= 3 && e->right && e->right->op == NUMBER) {
 			/*
 			 * A constant costs no register - the rule that names
@@ -420,7 +451,7 @@ assign(Expr *e, unsigned char tgt)
 			    (e->op == EQ || e->op == NEQ || e->op == LT ||
 			     e->op == GT || e->op == LE || e->op == GE) &&
 			    e->right && shouldpres(e->right)) {
-				e->right->nored = 1;
+				e->right->nored |= NR_NORED;
 			}
 		} else {
 			/* Only need one, propagate target */
@@ -432,7 +463,7 @@ assign(Expr *e, unsigned char tgt)
 		if (e->op == PLUS && e->right->op == NUMBER &&
 		    e->left && (e->left->op == REGVAR || e->left->op == SYM ||
 		                e->left->op == SYMREF)) {
-			e->right->nored = 1;
+			e->right->nored |= NR_NORED;
 		}
 		return;
 	}
@@ -983,7 +1014,29 @@ tryrule(struct rule *rp, Expr *e)
 		 */
 		if (off < -126 || off > 124)
 			return NULL;
+		/*
+		 * An INDEX is a place to read through, not a value.  A
+		 * comparison against an ADDRESS - "&p->c == g" - wants the
+		 * address itself worked out, and answering with (ix+d)
+		 * handed the comparison an operand it has no rule for: the
+		 * test emitted a marker and then branched on whatever the
+		 * preceding load had left in the flags.
+		 *
+		 * Refusing here falls through to the PLUS(REGVAR,NUMBER)
+		 * -> CODE rule below - the same address arithmetic the
+		 * far-member case does.  Only a comparison sets NR_ADDR, so
+		 * "p->c" keeps ld l,(ix+4): deciding this on e->tgt instead
+		 * looked equivalent and was not, because a DEREF passes its
+		 * target down to the address underneath it.  Every struct
+		 * read in the tree turned into push ix/pop hl/add and the
+		 * suite went from one failure to twenty-three.
+		 */
+		if ((e->nored & NR_ADDR) && oldop == PLUS && e->left &&
+		    e->left->op == REGVAR)
+			return NULL;
 		n = mkindex(e->width, reg, off);
+		n->tgt = e->tgt;
+		n->dest = e->dest;
 		freeexpr(e);
 		return n;
 	}

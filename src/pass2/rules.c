@@ -2959,6 +2959,25 @@ struct rule rules[] = {
 	R(P_CMPX,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
 
 	/* comparisons */
+	/*
+	 * An ADDRESS compared, rather than the thing at it.  "p->c" is
+	 * an INDEX and the (ix+d) rules read through it, but "&p->c ==
+	 * g" wants the address itself worked out, and until these rules
+	 * existed CODE appeared in the table only as the source of an
+	 * assignment.  So the conversion that forms an effective address
+	 * in a register was never even attempted for a comparison: the
+	 * left operand stayed an INDEX, nothing matched, and the test
+	 * emitted a marker and then branched on whatever flags the
+	 * preceding load happened to leave.
+	 *
+	 * The sequence is the one the INHL form uses - by the time these
+	 * match, the address is in HL exactly as a loaded value would be.
+	 */
+	R(EQ,CODE,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
+	R(NEQ,CODE,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
+	R(EQ,CODE,SYMREF,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
+	R(NEQ,CODE,SYMREF,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
+
 	R(EQ,INHL,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
 	/* LE/GT have no cheap flag of their own: swap the operands so the
 	 * borrow from sbc answers the reversed question. */

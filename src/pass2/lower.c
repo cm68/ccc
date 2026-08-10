@@ -2220,7 +2220,7 @@ spilled:	;
 			   (e->right->regs > e->left->regs ||
 			    (e->right->regs == e->left->regs &&
 			     needshl(e->left) && needshl(e->right))) &&
-			   !e->left->nored && !e->right->nored) {
+			   !(e->left->nored & NR_NORED) && !(e->right->nored & NR_NORED)) {
 			/*
 			 * Sethi-Ullman: work out the costlier side first, so
 			 * the cheaper one can follow without spilling.  Each
@@ -2250,10 +2250,10 @@ spilled:	;
 			e->right = movetotgt(e->right, rtgt);
 			e->left = rewrite1(e->left);
 			goto children_done;
-		} else if (!e->left || !e->left->nored) {
+		} else if (!e->left || !(e->left->nored & NR_NORED)) {
 			e->left = rewrite1(e->left);
 		}
-		if (!e->right || !e->right->nored) {
+		if (!e->right || !(e->right->nored & NR_NORED)) {
 			if (e->left && e->left->op == INA && e->right &&
 			    e->op != ASSIGN && e->right->regs > 0 &&
 			    e->right->op != NUMBER && ISBYTE(e->right->width))

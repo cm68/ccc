@@ -368,7 +368,7 @@ emitExpr(struct expr *e)
 			 * byte was ever observable.
 			 */
 			if (right && candemote(right, type->size))
-				demote(right, type);
+				right = demote(right, type);
 			/* mark the lvalue so DEREF above knows to keep itself */
 			inLvalue = 1;
 			emitChild(left);		/* a location, never widened */
@@ -435,11 +435,11 @@ emitExpr(struct expr *e)
 			 */
 			if (left->type->size > w->size &&
 			    candemote(left, w->size))
-				demote(left, w);
+				left = demote(left, w);
 			if (right && op != LSHIFT && op != RSHIFT &&
 			    right->type->size > w->size &&
 			    candemote(right, w->size))
-				demote(right, w);
+				right = demote(right, w);
 			emitOperand(left, w);
 			/* a shift count is promoted on its own, not to the
 			 * width of the value being shifted */

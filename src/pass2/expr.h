@@ -11,6 +11,10 @@
 #define DEST_VALUE	2	/* result needed as value */
 #define DEST_STACK	3	/* result pushed to stack (call args) */
 
+/* nored flags */
+#define NR_NORED	1	/* don't reduce: preserve for parent rule */
+#define NR_ADDR		2	/* parent wants the address, not the place */
+
 /* expression node */
 typedef struct Expr {
 	unsigned char	op;	/* operator (lexeme token) */
@@ -18,7 +22,7 @@ typedef struct Expr {
 	unsigned char	dest;	/* destination */
 	unsigned char	regs;	/* Sethi-Ullman label: regs needed */
 	unsigned char	tgt;	/* target register (R_HL, R_DE, 0=any) */
-	unsigned char	nored;	/* don't reduce: preserve for parent rule */
+	unsigned char	nored;	/* NR_* flags below */
 	struct Expr	*left;	/* left child (unary: only child) */
 	struct Expr	*right;	/* right child (binary ops only) */
 	union {

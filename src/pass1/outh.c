@@ -207,11 +207,29 @@ bytevalued(struct expr *e)
 /*
  * Retype a subtree that candemote() has approved.
  */
-void
+struct expr *
 demote(struct expr *e, struct type *t)
 {
 	if (!e || e->type->size <= t->size)
-		return;
+		return e;
+	/*
+	 * A WIDEN or SEXT is there to make its child wider.  Demote it
+	 * to a width the child already has and it becomes a conversion
+	 * to its own type - which no rule in pass2 matches, so the whole
+	 * comparison it sat in emitted a marker and no code:
+	 *
+	 *	if ((long)uc == 0L)	(EQ:ubyte (WIDEN:ubyte uc) 0:ubyte)
+	 *
+	 * The byte test above it is right - a ubyte against zero really
+	 * is one - and the cast was right when it was built.  It is
+	 * demoting the cast along with everything else that leaves the
+	 * node behind saying nothing.  Return the child instead: if it
+	 * is narrower than the width we settled on, emitOperand puts a
+	 * conversion back, at the width the operand is actually read at.
+	 */
+	if ((e->op == WIDEN || e->op == SEXT) && e->left &&
+	    e->left->type->size <= t->size)
+		return demote(e->left, t);
 	e->type = t;
 	if (e->op == CONST) {
 		/* truncate to match, so the emitted value fits the width */
@@ -219,13 +237,14 @@ demote(struct expr *e, struct type *t)
 			e->v &= 0xff;
 		else if (t->size == 2)
 			e->v &= 0xffff;
-		return;
+		return e;
 	}
 	if (e->op == DEREF)
-		return;			/* narrower load, address unchanged */
-	demote(e->left, t);
+		return e;		/* narrower load, address unchanged */
+	e->left = demote(e->left, t);
 	if (e->op != LSHIFT)
-		demote(e->right, t);
+		e->right = demote(e->right, t);
+	return e;
 }
 
 int
