@@ -85,6 +85,17 @@ islocdesc(Expr *e)
 	case SYM:
 	case SYMREF:
 		return 1;
+	/*
+	 * A literal address - "*(int *)0x50" - names a place as
+	 * plainly as a symbol does; the Z80 reaches (nn) with one
+	 * instruction either way.  Without this the store path found
+	 * an address it could not call a location, gave up before the
+	 * rules were ever consulted, and left a marker where the
+	 * store should have been.  That is the shape a bootstrap uses
+	 * to hand a disk controller its command address.
+	 */
+	case DEREF:
+		return e->left && e->left->op == NUMBER;
 	}
 	return 0;
 }

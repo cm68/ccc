@@ -1371,6 +1371,30 @@ struct rule rules[] = {
 	/* store to symref */
 	R(ASSIGN,SYMREF,INA,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
 	R(ASSIGN,SYMREF,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
+	/*
+	 * A literal address: "*(int *)0x50".  This is how a driver or a
+	 * bootstrap talks to fixed hardware - v6's second level boot
+	 * hands the disk controller its command address exactly so - and
+	 * there was no rule for any of it, so the store compiled to a
+	 * comment and vanished.  asz never sees a comment.
+	 *
+	 * A global is a SYMREF and needs no DEREF around it; a literal
+	 * address arrives as DEREF(NUMBER), so these name the constant
+	 * as a grandchild and interpolate it where the symbol would go.
+	 * The Z80 addresses (nn) directly, so each is the one
+	 * instruction the SYMREF form is.
+	 */
+	R(ASSIGN,DEREF,P_NUM,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld hl,$R\n\tld ($LL),hl\n", R_HL),
+	R(ASSIGN,DEREF,SYMREF,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld hl,$R\n\tld ($LL),hl\n", R_HL),
+	R(ASSIGN,DEREF,P_NUM,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld a,$R\n\tld ($LL),a\n", R_A),
+	R(ASSIGN,DEREF,INHL,P_NUM,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LL),hl\n", R_HL),
+	R(ASSIGN,DEREF,INA,P_NUM,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld ($LL),a\n", R_A),
+
 	R(ASSIGN,SYMREF,INHL,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
 	/* narrowing store: a word result keeps only its low byte */
 	R(ASSIGN,SYMREF,INHL,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDLA1, R_A),
@@ -2470,6 +2494,12 @@ struct rule rules[] = {
 	 * the following byte into D as well; D is dead here, and one byte
 	 * of over-read is harmless in a flat memory model.
 	 */
+	/* and reading one back - see the store rules above */
+	R(DEREF,P_NUM,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0,
+	    "\tld hl,($L)\n", R_HL),
+	R(DEREF,P_NUM,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0,
+	    "\tld a,($L)\n", R_A),
+
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
 	R(DEREF,INDEX,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
