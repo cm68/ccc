@@ -12,6 +12,48 @@ are NOT supported and must NOT be used anywhere in this project:
   `static` aggregates initialize fine and are used throughout.
 - **const qualifier** - no `const` anywhere
 - **signed qualifier** - no `signed` anywhere (use plain `int` or `char`)
+- **Union initializers** - no `union u x = 0;` and no `union u x = { 0 };`.
+  c0 refuses both, in any spelling, including through a typedef.
+
+  The two are not wrong for the same reason. `= 0` is not C in any edition -
+  a scalar cannot initialize an aggregate. `= { 0 }` IS valid ANSI C, which
+  reads it as an initializer for the union's FIRST member; K&R's book does
+  not allow a union to be initialized at all, and that is the line taken
+  here.
+
+  Nothing is lost by refusing. A union declared and not initialized goes to
+  bss at its full size, and crt0 clears bss, so `union diskbuf disk0;`
+  already means what `= 0` was reaching for. Where you need a view over
+  known bytes, declare a `char` array of the right size and overlay it.
+- **switch case labels outside 0..255** - a case label is one byte. All three
+  dispatch shapes compare eight bits, and a word control tests its high byte
+  and goes to the no-match label before the table is consulted, so a label
+  outside that range names an arm that can never be reached. `case 256:`,
+  `case 512:`, `case 1024:` and `case 2048:` are all unreachable, and so is
+  `case -1:`.
+
+  c1 refuses to emit such a switch rather than quietly emitting one that
+  cannot work:
+
+  ```
+  sw.c: 1 switch case value(s) outside 0..255 - the dispatch compares
+  a byte, so those arms can never be reached
+  ```
+
+  It is counted rather than fatal where it is found, so one run names them
+  all. A `.error` goes into the assembly too, which is what catches anyone
+  assembling a `.s` kept from a `-s` run.
+
+  Scale the selector into range instead - `switch (size / 128)` with cases
+  1, 2, 4, 8, 16. Guard the remainder while you are there: `size / 128`
+  cannot tell 200 from 128, so `switch (size % 128 ? 0 : size / 128)` keeps
+  the accepted set exact, 0 matching no arm and landing on the default.
+
+  Met porting Morrow's FORMATMW, whose sector size switch is exactly those
+  five values; `tests/formatmw.c` carries the scaled form. It surfaced as
+  `.error duplicate case 0` from the assembler, because four of the five
+  labels share a low byte - the ones that do NOT collide were accepted in
+  silence and took the default.
 
 These restrictions apply to every source in the tree - cpp/, pass1/, pass2/,
 shared headers, tools/, libsrc/ and tests/. Auto aggregate initialization is a
