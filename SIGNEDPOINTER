@@ -1,0 +1,150 @@
+Every pointer comparison is signed
+==================================
+
+	p >= q		/* both struct store * */
+
+compiles to a signed comparison.  Two pointers either side of 0x8000
+therefore compare backwards: an address of 0x8008 is "less than" one of
+0x7ff6, because as signed sixteen bit numbers they are -32760 and
++32758.
+
+This has been true of every pointer comparison the compiler has ever
+emitted.  It cannot show up until a program holds live data on both
+sides of 0x8000 and compares across the boundary, which on a 64K
+machine means a heap that has grown past 32K.
+
+
+Reproducing it
+--------------
+
+	struct store { struct store *ptr; char flag; };
+
+	a(p, q)
+	struct store *p, *q;
+	{
+		return p >= q;
+	}
+
+	ccc -m micronix -s cmp.c
+
+gives
+
+		ld	l,(iy+6)	; q
+		ld	h,(iy+7)
+		ld	e,(iy+4)	; p
+		ld	d,(iy+5)
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		ld	a,h
+		jp	po,$+5		; overflow?  then the sign bit
+		xor	80h		; of the difference is inverted
+		or	a
+		ld	a,0
+		jp	m,$+4
+		inc	a
+
+"sbc hl,de / ld a,h / jp po / xor 80h / or a / jp m" is the signed
+comparison idiom: subtract, and if the subtraction overflowed, correct
+the sign bit before testing it.  An unsigned comparison is just the
+subtract and a test of carry - "sbc hl,de / jr c" - and that is what
+this should have been.
+
+
+Where it comes from
+-------------------
+
+Not from a cast, and not from operand order.  Pointers do not have a
+type by the time the code generator sees them.  pass2's whole type
+vocabulary is
+
+	#define	T_BYTE   'b'	#define	T_UBYTE  'B'
+	#define	T_SHORT  's'	#define	T_USHORT 'S'
+	#define	T_LONG   'l'	#define	T_ULONG  'L'
+	#define	T_VOID   'v'
+
+	#define	ISSIGNED(w)  ((w) == 'b' || (w) == 's' || (w) == 'l')
+
+There is no pointer in that list.  An address arrives as a sixteen bit
+integer, the default sixteen bit integer is short, and short is signed
+- so ISSIGNED says yes and the relop rules emit the signed sequence.
+The AST dumps say the same thing out loud once you know to look:
+
+	(DEREF:short (LOCALVAR:short IY+8))
+	(HL:short)
+
+Everything is :short.  Pointers never acquired signedness; they lost
+their type.
+
+pass1 knows perfectly well that these are pointers.  The AST it hands
+to pass2 should say so, by marking a pointer-valued expression
+unsigned - 'S' rather than 's'.  ISSIGNED then does the right thing for
+free, and every rule that consults it follows, without pass2 needing to
+learn about pointers at all.
+
+
+What it cost
+------------
+
+wsld could not link peep on the machine: "out of memory" with 38K of
+heap consumed and almost no work done.
+
+malloc guards its block search against address wraparound:
+
+	if (q >= (struct store *)((char *)p+nw)
+	 && (struct store *)((char *)p+nw) >= p)
+		goto found;
+
+The second half asks "did p+nw wrap past the end of memory".  Once the
+heap climbs past 0x8000, p+nw is "negative" and p is "positive", so the
+guard says the address wrapped and the block is refused - for every
+free block above 0x8000, permanently.  malloc then grows the arena by
+one granule, searches, is refused by its own guard, and grows again.
+
+Measured over one link, from the instruction trace:
+
+	62 malloc calls
+	31 of them grew the arena not at all
+	25 grew it once
+	 5 grew it twice
+	 1 grew it 246 times
+
+246 granules of 129 bytes is 31,734 of the 38,000, spent in a single
+call that never returned a block.  The call was asking for fourteen
+bytes.  The block it kept refusing was at 0x7ff6 with 162 bytes free in
+it; p+nw came to 0x8008.
+
+That is also why it was so hard to find.  Almost every measurement of
+malloc says it is healthy, because 61 calls out of 62 are: the same
+allocation sequence replayed standalone costs 3,354 bytes for 3,152
+asked.  The heap only misbehaves after it crosses a boundary that
+depends on how big the program is, so the failure moved every time
+anything was rebuilt, and every instrumented build - being bigger -
+died at a different place than the clean one.
+
+
+Why it stayed hidden
+--------------------
+
+Nothing else in the tree grows through 0x8000 while holding pointers on
+both sides of it.  The compiler passes allocate from permalloc, which
+hands out pieces of a chunk and never compares two arena pointers.  The
+tools mostly index rather than compare.  malloc is the one program that
+must compare arbitrary heap addresses, and the heap is the one thing
+that grows across the middle of memory.
+
+It is not an exotic case, though, and that is the point: "p >= q",
+"while (p < end)", "is this pointer inside that buffer" are ordinary,
+and every one of them is wrong today for a buffer that straddles
+0x8000.  On this machine that is a normal place for a buffer to be.
+
+
+Not fixed here
+--------------
+
+Documented first, deliberately.  The fix is in pass1's type lowering -
+a pointer-valued expression should go into the AST as unsigned - and it
+wants a runtime test alongside it, in tests/run, that compares two
+pointers across 0x8000 and fails on the compiler as it stands.  Without
+that test this comes back the first time anything touches the lowering,
+and it will be just as invisible the second time.
