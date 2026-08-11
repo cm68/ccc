@@ -640,7 +640,7 @@ char **argv;
 
     assemble();
 
-    fseek(tmpfp, 0, SEEK_SET);
+    fseek(tmpfp, 0L, SEEK_SET);
     do {
         i = fread(tmpbuf, 1, sizeof(tmpbuf), tmpfp);
         if (i < 0) {

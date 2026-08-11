@@ -724,9 +724,9 @@ int main(int argc, char **argv) {
     }
 
     /* Read entire file */
-    fseek(f, 0, SEEK_END);
+    fseek(f, 0L, SEEK_END);
     len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    fseek(f, 0L, SEEK_SET);
     if (len < 0) {
         /* stdin - read in chunks */
         int cap = 4096;

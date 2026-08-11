@@ -2201,7 +2201,7 @@ assemble()
             if (infp == stdin) {
                 infp = inbuffp;
             }
-			fseek(infp, 0, SEEK_SET);
+			fseek(infp, 0L, SEEK_SET);
 
 			continue;
 		}

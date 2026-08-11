@@ -390,7 +390,7 @@ char *name;
     obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
 
     /* skip to symbol table: header(16) + text + data */
-    fseek(fp, 16 + obj->text_size + obj->data_size, SEEK_SET);
+    fseek(fp, (long)(16 + obj->text_size + obj->data_size), SEEK_SET);
 
     /* read symbols */
     for (i = 0; i < obj->num_syms; i++) {
@@ -474,7 +474,7 @@ long base;
     int num_syms, i;
     int needed = 0;
 
-    fseek(fp, base, SEEK_SET);
+    fseek(fp, (long)(base), SEEK_SET);
 
     magic = read_byte(fp);
     if (magic != MAGIC)
@@ -493,7 +493,7 @@ long base;
     num_syms = symtab_size / (symlen + 3);
 
     /* seek to symbol table */
-    fseek(fp, base + 16 + text_size + data_size, SEEK_SET);
+    fseek(fp, (long)(base + 16 + text_size + data_size), SEEK_SET);
 
     /* scan symbols looking for definitions of undefined symbols */
     for (i = 0; i < num_syms; i++) {
@@ -536,7 +536,7 @@ char *membername;
     char *fullname;
     int i;
 
-    fseek(fp, base, SEEK_SET);
+    fseek(fp, (long)(base), SEEK_SET);
 
     magic = read_byte(fp);
     if (magic != MAGIC) {
@@ -587,7 +587,7 @@ char *membername;
     obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
 
     /* seek to symbol table */
-    fseek(fp, base + 16 + obj->text_size + obj->data_size, SEEK_SET);
+    fseek(fp, (long)(base + 16 + obj->text_size + obj->data_size), SEEK_SET);
 
     /* read symbols */
     for (i = 0; i < obj->num_syms; i++) {
@@ -663,7 +663,7 @@ char *name;
     off = 2;  /* skip magic */
     while (1) {
         /* read 14-byte name */
-        fseek(fp, off, SEEK_SET);
+        fseek(fp, (long)(off), SEEK_SET);
         if (fread(membername, 1, 14, fp) != 14)
             break;
         membername[14] = '\0';
@@ -770,9 +770,9 @@ char *name;
     if (fp == NULL)
         error2("cannot open", name);
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     obj = (struct object *)malloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
@@ -794,7 +794,7 @@ char *name;
     /* parse records */
     off = 0;
     while (off < size - 3) {
-        fseek(fp, off, SEEK_SET);
+        fseek(fp, (long)(off), SEEK_SET);
         if (fread(hdr, 1, 3, fp) != 3)
             break;
 
@@ -856,7 +856,7 @@ char *name;
 
         case HT_RELOC:
             /* RELOC records apply to most recent TEXT segment */
-            fseek(fp, off, SEEK_SET);
+            fseek(fp, (long)(off), SEEK_SET);
             {
                 long rend = off + reclen;
                 while (ftell(fp) < rend) {
@@ -888,7 +888,7 @@ char *name;
 
         case HT_SYMBOL:
             /* parse symbol record */
-            fseek(fp, off, SEEK_SET);
+            fseek(fp, (long)(off), SEEK_SET);
             {
                 long send = off + reclen;
                 while (ftell(fp) < send) {
@@ -1027,7 +1027,7 @@ char *membername;
 
     /* parse records */
     while (off < endpos - 3) {
-        fseek(fp, off, SEEK_SET);
+        fseek(fp, (long)(off), SEEK_SET);
         if (fread(hdr, 1, 3, fp) != 3)
             break;
 
@@ -1085,7 +1085,7 @@ char *membername;
             break;
 
         case HT_RELOC:
-            fseek(fp, off, SEEK_SET);
+            fseek(fp, (long)(off), SEEK_SET);
             {
                 long rend = off + reclen;
                 while (ftell(fp) < rend) {
@@ -1114,7 +1114,7 @@ char *membername;
             break;
 
         case HT_SYMBOL:
-            fseek(fp, off, SEEK_SET);
+            fseek(fp, (long)(off), SEEK_SET);
             {
                 long send = off + reclen;
                 while (ftell(fp) < send) {
@@ -1196,7 +1196,7 @@ int symcnt;
     unsigned char symflag;
     char symname[64];
 
-    fseek(fp, symoff, SEEK_SET);
+    fseek(fp, (long)(symoff), SEEK_SET);
 
     for (i = 0; i < symcnt; i++) {
         symflag = fgetc(fp);
@@ -1260,7 +1260,7 @@ char *name;
         long mod_symoff;
         int j;
 
-        fseek(fp, symoff, SEEK_SET);
+        fseek(fp, (long)(symoff), SEEK_SET);
         if (fread(buf, 1, 12, fp) != 12)
             break;
 
@@ -1289,7 +1289,7 @@ char *name;
         }
 
         /* skip past symbol entries */
-        fseek(fp, mod_symoff, SEEK_SET);
+        fseek(fp, (long)(mod_symoff), SEEK_SET);
         for (j = 0; j < symCnt; j++) {
             fgetc(fp);  /* flags */
             while (fgetc(fp) != '\0')  /* name */
@@ -1545,7 +1545,7 @@ int is_text;
     int hilo;           /* 0=word, 1=lo, 2=hi */
     int size;           /* relocation size: 2 for word, 1 for lo/hi */
 
-    fseek(obj->fp, reloc_off, SEEK_SET);
+    fseek(obj->fp, (long)(reloc_off), SEEK_SET);
 
     while (1) {
         b = read_byte(obj->fp);
@@ -1853,7 +1853,7 @@ int is_text;
 #endif
     {
         /* Whitesmith: read from file */
-        fseek(obj->fp, obj->file_base + seg_start, SEEK_SET);
+        fseek(obj->fp, (long)(obj->file_base + seg_start), SEEK_SET);
         if (fread(buf, 1, seg_size, obj->fp) != seg_size)
             error("read error");
 
@@ -2067,9 +2067,9 @@ char *name;
     if (fp == NULL)
         return 0;
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     if (fread(buf, 1, 4, fp) == 4) {
         sym_size = buf[0] | (buf[1] << 8);
@@ -2080,7 +2080,7 @@ char *name;
         if (num_mods > 0 && num_mods < 1000 &&
             mod_off > 4 && mod_off < size) {
             unsigned char ident[3];
-            fseek(fp, mod_off, SEEK_SET);
+            fseek(fp, (long)(mod_off), SEEK_SET);
             if (fread(ident, 1, 3, fp) == 3 && HT_IS_HITECH(ident)) {
                 result = 1;
             }

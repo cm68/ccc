@@ -198,9 +198,9 @@ char *objname;
     if (fp == NULL)
         error2("cannot open", objname);
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     if (size > 65535)
         error2("file too large", objname);
@@ -279,9 +279,9 @@ int nfiles;
         error2("not an archive", archive);
 
     /* find end - look for null entry or EOF */
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 2, SEEK_SET);
+    fseek(fp, 2L, SEEK_SET);
 
     while (ftell(fp) < size) {
         long pos = ftell(fp);
@@ -292,12 +292,12 @@ int nfiles;
 
         if (buf[0] == '\0') {
             /* found end marker - position before it */
-            fseek(fp, pos, SEEK_SET);
+            fseek(fp, (long)(pos), SEEK_SET);
             break;
         }
 
         len = buf[14] | (buf[15] << 8);
-        fseek(fp, len, SEEK_CUR);
+        fseek(fp, (long)(len), SEEK_CUR);
     }
 
     /* now at position to write new entries */
@@ -346,7 +346,7 @@ char *archive;
 
         total += len;
         count++;
-        fseek(fp, len, SEEK_CUR);
+        fseek(fp, (long)(len), SEEK_CUR);
     }
 
     if (verbose)
@@ -411,7 +411,7 @@ int nfiles;
             fclose(outfp);
             free(data);
         } else {
-            fseek(fp, len, SEEK_CUR);
+            fseek(fp, (long)(len), SEEK_CUR);
         }
     }
 
@@ -481,7 +481,7 @@ int nfiles;
                     printf("r - %s\n", name);
                 add_object(tmpfp, files[i]);
                 replaced[i] = 1;
-                fseek(fp, len, SEEK_CUR);  /* skip old data */
+                fseek(fp, (long)(len), SEEK_CUR);  /* skip old data */
                 goto next_entry;
             }
         }
@@ -549,9 +549,9 @@ char *filename;
     if (fp == NULL)
         error2("cannot open", filename);
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
@@ -871,9 +871,9 @@ char *archive;
     if (fp == NULL)
         error2("cannot open", archive);
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
@@ -964,9 +964,9 @@ int nfiles;
     if (fp == NULL)
         error2("cannot open", archive);
 
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
@@ -1093,9 +1093,9 @@ char **argv;
         fp = fopen(archive, "rb");
         if (fp != NULL) {
             long size;
-            fseek(fp, 0, SEEK_END);
+            fseek(fp, 0L, SEEK_END);
             size = ftell(fp);
-            fseek(fp, 0, SEEK_SET);
+            fseek(fp, 0L, SEEK_SET);
             if (fread(hdr, 1, 20, fp) == 20) {
                 unsigned short sym_size = hdr[0] | (hdr[1] << 8);
                 unsigned short num_mods = hdr[2] | (hdr[3] << 8);
@@ -1109,7 +1109,7 @@ char **argv;
                 else if (num_mods > 0 && num_mods < 1000 &&
                          mod_off > 4 && mod_off < size) {
                     unsigned char ident[13];
-                    fseek(fp, mod_off, SEEK_SET);
+                    fseek(fp, (long)(mod_off), SEEK_SET);
                     if (fread(ident, 1, 13, fp) == 13 && HT_IS_HITECH(ident)) {
                         is_hitech = 1;
                     }

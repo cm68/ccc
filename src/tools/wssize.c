@@ -137,9 +137,9 @@ char **argv;
             continue;
         }
 
-        fseek(fp, 0, SEEK_END);
+        fseek(fp, 0L, SEEK_END);
         size = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
+        fseek(fp, 0L, SEEK_SET);
 
         buf = (unsigned char *)malloc(size);
         if (!buf) {

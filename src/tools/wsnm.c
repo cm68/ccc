@@ -2225,6 +2225,14 @@ int nsyms;
 }
 #endif
 
+#ifdef DO_HITECH
+/*
+ * Guarded to match its caller, which is already inside
+ * DO_HITECH.  Without this the definition survives when the
+ * macro is off and calls ht_load_uobj, which does not - so
+ * wsnm would not link for a target that has no Hi-Tech
+ * support.  Micronix is the first such target.
+ */
 /*
  * generate .s file from HiTech object - uses unified path
  */
@@ -2253,6 +2261,8 @@ int nsyms;
     uobj_free();
     freeSynthRef();
 }
+
+#endif /* DO_HITECH */
 
 #ifdef DO_HITECH
 /*
@@ -2831,9 +2841,9 @@ char *filename;
         error2("cannot open", filename);
 
     /* get file size */
-    fseek(fp, 0, SEEK_END);
+    fseek(fp, 0L, SEEK_END);
     filesize = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    fseek(fp, 0L, SEEK_SET);
 
     /* read entire file */
     filebuf = (unsigned char *)malloc(filesize);
