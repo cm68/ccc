@@ -1,0 +1,114 @@
+.he "fmtstr (3)                   8/11/26                   fmtstr (3)"
+.fo "                               -#-"
+.in 5
+.rm 65
+.bd
+SUBROUTINE(S)
+.in +5
+.br
+.bd
+fmtstr
+- format into a string
+.sp 2
+.in -5
+.bd
+C
+.in +5
+.br
+.bd 2
+char *fmtstr(buf, fmt, ...)
+.br
+char *buf, *fmt;
+.sp 2
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Fmtstr
+writes the format
+.bd
+fmt
+into
+.bd
+buf,
+replacing each conversion with the argument that follows, and
+terminates the result with a null.  It returns a pointer to that
+null - to the end of what it wrote, not to the beginning - so that
+successive calls can be strung together to build one string without
+walking it again:
+
+.sp
+.in +5
+p = fmtstr(buf, "%s:%d: ", file, line);
+.br
+p = fmtstr(p, "%s\n", msg);
+.in -5
+.sp
+
+The conversions are
+.bd
+%s
+for a string,
+.bd
+%d
+for an int,
+.bd
+%ld
+for a long,
+.bd
+%x
+for an unsigned in lower case hexadecimal,
+.bd
+%c
+for a character, and
+.bd
+%%
+for a percent sign.  There is no field width, no precision and no
+padding.
+
+This is deliberately not
+.bd
+printf.
+The compiler passes want a formatter that costs a few hundred bytes
+and reaches no further than the string it is given; a program that
+uses this one does not drag in stdio, the buffers or the cleanup at
+exit.  It is the only entry point in
+.bd
+libccc.a,
+which is the code cpp, c0, c1 and peep have in common.
+.sp 2
+.in -5
+.bd
+ERRORS
+.in +5
+.br
+Nothing is bounded.
+.bd
+Fmtstr
+writes as much as the format and its arguments come to, and the
+caller is responsible for a buffer that can hold it.  There is no
+count argument and no truncation.
+
+A conversion it does not know is dropped, and so is its argument:
+the argument is not consumed, so every conversion after it takes the
+wrong value.  Only the six above are understood.
+
+.bd
+%l
+is assumed to be
+.bd
+%ld.
+The letter after the l is skipped without being looked at, so
+.bd
+%lx
+prints in decimal rather than hexadecimal, and consumes a long
+either way.
+.sp 2
+.in -5
+.bd
+ALSO READ
+.in +5
+.br
+permalloc (3), printf (3)

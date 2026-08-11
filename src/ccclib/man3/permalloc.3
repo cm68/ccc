@@ -1,0 +1,97 @@
+.he "permalloc (3)                8/11/26                permalloc (3)"
+.fo "                               -#-"
+.in 5
+.rm 65
+.bd
+SUBROUTINE(S)
+.in +5
+.br
+.bd
+permalloc, permdup
+- allocation that is never given back
+.sp 2
+.in -5
+.bd
+C
+.in +5
+.br
+.bd 2
+char *permalloc(n)
+.br
+unsigned int n;
+.sp
+.bd 2
+char *permdup(s)
+.br
+char *s;
+.sp 2
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Permalloc
+returns
+.bd
+n
+bytes, aligned for a pointer and set to zero.
+.bd
+Permdup
+copies the string
+.bd
+s
+into fresh storage, packed tight and not aligned, and returns it.
+
+Neither can be freed.  That is the point of them: a symbol table, a
+type node, an interned spelling - anything that lives until the
+program exits - has no use for malloc's per-block header or its free
+list, and on a machine with 64K those are worth more than the
+generality.  Both carve their result out of a chunk taken from
+.bd
+malloc
+(see section 3), and take another chunk when the current one runs
+out, so the only waste is the few bytes left at the end of each.
+
+The chunks are chained through their first word, so the arena stays
+walkable.
+.sp 2
+.in -5
+.bd
+ERRORS
+.in +5
+.br
+Running out of memory is fatal.  Both routines report
+.bd
+out of memory
+on the standard error and exit; there is no failure return, because
+there is nothing a caller on this machine could usefully do with
+one.  A program that can genuinely carry on without the storage
+should call
+.bd
+__malloc
+(see
+.bd
+malloc,
+section 3) and look at what it gets.
+.sp 2
+.in -5
+.bd
+NOTES
+.in +5
+.br
+For programs built for Micronix these live in
+.bd
+libc.a.
+The host build of the compiler links them from
+.bd
+libccc.a
+instead, from the same source, so that the passes have them whether
+they are running on the machine or building for it.
+.sp 2
+.in -5
+.bd
+ALSO READ
+.in +5
+.br
+malloc (3), fmtstr (3)

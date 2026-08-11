@@ -25,6 +25,7 @@ HOSTARFLAGS = rcs
 endif
 
 SOURCES = libutil.c
+MANPAGES = man3/fmtstr.3 man3/permalloc.3
 OBJECTS = $(SOURCES:.c=.o)
 
 # host builds get permalloc from its single source in libc;
@@ -77,11 +78,19 @@ $(Z80DIR)/$(ARCHIVE): $(Z80DIR)/libutil.o
 
 z80: $(Z80DIR)/$(ARCHIVE)
 
-target-install: z80
+target-install: z80 man-install
 	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(HOSTDIR)/lib
 	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(MXDIR)/lib
 	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(CPMDIR)/lib
 	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(HOSTDIR)/lib
+
+# The manual goes with what it documents.  A library installed into a
+# Micronix tree without its pages is only half shipped.  man(1) on that
+# machine looks in /usr/man/man<n> - the path is in the binary - so the
+# staged tree carries them under usr, the same as the headers.
+man-install:
+	@mkdir -p $(MXDIR)/usr/man/man3
+	$(INSTALL) $(MANPAGES) $(MXDIR)/usr/man/man3
 
 clean:
 	rm -f $(OBJECTS) $(ARCHIVE) $(CRUFT) $(CRUFTASM)
@@ -94,7 +103,7 @@ clobber: clean
 regression:
 	../../tests/regress.sh --filter src/ccclib/ $(REGRESS_FLAGS)
 
-.PHONY: all install z80 target-install clean clobber regression
+.PHONY: all install z80 target-install man-install clean clobber regression
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
