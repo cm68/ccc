@@ -124,6 +124,74 @@ install: all
 	$(INSTALL) $(BINTOOLS) $(HOSTDIR)/bin
 	$(INSTALL) $(LIBTOOLS) $(HOSTDIR)/lib
 
+# ---- cross: the same tools, built to run on Micronix --------------
+#
+# THE OBJECT NAMES COLLIDE.  asz.o compiled by gcc for this machine
+# and asz.o compiled by ccc for the Z80 cannot both be asz.o in this
+# directory - make cannot tell them apart, and would hand whichever
+# one happened to be there to whichever binary asked.  So the cross
+# build gets a directory of its own and the source stays where it is.
+#
+# One pattern rule, one -o, and the two builds never meet.  The older
+# way around this was to cd into the output directory and name the
+# source one level up, because the driver had no -o for -c and wrote
+# foo.o beside foo.c; it has one now, which is what lets this be an
+# ordinary rule.  libsrc still does it the old way - see libc.
+MXBUILD = mxccc
+
+MXCFLAGS = -O -DCCC -i$(TOP)/src/include -I. -I../ccclib
+
+$(MXBUILD)/%.o: %.c $(CCDEP)
+	@mkdir -p $(MXBUILD)
+	$(CCC) $(MXCFLAGS) -c -o $@ $<
+
+# What a Micronix binary is linked from: crt0 in front, the runtime
+# behind.  -lc comes after -lu as well because libu reaches back into
+# libc and the linker takes one pass over the list.
+MXLIBS = -L$(MXDIR)/lib -lccc -lc -lu -lc
+
+define mxlink
+$(LD) -s -o $@ -Ttext=0x100 $(MXDIR)/lib/crt0.o $^ $(MXLIBS)
+endef
+
+$(MXBUILD)/asz:    $(addprefix $(MXBUILD)/,asz.o asm.o asmz80.o wsobj.o)
+	$(mxlink)
+$(MXBUILD)/wsld:   $(addprefix $(MXBUILD)/,wsld.o wsobj.o)
+	$(mxlink)
+$(MXBUILD)/wsnm:   $(addprefix $(MXBUILD)/,wsnm.o wsobj.o)
+	$(mxlink)
+$(MXBUILD)/wslib:  $(MXBUILD)/wslib.o
+	$(mxlink)
+$(MXBUILD)/wssize: $(MXBUILD)/wssize.o
+	$(mxlink)
+$(MXBUILD)/ccc:    $(MXBUILD)/ccc.o
+	$(mxlink)
+
+# The driver needs no -D of its own.  DEFTARGET and DEFLIB already
+# default to "micronix" and "/lib" in ccc.c, which is exactly what a
+# driver living at /bin/ccc on Micronix wants - and it is the case
+# that cannot be worked out from argv[0], because a bare "ccc" typed
+# at a shell says nothing about where it was found.
+#
+# astpp is deliberately not here.  It is a host-only debugging aid -
+# it needs cpp's lexeme.h and was written mixing declarations and
+# code - and nothing on the target runs it.
+MXBINTOOLS = ccc wslib wsnm wssize
+MXLIBTOOLS = asz wsld
+
+MXALL = $(addprefix $(MXBUILD)/,$(MXBINTOOLS) $(MXLIBTOOLS))
+
+mx-ccc: $(MXALL)
+	@$(SIZE) $(MXALL)
+
+# Into destmicronix as a system root: the user commands in bin, the
+# things the driver runs in the lib beside them - the same split the
+# host install makes, because it is the same driver making it.
+mx-install: mx-ccc
+	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib
+	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXBINTOOLS)) $(MXDIR)/bin
+	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXLIBTOOLS)) $(MXDIR)/lib
+
 CCCFLAGS = -DCCC -i../include
 
 SRCS = asm.c asmz80.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c

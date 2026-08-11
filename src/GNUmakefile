@@ -68,15 +68,21 @@ install: all
 
 # The self-hosted passes: ccc compiling its own sources into Micronix
 # binaries for the simulator, installed into destmicronix/bin.
-MXPASSES = cpp pass1 pass2 peep
+# The self-hosted compiler: ccc compiling its own sources into
+# Micronix binaries.  tools is in this list and the four passes are
+# not enough without it - a root holding c0 and c1 but no driver, no
+# assembler and no linker cannot compile anything.
+MXDIRS = cpp pass1 pass2 peep tools
 micronix: all
-	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d mx-install || exit 1; done
+	@for d in $(MXDIRS); do $(SUBMAKE) -C $$d mx-install || exit 1; done
 
 # The same four as CP/M .com images, into destcpm/bin.  c1 does not fit
 # in the TPA - see RUNTIME.md - so this builds what it can and says
-# what it could not.
+# what it could not.  tools has no com build, so this list is the four
+# passes and not MXDIRS.
+COMDIRS = cpp pass1 pass2 peep
 cpm: all
-	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d com-install || exit 1; done
+	@for d in $(COMDIRS); do $(SUBMAKE) -C $$d com-install || exit 1; done
 
 # The compiler running on the CP/M machine, checked against the host.
 selfcheck: cpm

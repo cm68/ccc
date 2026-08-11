@@ -172,7 +172,8 @@ usage(void)
 {
     printf("usage: %s [<options>] <files...>\n", progname);
     printf("  files: .c (compile) .s (assemble) .o .a (link)\n");
-    printf("  -o <output>    Output file (default: a.out)\n");
+    printf("  -o <output>    Output file: the binary, or with -c/-s\n");
+    printf("                 the .o or .s (default: a.out)\n");
     printf("  -c             Compile and assemble only, keep .o\n");
     printf("  -s             Compile only, keep .s (no assembly)\n");
     printf("  -k             Keep all intermediates (.x, .1, .2, .s, .o)\n");
@@ -481,6 +482,7 @@ main(int argc, char **argv)
     char *output_file = NULL;
     int keep_all = 0;        /* -k: keep all intermediates */
     int compile_only = 0;    /* -c: compile+assemble to .o */
+    int named_output = 0;    /* -o was given, so it names the output */
     int asm_only = 0;        /* -s: compile to .s only */
     int print_cmds = 0;      /* -x: print commands as they execute */
     int no_exec = 0;         /* -n: don't execute (dry run) */
@@ -812,6 +814,25 @@ main(int argc, char **argv)
         usage();
     }
 
+    /*
+     * -o names the object when we are stopping at one.  Without this
+     * -c wrote foo.o beside foo.c and there was no way to say
+     * otherwise, so a build that wanted its objects somewhere else had
+     * to cd into the output directory and name the source one level
+     * up.  Every rule in the tree that cross-compiles was written that
+     * way around this.
+     *
+     * One output, one input: -o says what to call the thing, and with
+     * several sources there is no one thing to call it.  That is what
+     * cc has always done here.
+     */
+    named_output = (output_file != NULL);
+    if (named_output && (compile_only || asm_only) &&
+        c_count + s_count > 1) {
+        fprintf(stderr, "Error: -o with -c or -s takes one input file\n");
+        exit(1);
+    }
+
     /* Set default output file */
     if (!output_file) {
         output_file = "a.out";
@@ -872,17 +893,24 @@ main(int argc, char **argv)
         sprintf(temp2_file, "%s.2", tmpbase);
         addtmp(temp2_file);
 
-        asm_file = malloc(strlen(base) + strlen(tmpbase) + 10);
+        asm_file = malloc(strlen(base) + strlen(tmpbase) +
+                          strlen(output_file) + 10);
         if (asm_only) {
-            sprintf(asm_file, "%s.s", base);
+            if (named_output)
+                strcpy(asm_file, output_file);
+            else
+                sprintf(asm_file, "%s.s", base);
         } else {
             /* a temporary only when it is not what was asked for */
             sprintf(asm_file, "%s.s", tmpbase);
             addtmp(asm_file);
         }
 
-        obj_file = malloc(strlen(base) + 10);
-        sprintf(obj_file, "%s.o", base);
+        obj_file = malloc(strlen(base) + strlen(output_file) + 10);
+        if (named_output && compile_only)
+            strcpy(obj_file, output_file);
+        else
+            sprintf(obj_file, "%s.o", base);
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
@@ -1077,8 +1105,11 @@ main(int argc, char **argv)
         char *obj_file;
         char *as_args[8];
 
-        obj_file = malloc(strlen(base) + 10);
-        sprintf(obj_file, "%s.o", base);
+        obj_file = malloc(strlen(base) + strlen(output_file) + 10);
+        if (named_output && compile_only)
+            strcpy(obj_file, output_file);
+        else
+            sprintf(obj_file, "%s.o", base);
 
         if (!no_exec) printf("=== Assembling %s ===\n", src);
 
