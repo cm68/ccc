@@ -83,9 +83,16 @@ attic/
 
 # The install trees.  Everything in them was put there by a build,
 # and "make clobber" takes them away again.
+#
+# destunix and destcpm are the same thing one step further along: a
+# staged system install, what "make sysinstall" would copy onto the
+# prefix.  Build output like the rest, and no more checked in than
+# unix/ is.
 unix/
 micronix/
 cpm/
+destunix/
+destcpm/
 
 # The simulator the runtime tests run under - a symlink to a build of
 # it outside this tree, made by hand and pointing wherever it lives.
