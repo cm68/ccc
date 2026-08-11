@@ -8,6 +8,37 @@
 
 	.text
 start:
+;
+; Clear bss before anything else runs.  Nothing did it - exec does not,
+; and this code only built argc and argv - so an uninitialised global
+; held whatever was in the memory, while C is written on the
+; understanding that it reads zero.
+;
+; mkfs is what found it: a block number it had not assigned yet read
+; back as 58626, and it went looking for that block on a drive that has
+; 10404 of them.
+;
+; __Lbss and __Hbss are absolute symbols - the linker makes their value
+; the address, so these are immediate loads.  Written (__Lbss) first,
+; which fetches the word living at that address instead: the first word
+; of the bss being cleared, garbage, and the loop then ran away over the
+; program and hung before main printed anything.
+;
+	ld	hl,__Lbss
+	ld	de,__Hbss
+bssclr:
+	ld	a,l
+	cp	e
+	jr	nz,bsszap
+	ld	a,h
+	cp	d
+	jr	z,bssdone
+bsszap:
+	ld	(hl),0
+	inc	hl
+	jr	bssclr
+bssdone:
+
 	pop	bc	; this is argc
 	ld	hl,0	; load argv
 	add	hl,sp
