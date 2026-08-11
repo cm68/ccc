@@ -73,14 +73,42 @@ issymish(Expr *e)
 	    e->right->op == NUMBER;
 }
 
+/*
+ * A frame slot the (iy+d) operand cannot reach.
+ *
+ * The displacement is seven bits signed, with headroom left for the
+ * +3 a long adds, and label() and the LOCALVAR->INDEX rule already
+ * turn on exactly this test.  A slot past the window is not an
+ * addressing mode at all: its address has to be formed with 16-bit
+ * arithmetic, which lands in HL and costs a register like any other
+ * computed subexpression.
+ */
+static int
+farslot(Expr *e)
+{
+	return e && e->op == LOCALVAR &&
+	    (e->u.var.off < -126 || e->u.var.off > 124);
+}
+
 int
 islocdesc(Expr *e)
 {
 	if (!e)
 		return 0;
 	switch (e->op) {
-	case REGVAR:
+	/*
+	 * A frame slot only names a place while (iy+d) can reach it.
+	 * Past the window it is an address the tree works out, and
+	 * calling it a location said it needed no register - so the
+	 * store path did not stage it, the address of the destination
+	 * and the value both went to HL, and the second overwrote the
+	 * first.  "av[i++] = big" with big on a twelve-kilobyte frame
+	 * computed the slot's address, threw it away, computed big's,
+	 * and then found no rule for =(D(H),H) and left a marker.
+	 */
 	case LOCALVAR:
+		return !farslot(e);
+	case REGVAR:
 	case INDEX:
 	case SYM:
 	case SYMREF:
