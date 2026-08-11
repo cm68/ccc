@@ -76,11 +76,15 @@ for t in "${TESTS[@]}" ; do
 	echo "======= source ========"
 	cat "$t"
 	echo "======== ccc ========"
-	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -k -c"
+	# No -k: nothing here reads the intermediates, and they land in
+	# /tmp under the compiler's pid.  ~700 per run of this suite, and
+	# pids recycle - a stale one is a landmine for whatever process
+	# draws that number next.  Add -k by hand when debugging a case.
+	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -c"
 	if $compile_only ; then CCC_OPTS="$CCC_OPTS -s" ; fi
 	echo $CCC $CCC_OPTS $t
 
-	# Run ccc with -k -c to compile and keep intermediates
+	# Run ccc with -c to compile
 	if $CCC $CCC_OPTS "$t" 2>&1; then
 		if $expect_fail ; then
 			echo "*** UNEXPECTED PASS *** Test was expected to fail but passed!"

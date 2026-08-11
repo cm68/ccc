@@ -80,19 +80,27 @@ LIBDIR = $(abspath ../ccclib)
 CPPSRC = $(abspath ../cpp)
 LIBSRCINC = $(abspath ../include)
 
+#
+# The XXXXXX check that used to be here was dead and is now redundant.
+# Dead: it ran "grep XXXXXX $b.s" while compiling with -k -c, and -k
+# keeps the .s in /tmp under the compiler's pid rather than beside the
+# source - so it grepped a file that was never there, grep returned
+# non-zero, and the marker check silently never fired.
+#
+# Redundant: c1 counts its markers and fails, so a punted shape stops
+# the compile and takes the FAIL branch below on its own.  Dropping -k
+# with it stops this rule leaving five files per source in /tmp, which
+# is what an unlucky pid collision later trips over.
+#
 mx-ccc:
 	@mkdir -p mxccc
 	@set -e; cd mxccc ; export PATH=$(UNIXDIR)/bin:$$PATH ; \
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
-		if $(CCC) $(CCCOPT) -k -c -DCCC -i$(LIBSRCINC) \
+		if $(CCC) $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
 			-I$(PEEPDIR) -I$(LIBDIR) -I$(CPPSRC) $(PEEPDIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
-			if grep -q XXXXXX $$b.s; then \
-				echo "FAIL: XXXXXX marker - pass2 punted on a shape"; \
-				grep XXXXXX $$b.s; exit 1; \
-			fi; \
 			echo ok; \
 		else echo FAIL; cat $$b.log; exit 1; fi \
 	done

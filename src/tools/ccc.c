@@ -90,6 +90,57 @@ strdup_(char *s)
 #define strdup strdup_
 
 /*
+ * The temporaries, and getting rid of them on the way out of ANY exit.
+ *
+ * They were unlinked at the point each pass finished, which is right
+ * up until a pass FAILS: every error path exits before reaching the
+ * unlink below it, so a failed compile left its .x .i .1 .2 .n behind.
+ *
+ * That is not the usual harmless litter.  The names carry the pid, and
+ * pids recycle, so a leftover file is a landmine for whatever process
+ * draws that number next - and /tmp is sticky, so a file another user
+ * left cannot be overwritten.  "sudo make install" seeds /tmp with
+ * root-owned temporaries and an ordinary build later dies on one with
+ *
+ *	cannot create: /tmp/ccc11097_0.x
+ *
+ * naming whichever source happened to be compiling, which is nothing
+ * to do with the source and does not reproduce.
+ *
+ * So they are registered as they are named and removed by one call
+ * that every exit goes through.  Registering rather than unlinking a
+ * known list keeps it honest: a temporary added later is covered by
+ * the call that names it, not by remembering to extend a cleanup.
+ */
+#define MAXTMP 8
+static char *tmpnames[MAXTMP];
+static int ntmpnames;
+static int keeptmps;        /* -k or -n: leave them for inspection */
+
+/*
+ * A COPY of the name, because the caller frees its own as it goes and
+ * the registry has to outlive that.
+ */
+void
+addtmp(char *p)
+{
+    if (p && ntmpnames < MAXTMP)
+        tmpnames[ntmpnames++] = strdup(p);
+}
+
+void
+rmtmps(void)
+{
+    while (ntmpnames > 0) {
+        ntmpnames--;
+        if (!keeptmps)
+            unlink(tmpnames[ntmpnames]);
+        free(tmpnames[ntmpnames]);
+        tmpnames[ntmpnames] = 0;
+    }
+}
+
+/*
  * Rename a file over another one.  link-then-unlink rather than
  * rename(), which v6 does not have - and the two have the same
  * restriction anyway, that both names are on one filesystem.
@@ -511,6 +562,7 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-k") == 0) {
             keep_all = 1;
+            keeptmps = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-c") == 0) {
@@ -560,6 +612,7 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-n") == 0) {
             no_exec = 1;
+            keeptmps = 1;
             argc--;
             argv++;
         } else if (argv[0][0] == '-' &&
@@ -568,6 +621,7 @@ main(int argc, char **argv)
             /* Pass -I, -i, or -D options to cpp */
             if (cpp_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
@@ -577,6 +631,7 @@ main(int argc, char **argv)
             /* Pass -E to cpp (preprocess only) */
             if (cpp_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
@@ -586,6 +641,7 @@ main(int argc, char **argv)
             /* Pass -N to cpp (suppress line markers) */
             if (cpp_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
@@ -601,6 +657,7 @@ main(int argc, char **argv)
             }
             if (cpp_base_argc >= MAX_ARGS - 1) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = "-v";
@@ -617,6 +674,7 @@ main(int argc, char **argv)
             }
             if (cc1_base_argc >= MAX_ARGS - 1) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cc1_base[cc1_base_argc++] = "-v";
@@ -633,6 +691,7 @@ main(int argc, char **argv)
             }
             if (cc2_base_argc >= MAX_ARGS - 1) {
                 fprintf(stderr, "Error: too many arguments\n");
+                rmtmps();
                 exit(1);
             }
             cc2_base[cc2_base_argc++] = "-v";
@@ -679,6 +738,7 @@ main(int argc, char **argv)
                 a_files[a_count++] = argv[0];
             } else {
                 fprintf(stderr, "Error: unknown file type: %s\n", argv[0]);
+                rmtmps();
                 exit(1);
             }
             argc--;
@@ -754,20 +814,28 @@ main(int argc, char **argv)
 
         lex_file = malloc(strlen(tmpbase) + 10);
         sprintf(lex_file, "%s.x", tmpbase);
+        addtmp(lex_file);
         prep_file = malloc(strlen(tmpbase) + 10);
         sprintf(prep_file, "%s.i", tmpbase);
+        addtmp(prep_file);
         name_file = malloc(strlen(tmpbase) + 10);
         sprintf(name_file, "%s.n", tmpbase);
+        addtmp(name_file);
         temp1_file = malloc(strlen(tmpbase) + 10);
         sprintf(temp1_file, "%s.1", tmpbase);
+        addtmp(temp1_file);
         temp2_file = malloc(strlen(tmpbase) + 10);
         sprintf(temp2_file, "%s.2", tmpbase);
+        addtmp(temp2_file);
 
         asm_file = malloc(strlen(base) + strlen(tmpbase) + 10);
-        if (asm_only)
+        if (asm_only) {
             sprintf(asm_file, "%s.s", base);
-        else
+        } else {
+            /* a temporary only when it is not what was asked for */
             sprintf(asm_file, "%s.s", tmpbase);
+            addtmp(asm_file);
+        }
 
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
@@ -800,6 +868,7 @@ main(int argc, char **argv)
             status = execCommand(cpp_path, cpp_args);
             if (status != 0) {
                 fprintf(stderr, "Error: cpp failed on %s\n", src);
+                rmtmps();
                 exit(status);
             }
         }
@@ -819,6 +888,7 @@ main(int argc, char **argv)
             status = execFiltered(cc1_path, cc1_args, name_file);
             if (status != 0) {
                 fprintf(stderr, "Error: c0 failed on %s\n", src);
+                rmtmps();
                 exit(status);
             }
         }
@@ -846,6 +916,7 @@ main(int argc, char **argv)
             status = execFiltered(cc2_path, cc2_args, name_file);
             if (status != 0) {
                 fprintf(stderr, "Error: c1 failed on %s\n", src);
+                rmtmps();
                 exit(status);
             }
         }
@@ -891,10 +962,12 @@ main(int argc, char **argv)
                 status = execCommand(peep_path, peep_args);
                 if (status != 0) {
                     fprintf(stderr, "Error: peep failed on %s\n", asm_file);
+                    rmtmps();
                     exit(status);
                 }
                 if (moveover(peep_file, asm_file) != 0) {
                     fprintf(stderr, "Error: cannot replace %s\n", asm_file);
+                    rmtmps();
                     exit(1);
                 }
             }
@@ -923,6 +996,7 @@ main(int argc, char **argv)
             status = execCommand(asm_path, as_args);
             if (status != 0) {
                 fprintf(stderr, "Error: assembler failed on %s\n", asm_file);
+                rmtmps();
                 exit(status);
             }
 
@@ -936,6 +1010,15 @@ main(int argc, char **argv)
         o_files[o_count++] = obj_file;
         if (!no_exec) printf("  -> %s\n", obj_file);
         free(base);
+
+        /*
+         * This source is done with its temporaries.  The unlinks above
+         * have already taken them one pass at a time; this is what
+         * empties the REGISTRY, so the next source starts with room in
+         * it - six names per source against MAXTMP, so leaving them
+         * registered would silently stop covering the second file.
+         */
+        rmtmps();
     }
 
     /* If -S, we're done */
@@ -967,6 +1050,7 @@ main(int argc, char **argv)
             status = execCommand(asm_path, as_args);
             if (status != 0) {
                 fprintf(stderr, "Error: assembler failed on %s\n", src);
+                rmtmps();
                 exit(status);
             }
         }
@@ -1043,6 +1127,7 @@ main(int argc, char **argv)
             status = execCommand(ld_path, ld_args);
             if (status != 0) {
                 fprintf(stderr, "Error: linker failed\n");
+                rmtmps();
                 exit(status);
             }
 
