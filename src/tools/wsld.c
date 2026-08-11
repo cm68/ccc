@@ -175,6 +175,41 @@ usage()
  * given "foo", searches for "libfoo.a" in each -L directory
  * returns allocated path string or NULL if not found
  */
+/*
+ * Allocation that cannot come back empty.
+ *
+ * Not one of the malloc call sites here looked at what came back;
+ * every one dereferenced it at once - memset over a struct object,
+ * sprintf into a member name, strcpy of a library path.  On this
+ * machine the first thing written through a null lands in page zero,
+ * where the rst 08 syscall trap lives.
+ *
+ * Destroying that trap is not a crash, which is what makes it so hard
+ * to find.  The next write() does not trap: execution runs forward
+ * through page zero, now zeros, to 0x0100 - the entry point - and the
+ * program starts again.  It runs out of memory again, and again, each
+ * pass eating another frame, until the stack has walked down through
+ * the heap.  What you see is a linker that has consumed 39K of stack
+ * at a call depth of four, with no diagnostic anywhere near the cause.
+ *
+ * cpp had the same thirteen-sites-no-checks problem and the same
+ * symptom; see xalloc in cpp/util.c.  There is nothing useful to do
+ * with a failed allocation, so say so and stop.
+ */
+char *
+xalloc(n)
+unsigned n;
+{
+    char *p;
+
+    p = malloc(n);
+    if (!p) {
+        fprintf(stderr, "wsld: out of memory\n");
+        exit(1);
+    }
+    return p;
+}
+
 char *
 findlib(name)
 char *name;
@@ -189,7 +224,7 @@ char *name;
         fp = fopen(path, "rb");
         if (fp) {
             fclose(fp);
-            result = malloc(strlen(path) + 1);
+            result = xalloc(strlen(path) + 1);
             strcpy(result, path);
             return result;
         }
@@ -315,7 +350,7 @@ struct object *obj;
     }
 
     /* new symbol */
-    s = (struct symbol *)malloc(sizeof(struct symbol));
+    s = (struct symbol *)xalloc(sizeof(struct symbol));
     strncpy(s->name, name, 15);
     s->name[15] = '\0';
     s->value = value;
@@ -352,7 +387,7 @@ char *name;
     if (magic != MAGIC)
         error2("bad magic", name);
 
-    obj = (struct object *)malloc(sizeof(struct object));
+    obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = name;
     obj->fp = fp;
@@ -387,7 +422,7 @@ char *name;
     }
 
     /* allocate local symbol table for relocation lookups */
-    obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
+    obj->symtab = (struct symbol **)xalloc(obj->num_syms * sizeof(struct symbol *));
 
     /* skip to symbol table: header(16) + text + data */
     fseek(fp, (long)(16 + obj->text_size + obj->data_size), SEEK_SET);
@@ -545,10 +580,10 @@ char *membername;
     }
 
     /* create display name "archive(member)" */
-    fullname = (char *)malloc(strlen(arname) + strlen(membername) + 3);
+    fullname = (char *)xalloc(strlen(arname) + strlen(membername) + 3);
     sprintf(fullname, "%s(%s)", arname, membername);
 
-    obj = (struct object *)malloc(sizeof(struct object));
+    obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
     obj->fp = fp;
@@ -584,7 +619,7 @@ char *membername;
     }
 
     /* allocate local symbol table for relocation lookups */
-    obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
+    obj->symtab = (struct symbol **)xalloc(obj->num_syms * sizeof(struct symbol *));
 
     /* seek to symbol table */
     fseek(fp, (long)(base + 16 + obj->text_size + obj->data_size), SEEK_SET);
@@ -774,7 +809,7 @@ char *name;
     size = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
 
-    obj = (struct object *)malloc(sizeof(struct object));
+    obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = name;
     obj->fp = fp;
@@ -1001,10 +1036,10 @@ char *membername;
     char *fullname;
 
     /* create "archive(member)" name */
-    fullname = malloc(strlen(arname) + strlen(membername) + 3);
+    fullname = xalloc(strlen(arname) + strlen(membername) + 3);
     sprintf(fullname, "%s(%s)", arname, membername);
 
-    obj = (struct object *)malloc(sizeof(struct object));
+    obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
     obj->fp = fp;
@@ -1461,7 +1496,7 @@ struct symbol *sym;
 unsigned char seg;
 unsigned char hilo;
 {
-    struct outreloc *r = malloc(sizeof(struct outreloc));
+    struct outreloc *r = (struct outreloc *)xalloc(sizeof(struct outreloc));
     r->offset = offset;
     r->sym = sym;
     r->seg = seg;
@@ -1828,7 +1863,7 @@ int is_text;
     if (seg_size == 0)
         return;
 
-    buf = (unsigned char *)malloc(seg_size);
+    buf = (unsigned char *)xalloc(seg_size);
     if (!buf)
         error("out of memory");
 
@@ -2145,7 +2180,7 @@ add_infile(name, is_ar)
 char *name;
 int is_ar;
 {
-    struct infile *f = (struct infile *)malloc(sizeof(struct infile));
+    struct infile *f = (struct infile *)xalloc(sizeof(struct infile));
     f->name = name;
     f->is_archive = is_ar;
     f->next = 0;
