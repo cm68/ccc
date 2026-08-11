@@ -384,16 +384,16 @@ regression:
 
 # Build executable from .c file using ccc
 %: %.c
-	../unix/bin/ccc -k -o $@ $<
+	../desthost/bin/ccc -k -o $@ $<
 
 # Generate .ast from .c (cpp creates .x, cc1 parses to AST)
 %.ast: %.c
-	../unix/lib/pass0 -DCCC -i../micronix/include -I. $<
-	../unix/bin/cc1 -o $@ $*.x
+	../desthost/lib/pass0 -DCCC -i../destmicronix/include -I. $<
+	../desthost/bin/cc1 -o $@ $*.x
 
 # Generate pretty-printed .pp from .ast
 %.pp: %.ast
-	../unix/lib/astpp $< > $@
+	../desthost/lib/astpp $< > $@
 
 # Generate .s from .ast (pass2)
 %.s: %.ast
@@ -401,7 +401,7 @@ regression:
 
 # Generate .o from .s (assemble)
 %.o: %.s
-	../unix/bin/wsas -o $@ $<
+	../desthost/bin/wsas -o $@ $<
 
 # Clean test artifacts.  The globs stop at this directory, so the
 # baseline/ tree - whose .x, .err and .rc files are checked in and

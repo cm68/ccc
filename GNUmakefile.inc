@@ -5,10 +5,10 @@
 #
 #   host    the compiler built by gcc, running on the build machine,
 #           emitting Z80.  This is the cross compiler and it is what
-#           unix/ holds.
+#           desthost/ holds.
 #   cross   the compiler built BY that compiler into Z80 binaries -
 #           the passes as they will run on the target.  Driven from
-#           the host, lands in micronix/ and cpm/.
+#           the host, lands in destmicronix/ and destcpm/.
 #   native  the same compiler built on Micronix by the tools already
 #           there, real machine or simulator.
 #
@@ -64,9 +64,9 @@ TOP ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # system the compiler targets:
 #
 #   src/        every source - the compiler, the tools, the runtime
-#   unix/       what runs on the build host: the cross compiler
-#   micronix/   what runs on Micronix: the self-hosted passes
-#   cpm/        what runs on CP/M
+#   desthost/   what runs on the build host: the cross compiler
+#   destmicronix/  what runs on Micronix: the self-hosted passes
+#   destcpm/    what runs on CP/M
 #
 # Each install directory has the same three subdirectories - bin, lib
 # and include - holding the programs that run on that system, the
@@ -76,19 +76,19 @@ TOP ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # system-call layer and libcpm is CP/M's, so each goes to one.
 # ---------------------------------------------------------------
 
-# Overridable, so "make install UNIXDIR=$$HOME/src/unix" stages the
+# Overridable, so "make install HOSTDIR=$$HOME/src/desthost" stages the
 # toolchain outside the tree.  The default keeps it in the tree, where
 # clobber can reach it and two checkouts cannot overwrite each other.
-UNIXDIR ?= $(TOP)/unix
-MXDIR   ?= $(TOP)/micronix
-CPMDIR  ?= $(TOP)/cpm
+HOSTDIR ?= $(TOP)/desthost
+MXDIR   ?= $(TOP)/destmicronix
+CPMDIR  ?= $(TOP)/destcpm
 
 # An installation is bin/ and lib/ beside each other: the driver is
 # the only thing a user runs, and it finds everything else in the lib
 # next to its own directory - see libdir in tools/ccc.c.  That is why
 # the passes install to lib and not bin.  It is v7's arrangement, and
 # it is what lets /usr/local/bin/ccc work without being rebuilt.
-UNIXLIB = $(UNIXDIR)/lib
+HOSTLIB = $(HOSTDIR)/lib
 
 # ---------------------------------------------------------------
 # Where "make install" puts a real toolchain.
@@ -136,11 +136,11 @@ INSTALL = cp -u
 # found on PATH: they are built in this tree and a stale copy of an
 # older install sitting on PATH is exactly the failure that made a
 # clean checkout unbuildable.
-CCC     = $(UNIXDIR)/bin/ccc
-AS      = $(UNIXLIB)/asz
-LD      = $(UNIXLIB)/wsld
-LIB     = $(UNIXDIR)/bin/wslib
-SIZE    = $(UNIXDIR)/bin/wssize
+CCC     = $(HOSTDIR)/bin/ccc
+AS      = $(HOSTLIB)/asz
+LD      = $(HOSTLIB)/wsld
+LIB     = $(HOSTDIR)/bin/wslib
+SIZE    = $(HOSTDIR)/bin/wssize
 
 # The compiler proper.  A runtime rebuild depends on these, because
 # these objects exist to be run and a codegen fix that leaves a stale
@@ -149,8 +149,8 @@ SIZE    = $(UNIXDIR)/bin/wssize
 # pass0 is what cpp installs as - the driver runs it by that name, and
 # this list has to spell it the same way or every target build asks
 # for a lib/cpp that no rule makes.
-CCDEP   = $(UNIXLIB)/pass0 $(UNIXLIB)/c0 \
-	  $(UNIXLIB)/c1 $(UNIXLIB)/peep
+CCDEP   = $(HOSTLIB)/pass0 $(HOSTLIB)/c0 \
+	  $(HOSTLIB)/c1 $(HOSTLIB)/peep
 
 # ---------------------------------------------------------------
 # Default rules.

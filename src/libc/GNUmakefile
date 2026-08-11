@@ -1,7 +1,7 @@
 #
 # compiler support and standard c library without system call dependencies
 #
-# One build area, z80/, installed to micronix/lib and cpm/lib.  There were two
+# One build area, z80/, installed to destmicronix/lib and destcpm/lib.  There were two
 # for as long as the bootstrap needed them - a zc3/ area of the same
 # sources built by Hi-Tech C, so a program could link a runtime that
 # was known to work while ccc's was still being proven.  ccc builds
@@ -105,10 +105,10 @@ $(BUILD)/$(ARCHIVE): $(OBJS)
 # do not collide: the names differ, and libc.a is the same file for
 # both.  If it ever is not, that is a bug - see "make libcheck".
 target-install: all
-	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(HOSTDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(MXDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(CPMDIR)/lib
-	$(INSTALL) $(BUILD)/$(ARCHIVE) $(UNIXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(HOSTDIR)/lib
 install: target-install
 
 clean:

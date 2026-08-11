@@ -20,8 +20,8 @@ DEFINES = -DDEBUG
 WARNS = -Wall -Werror -Werror=declaration-after-statement
 DEBUG = -g -O0
 CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS)
-HOSTLIB = ar
-HOSTLIBFLAGS = rcs
+HOSTAR = ar
+HOSTARFLAGS = rcs
 endif
 
 SOURCES = libutil.c
@@ -50,13 +50,13 @@ permalloc.o: ../libc/permaloc.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(ARCHIVE): $(OBJECTS)
-	$(HOSTLIB) $(HOSTLIBFLAGS) $@ $(OBJECTS)
+	$(HOSTAR) $(HOSTARFLAGS) $@ $(OBJECTS)
 
 # The passes link this out of the build directory, so a host install
 # is only for anything else that wants it.
 install: all
-	@mkdir -p $(UNIXDIR)/lib
-	$(INSTALL) $(ARCHIVE) $(UNIXDIR)/lib
+	@mkdir -p $(HOSTDIR)/lib
+	$(INSTALL) $(ARCHIVE) $(HOSTDIR)/lib
 
 # ---- target ------------------------------------------------------
 
@@ -78,10 +78,10 @@ $(Z80DIR)/$(ARCHIVE): $(Z80DIR)/libutil.o
 z80: $(Z80DIR)/$(ARCHIVE)
 
 target-install: z80
-	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(HOSTDIR)/lib
 	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(MXDIR)/lib
 	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(CPMDIR)/lib
-	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(UNIXDIR)/lib
+	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(HOSTDIR)/lib
 
 clean:
 	rm -f $(OBJECTS) $(ARCHIVE) $(CRUFT) $(CRUFTASM)

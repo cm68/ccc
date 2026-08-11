@@ -20,14 +20,14 @@ sim=$here/cpm3
 work=$(mktemp -d "${TMPDIR:-/tmp}/cpm3check.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-for f in "$sim" "$top/cpm/bin/cpp.com" "$top/cpm/bin/c0.com" \
-	 "$top/cpm/bin/c1.com"; do
+for f in "$sim" "$top/destcpm/bin/cpp.com" "$top/destcpm/bin/c0.com" \
+	 "$top/destcpm/bin/c1.com"; do
 	if [ ! -f "$f" ]; then
 		echo "missing $f - make && make cpm first" >&2
 		exit 2
 	fi
 done
-cp "$top"/cpm/bin/cpp.com "$top"/cpm/bin/c0.com "$top"/cpm/bin/c1.com "$work"/
+cp "$top"/destcpm/bin/cpp.com "$top"/destcpm/bin/c0.com "$top"/destcpm/bin/c1.com "$work"/
 
 srcs="$*"
 if [ -z "$srcs" ]; then
@@ -49,9 +49,9 @@ for src in $srcs; do
 	# the same relative name: cpp records the source file it was
 	# given in the lexeme stream, so a full path here and a bare
 	# name under CP/M would differ for that reason alone.
-	( cd "$work" && "$top"/unix/lib/cpp -DCCC -o h t.c ) >/dev/null 2>&1
-	( cd "$work" && "$top"/unix/lib/c0 h.x h.1 h.2 ) >/dev/null 2>&1
-	( cd "$work" && "$top"/unix/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/lib/pass0 -DCCC -o h t.c ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/lib/c0 h.x h.1 h.2 ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1
 
 	# and the same three under CP/M
 	( cd "$work" && "$sim" -d . cpp.com -DCCC -o t t.c ) >/dev/null 2>&1
@@ -66,7 +66,7 @@ for src in $srcs; do
 	cmp -s "$work/t.s" "$work/h.stripped" || bad="$bad .s"
 
 	# and it has to be assembleable, not merely equal
-	if ! "$top"/unix/lib/asz "$work/t.s" -o "$work/t.o" >/dev/null 2>&1; then
+	if ! "$top"/desthost/lib/asz "$work/t.s" -o "$work/t.o" >/dev/null 2>&1; then
 		bad="$bad asm"
 	fi
 

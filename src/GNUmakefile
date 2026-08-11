@@ -3,10 +3,10 @@
 #
 # The compiler is four passes and a shared support library:
 #
-#   cpp     preprocessor and token normalizer   -> unix/lib/pass0
-#   pass1   parser, emits the AST               -> unix/lib/c0
-#   pass2   code generator                      -> unix/lib/c1
-#   peep    peephole optimizer                  -> unix/lib/peep
+#   cpp     preprocessor and token normalizer   -> desthost/lib/pass0
+#   pass1   parser, emits the AST               -> desthost/lib/c0
+#   pass2   code generator                      -> desthost/lib/c1
+#   peep    peephole optimizer                  -> desthost/lib/peep
 #   ccclib  support code the passes share       -> libccc.a
 #
 # tools is the Whitesmith's object toolchain plus the ccc driver and
@@ -28,7 +28,7 @@ SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 # Putting it back is the same edit in reverse.
 #
 # CP/M is tabled, so cpm3 is out of HOSTDIRS and libcpm is out of
-# TARGETDIRS.  What that costs while it is out: unix/lib gets no
+# TARGETDIRS.  What that costs while it is out: desthost/lib gets no
 # libcpm.a or crtcpm.o, so "ccc -m cpm" cannot link, and the "cpm",
 # "selfcheck", "selfhost" and "libcheck" targets below all want a
 # CP/M runtime that will not be there.  They are left in place because
@@ -47,7 +47,7 @@ TARGETDIRS = include ccclib libc libu
 
 #
 # The order is forced.  The runtime is compiled BY this compiler -
-# unix/bin/ccc driving cpp, c0, c1 and peep, with asz assembling and
+# desthost/bin/ccc driving cpp, c0, c1 and peep, with asz assembling and
 # wslib archiving - so the host side has to be built AND installed
 # before the target side starts.  ccclib appears in both lists: its
 # host archive is linked into the passes, and its z80 archive is
@@ -56,7 +56,7 @@ TARGETDIRS = include ccclib libc libu
 all: host target
 
 host:
-	@mkdir -p $(UNIXDIR)/bin $(UNIXDIR)/lib
+	@mkdir -p $(HOSTDIR)/bin $(HOSTDIR)/lib
 	@for d in $(HOSTDIRS); do $(SUBMAKE) -C $$d install || exit 1; done
 
 target: host
@@ -67,12 +67,12 @@ target: host
 install: all
 
 # The self-hosted passes: ccc compiling its own sources into Micronix
-# binaries for the simulator, installed into micronix/bin.
+# binaries for the simulator, installed into destmicronix/bin.
 MXPASSES = cpp pass1 pass2 peep
 micronix: all
 	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d mx-install || exit 1; done
 
-# The same four as CP/M .com images, into cpm/bin.  c1 does not fit
+# The same four as CP/M .com images, into destcpm/bin.  c1 does not fit
 # in the TPA - see RUNTIME.md - so this builds what it can and says
 # what it could not.
 cpm: all

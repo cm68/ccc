@@ -54,7 +54,7 @@ asmsnap:
 	@mkdir -p $(DIR)
 	@for f in $(SNAPSRC); do \
 		b=`basename $$f .c`; \
-		../../unix/bin/ccc -s -I. -I../../src/include $$f \
+		../../desthost/bin/ccc -s -I. -I../../src/include $$f \
 			>/dev/null 2>&1; \
 		[ -f $$b.s ] && mv $$b.s $(DIR)/$$b.s; \
 	done; ls $(DIR) | wc -l

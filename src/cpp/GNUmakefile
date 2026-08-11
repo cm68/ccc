@@ -21,7 +21,7 @@ LDFLAGS = -m32 $(DEBUG)
 endif
 
 INC = -I../include -I. -I../ccclib
-CCC = $(UNIXDIR)/bin/ccc
+CCC = $(HOSTDIR)/bin/ccc
 
 ASTPP = ../astpp
 C0 = ../pass1/c0
@@ -113,8 +113,8 @@ clobber: clean
 # in this directory keeps the old name; only what the driver looks for
 # has to agree.
 install: cpp xdump
-	$(INSTALL) cpp $(UNIXDIR)/lib/pass0
-	$(INSTALL) xdump $(UNIXDIR)/bin
+	$(INSTALL) cpp $(HOSTDIR)/lib/pass0
+	$(INSTALL) xdump $(HOSTDIR)/bin
 
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: cpp
@@ -182,7 +182,7 @@ CCCOPT = -O
 # this cpp.mx against the host cpp on every tree source.
 mx-ccc: $(GENERATED)
 	@mkdir -p mxccc
-	@set -e; cd mxccc ; export PATH=$(UNIXDIR)/bin:$$PATH ; \
+	@set -e; cd mxccc ; export PATH=$(HOSTDIR)/bin:$$PATH ; \
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
@@ -282,11 +282,14 @@ test: langtest
 	cd test && ./runtest.sh
 	cd test && ./sweep.sh
 
-# The self-hosted binary, installed into micronix/bin - the compiler
-# as it runs on the machine it targets.
+# The self-hosted pass, installed into destmicronix/lib under the
+# name the driver runs it by - the compiler as it runs on the machine
+# it targets.  A system root, not a pile of .mx files: bin/lib laid
+# out the way Micronix wants them, so the tree can be copied straight
+# onto a filesystem and used.
 mx-install: mx-ccc
-	@mkdir -p $(MXDIR)/bin
-	$(INSTALL) mxccc/cpp.mx $(MXDIR)/bin/pass0.mx
+	@mkdir -p $(MXDIR)/lib
+	$(INSTALL) mxccc/cpp.mx $(MXDIR)/lib/pass0
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm

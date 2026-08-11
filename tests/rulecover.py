@@ -42,7 +42,7 @@ for f in CORPUS:
     #
     saved = open(s, 'rb').read() if os.path.exists(s) else None
     r = subprocess.run(
-        [ROOT + '/unix/bin/ccc', '-DCCC', '-s', '-I' + d, '-I' + ROOT + '/src/ccclib',
+        [ROOT + '/desthost/bin/ccc', '-DCCC', '-s', '-I' + d, '-I' + ROOT + '/src/ccclib',
          '-I' + ROOT + '/tests/run', '-I' + ROOT + '/src/include',
          os.path.basename(f)], cwd=d, capture_output=True, env=env, timeout=300)
     if r.returncode:

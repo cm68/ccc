@@ -24,7 +24,7 @@ SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 # The build has two phases and the order is forced by what the thing
 # is.  The target runtime is compiled BY this compiler, so the host
 # side has to be built and installed into unix/ before the target
-# side can begin.  src/Makefile runs them in that order.
+# side can begin.  src/GNUmakefile runs them in that order.
 #
 all:
 	$(SUBMAKE) -C src all
@@ -38,7 +38,7 @@ target:
 # INSTALLING IS TWO STEPS, and only the second one needs a password.
 #
 #   install     the tree walk.  Every directory copies what it built
-#               into $(UNIXDIR) - bin, lib and usr/include - and the
+#               into $(HOSTDIR) - bin, lib and usr/include - and the
 #               result is a complete, working toolchain that happens
 #               to be sitting in the build tree.  No privilege, no
 #               destination outside the tree.
@@ -54,11 +54,11 @@ target:
 # and a CP/M image build - to install a host cross compiler that
 # copies neither of them anywhere.  Those have their own targets.
 install: all
-	@echo "installed into $(UNIXDIR)"
+	@echo "installed into $(HOSTDIR)"
 
 # The system install.  A plain recursive copy of the tree that
-# "install" just built: unix/bin -> $(PREFIX)/bin, unix/lib ->
-# $(PREFIX)/lib, unix/usr/include -> $(PREFIX)/usr/include.  The
+# "install" just built: desthost/bin -> $(PREFIX)/bin, desthost/lib ->
+# $(PREFIX)/lib, desthost/usr/include -> $(PREFIX)/usr/include.  The
 # driver works out where its passes are from its own path - libdir is
 # bin/../lib, see tools/ccc.c - so the layout carries over unchanged
 # and nothing has to be rebuilt for the new location.
@@ -67,7 +67,7 @@ install: all
 # DESTDIR you already own.
 sysinstall: install
 	$(SUDO) $(MKDIR) $(DESTDIR)$(PREFIX)
-	$(SUDO) $(CP) -r $(UNIXDIR)/. $(DESTDIR)$(PREFIX)
+	$(SUDO) $(CP) -r $(HOSTDIR)/. $(DESTDIR)$(PREFIX)
 	@echo "installed: $(DESTDIR)$(PREFIX)/bin/ccc, libraries in $(PREFIX)/lib"
 
 clean:
@@ -81,7 +81,7 @@ clean:
 clobber:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clobber; done
 	rm -f $(CRUFT) $(CRUFTASM) $(CRUFTLOG) doc.pdf
-	rm -rf $(CRUFTDIRS) $(UNIXDIR) $(MXDIR) $(CPMDIR)
+	rm -rf $(CRUFTDIRS) $(HOSTDIR) $(MXDIR) $(CPMDIR)
 
 stage1: all
 	@echo "Building stage1 with cross ccc"
@@ -110,11 +110,11 @@ sizecheck:
 	$(MAKE) TOP=$(TOP) -C src sizecheck
 
 # The self-hosted passes, built by ccc for the simulator and
-# installed into micronix/bin.
+# installed into destmicronix/bin.
 micronix: all
 	$(SUBMAKE) -C src micronix
 
-# The same, as CP/M .com images into cpm/bin.
+# The same, as CP/M .com images into destcpm/bin.
 cpm: all
 	$(SUBMAKE) -C src cpm
 
@@ -130,8 +130,8 @@ selfcheck:
 # the two targets silently get different code from the same filename.
 # That is a bug, and this is where it gets caught.
 libcheck:
-	@cmp micronix/lib/libc.a   cpm/lib/libc.a && \
-	 cmp micronix/lib/libccc.a cpm/lib/libccc.a && \
+	@cmp $(MXDIR)/lib/libc.a   $(CPMDIR)/lib/libc.a && \
+	 cmp $(MXDIR)/lib/libccc.a $(CPMDIR)/lib/libccc.a && \
 	 echo "libcheck: libc.a and libccc.a are the same for both targets"
 
 # THE CROSS-TARGET GATE.  Compile every source of every pass three

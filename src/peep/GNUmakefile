@@ -55,7 +55,7 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: peep
-	$(INSTALL) peep $(UNIXDIR)/lib
+	$(INSTALL) peep $(HOSTDIR)/lib
 
 # Stage1: build each source through the compiler being developed
 stage1: peep
@@ -94,7 +94,7 @@ LIBSRCINC = $(abspath ../include)
 #
 mx-ccc:
 	@mkdir -p mxccc
-	@set -e; cd mxccc ; export PATH=$(UNIXDIR)/bin:$$PATH ; \
+	@set -e; cd mxccc ; export PATH=$(HOSTDIR)/bin:$$PATH ; \
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
@@ -124,11 +124,14 @@ sizecheck:
 regression:
 	../../tests/regress.sh --filter ccc/peep/ $(REGRESS_FLAGS)
 
-# The self-hosted binary, installed into micronix/bin - the compiler
-# as it runs on the machine it targets.
+# The self-hosted pass, installed into destmicronix/lib under the
+# name the driver runs it by - the compiler as it runs on the machine
+# it targets.  A system root, not a pile of .mx files: bin/lib laid
+# out the way Micronix wants them, so the tree can be copied straight
+# onto a filesystem and used.
 mx-install: mx-ccc
-	@mkdir -p $(MXDIR)/bin
-	$(INSTALL) mxccc/peep.mx $(MXDIR)/bin
+	@mkdir -p $(MXDIR)/lib
+	$(INSTALL) mxccc/peep.mx $(MXDIR)/lib/peep
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm

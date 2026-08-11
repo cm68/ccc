@@ -84,14 +84,14 @@ attic/
 # The install trees.  Everything in them was put there by a build,
 # and "make clobber" takes them away again.
 #
-# destunix and destcpm are the same thing one step further along: a
-# staged system install, what "make sysinstall" would copy onto the
-# prefix.  Build output like the rest, and no more checked in than
-# unix/ is.
-unix/
-micronix/
-cpm/
-destunix/
+# One per machine, named for the machine: desthost holds the host
+# binaries, destmicronix and destcpm the Z80 ones, each laid out as
+# that machine's system root - bin, lib and usr/include - ready to be
+# copied on.  "unix" used to name two different things here, the host
+# tree and a hand-made Micronix root, which is why neither is called
+# that any more.
+desthost/
+destmicronix/
 destcpm/
 
 # The simulator the runtime tests run under - a symlink to a build of

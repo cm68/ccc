@@ -21,7 +21,7 @@ root=$(cd "$here/../.." && pwd)
 work="$here/out"
 
 SIM=${SIM:-$root/tests/sim}
-CCC=$root/unix/bin/ccc
+CCC=$root/desthost/bin/ccc
 # Extra flags for the ccc mode.  CCCFLAGS=-O runs the peephole, so the
 # suite can check that optimised code still computes the same answers -
 # which is the only test of the peephole that means anything.

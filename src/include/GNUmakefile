@@ -36,19 +36,19 @@ all:
 target-install:
 	@mkdir -p $(MXDIR)/include/sys $(CPMDIR)/include/sys
 	@mkdir -p $(MXDIR)/usr/include/sys $(CPMDIR)/lib/include/sys
-	@mkdir -p $(UNIXDIR)/usr/include/sys $(UNIXDIR)/lib/include/sys
+	@mkdir -p $(HOSTDIR)/usr/include/sys $(HOSTDIR)/lib/include/sys
 	$(INSTALL) $(HDRS) $(MXDIR)/include
 	$(INSTALL) $(HDRS) $(CPMDIR)/include
 	$(INSTALL) sys/*.h $(MXDIR)/include/sys
 	$(INSTALL) sys/*.h $(CPMDIR)/include/sys
 	$(INSTALL) $(HDRS) $(MXDIR)/usr/include
 	$(INSTALL) $(HDRS) $(CPMDIR)/lib/include
-	$(INSTALL) $(HDRS) $(UNIXDIR)/usr/include
-	$(INSTALL) $(HDRS) $(UNIXDIR)/lib/include
+	$(INSTALL) $(HDRS) $(HOSTDIR)/usr/include
+	$(INSTALL) $(HDRS) $(HOSTDIR)/lib/include
 	$(INSTALL) sys/*.h $(MXDIR)/usr/include/sys
 	$(INSTALL) sys/*.h $(CPMDIR)/lib/include/sys
-	$(INSTALL) sys/*.h $(UNIXDIR)/usr/include/sys
-	$(INSTALL) sys/*.h $(UNIXDIR)/lib/include/sys
+	$(INSTALL) sys/*.h $(HOSTDIR)/usr/include/sys
+	$(INSTALL) sys/*.h $(HOSTDIR)/lib/include/sys
 
 install: target-install
 

@@ -58,7 +58,7 @@ corpus:
 complete: corpus
 	@fail=0; cd $(RUN) && for f in gp_*.c; do \
 		b=$${f%.c}; rm -f $$b.s; \
-		$(ROOT)/unix/bin/ccc -O -s -I. $$f >/dev/null 2>&1; \
+		$(ROOT)/desthost/bin/ccc -O -s -I. $$f >/dev/null 2>&1; \
 		if [ ! -f $$b.s ]; then echo "$$b: DID NOT COMPILE"; fail=1; \
 		elif grep -q XXXXXX $$b.s; then \
 			echo "$$b: missing production:"; \

@@ -60,10 +60,10 @@ $(BUILD)/crt0.o: crt0.s
 	$(AS) $< -o $@
 
 target-install: all
-	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(HOSTDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(MXDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(CPMDIR)/lib
-	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(UNIXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(HOSTDIR)/lib
 install: target-install
 
 clean:

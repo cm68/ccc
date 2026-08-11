@@ -2,7 +2,7 @@
 # cpm3 - a CP/M 3 machine big enough to run this compiler
 #
 # A host tool like the rest of src/tools, and it installs beside them
-# in unix/bin.  It is here rather than there because it is a machine,
+# in desthost/bin.  It is here rather than there because it is a machine,
 # not part of the toolchain: nothing in a build reaches for it, and
 # the things that do - the self-compile check - name it directly.
 #
@@ -41,8 +41,8 @@ selfcheck: cpm3
 	@sh selfcheck.sh
 
 install: cpm3
-	@mkdir -p $(UNIXDIR)/bin
-	$(INSTALL) cpm3 $(UNIXDIR)/bin
+	@mkdir -p $(HOSTDIR)/bin
+	$(INSTALL) cpm3 $(HOSTDIR)/bin
 
 clean:
 	rm -f $(OBJECTS) cpm3 $(CRUFT) $(CRUFTASM)

@@ -11,7 +11,7 @@
 #   ccc    - the driver: runs cpp, c0, c1, peep, asz and wsld
 #   astpp  - AST pretty-printer, for reading what pass1 emitted
 #
-# All of them run on the build host and install into unix/bin.
+# All of them run on the build host and install into desthost/bin.
 
 OUTDIR = stage1
 
@@ -75,7 +75,7 @@ wssize: wssize.o
 #
 # So it is built for PREFIX, not for the build tree, and there is only
 # one of it.  That is what lets "make sysinstall" be a plain recursive
-# copy with nothing to rebuild: the driver sitting in unix/bin is
+# copy with nothing to rebuild: the driver sitting in desthost/bin is
 # already the driver that belongs in $(PREFIX)/bin.
 #
 # Nothing in the tree is worse off for it.  Every rule here runs the
@@ -120,9 +120,9 @@ LIBTOOLS = asz wsld astpp
 BINTOOLS = ccc wslib wsnm wssize
 
 install: all
-	@mkdir -p $(UNIXDIR)/bin $(UNIXDIR)/lib
-	$(INSTALL) $(BINTOOLS) $(UNIXDIR)/bin
-	$(INSTALL) $(LIBTOOLS) $(UNIXDIR)/lib
+	@mkdir -p $(HOSTDIR)/bin $(HOSTDIR)/lib
+	$(INSTALL) $(BINTOOLS) $(HOSTDIR)/bin
+	$(INSTALL) $(LIBTOOLS) $(HOSTDIR)/lib
 
 CCCFLAGS = -DCCC -i../include
 

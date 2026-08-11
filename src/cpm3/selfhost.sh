@@ -67,15 +67,15 @@ if [ "$1" = "-k" ]; then keep=1; shift; fi
 
 need=""
 case " $LEGS " in *" cpm "*)
-	need="$need $sim $top/cpm/bin/cpp.com $top/cpm/bin/c0.com \
-	      $top/cpm/bin/c1.com" ;;
+	need="$need $sim $top/destcpm/bin/cpp.com $top/destcpm/bin/c0.com \
+	      $top/destcpm/bin/c1.com" ;;
 esac
 case " $LEGS " in *" mx "*)
-	need="$need $mxsim $top/micronix/bin/cpp.mx $top/micronix/bin/c0.mx \
-	      $top/micronix/bin/c1.mx" ;;
+	need="$need $mxsim $top/destmicronix/lib/pass0 $top/destmicronix/lib/c0 \
+	      $top/destmicronix/lib/c1" ;;
 esac
 for f in $need; do
-	[ -f "$f" ] || { echo "missing $f - make, make cpm, make micronix" >&2
+	[ -f "$f" ] || { echo "missing $f - make, make micronix, make cpm" >&2
 			 exit 2; }
 done
 
@@ -142,7 +142,12 @@ for p in $passes; do
 	# directory is drive A, so that is what it is called.
 	# the usersim's filesystem root is the work directory, so the
 	# images it runs have to be inside it
-	case " $LEGS " in *" mx "*) cp "$top"/micronix/bin/*.mx "$work"/ ;; esac
+	# destmicronix is a system root - the passes sit in lib under the
+	# names the driver runs them by, not as .mx files in bin.
+	case " $LEGS " in *" mx "*)
+		cp "$top"/destmicronix/lib/pass0 "$top"/destmicronix/lib/c0 \
+		   "$top"/destmicronix/lib/c1 "$work"/ ;;
+	esac
 
 	inc="-iB: -IA: -IC: -ID:"
 
@@ -169,9 +174,9 @@ for p in $passes; do
 		( cd "$work" && rm -f h.x h.n h.1 h.2 h.s g.x g.n g.1 g.2 g.s )
 
 		if ! ( cd "$work" &&
-		       "$top"/unix/lib/cpp -DCCC $inc -o h "$b.c" &&
-		       "$top"/unix/lib/c0 h.x h.1 h.2 &&
-		       "$top"/unix/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1; then
+		       "$top"/desthost/lib/pass0 -DCCC $inc -o h "$b.c" &&
+		       "$top"/desthost/lib/c0 h.x h.1 h.2 &&
+		       "$top"/desthost/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1; then
 			printf '%-8s %-12s %7s %6s  %s\n' \
 				"$p" "$b" "$sz" - "skip (host)"
 			continue
@@ -185,14 +190,14 @@ for p in $passes; do
 		# and nothing else.
 		case " $LEGS " in *" mx "*)
 			( cd "$work" && rm -f m.x m.n m.1 m.2 m.s )
-			timeout $TMO $mxsim -d "$work" /cpp.mx -DCCC $inc \
+			timeout $TMO $mxsim -d "$work" /pass0 -DCCC $inc \
 				-o m "$b.c" >/dev/null 2>&1 </dev/null ||
 				why="mx:cpp"
 			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
-				/c0.mx m.x m.1 m.2 >/dev/null 2>&1 </dev/null ||
+				/c0 m.x m.1 m.2 >/dev/null 2>&1 </dev/null ||
 				why="mx:c0"; }
 			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
-				/c1.mx m.1 m.2 m.s >/dev/null 2>&1 </dev/null ||
+				/c1 m.1 m.2 m.s >/dev/null 2>&1 </dev/null ||
 				why="mx:c1"; }
 			;;
 		esac
@@ -200,13 +205,13 @@ for p in $passes; do
 		# CP/M 3
 		case " $LEGS " in *" cpm "*)
 			[ -z "$why" ] && { timeout $TMO $sim $drives \
-				"$top/cpm/bin/cpp.com" -DCCC $inc -o g "$b.c" \
+				"$top/destcpm/bin/cpp.com" -DCCC $inc -o g "$b.c" \
 				>/dev/null 2>&1 || why="cpm:cpp"; }
 			[ -z "$why" ] && { timeout $TMO $sim $drives \
-				"$top/cpm/bin/c0.com" g.x g.1 g.2 >/dev/null 2>&1 ||
+				"$top/destcpm/bin/c0.com" g.x g.1 g.2 >/dev/null 2>&1 ||
 				why="cpm:c0"; }
 			[ -z "$why" ] && { timeout $TMO $sim $drives \
-				"$top/cpm/bin/c1.com" g.1 g.2 g.s >/dev/null 2>&1 ||
+				"$top/destcpm/bin/c1.com" g.1 g.2 g.s >/dev/null 2>&1 ||
 				why="cpm:c1"; }
 			;;
 		esac

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Path to compiler driver
-CCC="$PROJECT_ROOT/unix/bin/ccc"
+CCC="$PROJECT_ROOT/desthost/bin/ccc"
 
 VERBOSE=""
 not_k=true

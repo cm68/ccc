@@ -28,9 +28,9 @@ The compiler must self-host on Z80. Do NOT use:
 There are three builds:
 
 - **host** — the compiler built by gcc, running on the build machine, emitting
-  Z80. Installed into `unix/`. This is `make all`.
+  Z80. Installed into `desthost/`. This is `make all`.
 - **cross** — that compiler compiling itself into Z80 binaries, into
-  `micronix/` and `cpm/`. This is `make micronix` / `make cpm`.
+  `destmicronix/` and `destcpm/`. This is `make micronix` / `make cpm`.
 - **native** — the same compiler built on Micronix by the tools already there.
 
 The cross and native builds must produce identical output; `make selfhost` is
@@ -42,13 +42,20 @@ at the top of the tree. GNU make looks for `GNUmakefile` before `Makefile`, so
 `Makefile` is left for the native Micronix make. Every one of them has `all`,
 `install`, `clean` and `clobber`.
 
-`make install` puts the driver and the object tools in `$(PREFIX)/bin` and
-everything the driver runs in `$(PREFIX)/lib`; PREFIX defaults to
-`/usr/local` and DESTDIR stages it elsewhere.
+Installing is two steps and only the second wants a password. `make install`
+is the tree walk — every directory copies what it built into `$(HOSTDIR)`,
+which is `desthost/` — and is a no-op after a build. `make sysinstall` copies
+that directory onto `$(PREFIX)`, which defaults to `/usr/local`; DESTDIR
+stages it elsewhere and `SUDO=` runs it without privilege. Nothing is rebuilt
+for the new location.
+
+The three staging trees are named for the machine they are for: `desthost/`
+holds host binaries, `destmicronix/` and `destcpm/` hold Z80 ones, each laid
+out as that machine's system root (`bin`, `lib`, `usr/include`).
 
 **IMPORTANT:** Do NOT run compiler passes (c0, c1, cpp, etc.) directly from the command line. Compiler passes are ONLY to be run:
 - From the GNUmakefile using target rules (e.g., `make stage1`)
-- Using the `unix/bin/ccc` compiler driver
+- Using the `desthost/bin/ccc` compiler driver
 
 The compiler driver (`ccc`) has options to:
 - Stop before assembly, before link, after cpp, etc.

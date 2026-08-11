@@ -32,9 +32,10 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc gcc-multilib make gawk
 
-    # make builds the host side, installs it into unix/, then builds
-    # the z80 runtime with it into micronix/ and cpm/.  Both phases in
-    # one target - see src/Makefile for why the order is forced.
+    # make builds the host side, installs it into desthost/, then
+    # builds the z80 runtime with it into destmicronix/.  Both phases
+    # in one target - see src/GNUmakefile for why the order is forced.
+    # destcpm/ is not built: CP/M is tabled, pruned at TARGETDIRS.
     - name: Build
       run: make
 
@@ -43,8 +44,8 @@ jobs:
 
     - name: Show build artifacts
       run: |
-        ls -lh unix/bin micronix/lib cpm/lib
-        file unix/bin/cpp unix/bin/c0 unix/bin/c1 unix/bin/peep
+        ls -lh desthost/bin desthost/lib destmicronix/lib
+        file desthost/lib/pass0 desthost/lib/c0 desthost/lib/c1 desthost/lib/peep
 
     # The invariant that clobber removes what a build makes: after it,
     # the tree must look the way it did on checkout.  The install

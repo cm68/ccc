@@ -37,7 +37,7 @@ char *progname;
  *
  *	/bin/ccc		->  /lib
  *	/usr/local/bin/ccc	->  /usr/local/lib
- *	unix/bin/ccc		->  unix/lib
+ *	desthost/bin/ccc	->  desthost/lib
  *	ccc			->  ./../lib
  *
  * which is v7's arrangement - /bin/cc finding /lib/c0 - and means an
