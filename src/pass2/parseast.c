@@ -31,6 +31,31 @@ stmtname(int op)
 
 static char buf[64];
 
+/*
+ * What a label the programmer wrote is spelled as.
+ *
+ * C keeps labels in a namespace of their own, so "out:" is a good
+ * label and says nothing about any "out" elsewhere.  The assembler has
+ * no such namespace: a line beginning "out" is the instruction, and
+ * the label vanished into an opcode with a stray colon after it.
+ * Every mnemonic is exposed this way, and "out", "end", "in", "set"
+ * and "cp" are all names a person reaches for at the bottom of a loop.
+ *
+ * The prefix has to be something C cannot spell, or it only moves the
+ * collision: '_' is what pass1 puts in front of every global, so a
+ * label "out" and a function "out" would meet at "_out".  '@' meant
+ * nothing to asz until alpha() was taught it, which is where the rest
+ * of this note lives.
+ *
+ * This belongs here and not in pass1, where the label is still an @id
+ * back-reference into the name file rather than its spelling; putting
+ * anything in front of THAT '@' stops nidxp() recognising it and the
+ * compressed form reaches the assembler intact.  By the time the name
+ * has been read here it has been expanded, and definition and goto -
+ * the only two records that carry one - are both below.
+ */
+#define LBLPFX	"@"
+
 /* Label generation */
 static int labelcnt;		/* per-function label counter */
 static int fnindex;		/* function index for unique labels */
@@ -636,6 +661,7 @@ parseStmt(void)
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  LABEL %s\n", buf);
 #endif
+		out(LBLPFX);
 		out(buf);
 		out(":\n");
 		return;
@@ -646,6 +672,7 @@ parseStmt(void)
 			fprintf(stderr, "  GOTO %s\n", buf);
 #endif
 		out("\tjp ");
+		out(LBLPFX);
 		out(buf);
 		outc('\n');
 		return;

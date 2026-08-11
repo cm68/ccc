@@ -8,6 +8,16 @@
 
 - Labels end with `:`. Using `::` exports the symbol globally.
 - Comments start with `;` and extend to end of line.
+- A name starts with a letter, `_` or `@`, and continues with those,
+  digits or `.`.
+
+`@` is there for the compiler.  C keeps labels in a namespace of their
+own, so `out:` is a good label and says nothing about any `out`
+elsewhere - but this assembler has no such namespace, and a line
+beginning `out` is the instruction.  Every mnemonic was exposed that
+way, so pass2 writes each label the programmer wrote with an `@` in
+front of it.  It cannot use `_`: that already marks every C global, so
+a label `out` and a function `out` would meet at `_out`.
 
 ## Pseudo-Ops (Directives)
 

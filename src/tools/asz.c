@@ -323,14 +323,29 @@ skipwhite()
 }
 
 /*
- * is this an alphabetic or underscore
+ * is this an alphabetic, underscore or '@'
+ *
+ * '@' is here for the compiler, which puts it in front of every label
+ * the programmer wrote.  C keeps labels in a namespace of their own,
+ * so "out:" is a good label and says nothing about any "out"
+ * elsewhere; this assembler has no such namespace, and a line
+ * beginning "out" is the instruction with a stray colon after it.
+ * Every mnemonic was exposed that way - "out", "end", "in", "set" and
+ * "cp" are all names a person reaches for at the bottom of a loop.
+ *
+ * A character C cannot spell is the whole point, so the prefix cannot
+ * be '_': the compiler already puts one in front of every global, and
+ * a label "out" and a function "out" would both arrive as "_out".  '@'
+ * meant nothing here before this line, so no source that assembled
+ * yesterday reads differently today - it only makes something that
+ * was an error into a name.
  */
 char
 alpha(in)
 char in;
 {
     return (in >= 'A' && in <= 'Z') || (in >= 'a' && in <= 'z')
-        || in == '_';
+        || in == '_' || in == '@';
 }
 
 /*
