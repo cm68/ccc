@@ -1282,7 +1282,7 @@ struct rule rules[] = {
 	 * linked and run, because a call to a symbol that does not exist
 	 * assembles perfectly well.
 	 */
-	R(STAR,INHL,INDE,0,0,0, STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
+	R(STAR,INHL,INDE,0,0,0, STAR, P_L, P_R, P_NONE, 0, "\tcall amul\n", R_HL),
 	/* the multiplier in BC: amul wants it in DE, and clobbers BC on
 	 * the way, so the save the $[ $] pair makes is what puts a
 	 * register variable back */
@@ -1297,7 +1297,7 @@ struct rule rules[] = {
 	 * root of a statement.
 	 */
 	R(STAR,INHL,P_NUM,0,0,0, STAR, P_L, P_R, P_NONE, 0,
-		F_LDDER "$[\tcall amul\n$]", R_HL),
+		F_LDDER "\tcall amul\n", R_HL),
 	/*
 	 * The same with the left operand in BC, which a register variable
 	 * puts it in.  There was a form for BC times a constant and none
@@ -1312,30 +1312,30 @@ struct rule rules[] = {
 	 * multiplying the loop did not end.
 	 */
 	R(STAR,INBC,INDE,0,0,0, STAR, P_L, P_R, P_NONE, 0,
-		"$[" T_BC_HL "\tcall amul\n$]", R_HL),
-	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall adiv\n$]", R_HL),
-	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0, "$[\tcall ldiv\n$]", R_HL),
+		T_BC_HL "\tcall amul\n", R_HL),
+	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL, "\tcall adiv\n", R_HL),
+	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0, "\tcall ldiv\n", R_HL),
 	/* and with the left operand in BC, as a register variable puts it */
 	R(DIV,INBC,INDE,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		"$[" T_BC_HL "\tcall adiv\n$]", R_HL),
+		T_BC_HL "\tcall adiv\n", R_HL),
 	R(DIV,INBC,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0,
-		"$[" T_BC_HL "\tcall ldiv\n$]", R_HL),
+		T_BC_HL "\tcall ldiv\n", R_HL),
 	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		"$[" T_BC_HL "\tcall amod\n$]", R_HL),
+		T_BC_HL "\tcall amod\n", R_HL),
 	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		"$[" T_BC_HL "\tcall lmod\n$]", R_HL),
+		T_BC_HL "\tcall lmod\n", R_HL),
 	/* by a constant, which is what dividing a pointer difference by
 	 * the element size looks like */
 	R(DIV,INHL,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER "$[\tcall adiv\n$]", R_HL),
+		F_LDDER "\tcall adiv\n", R_HL),
 	R(DIV,INHL,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, 0,
-		F_LDDER "$[\tcall ldiv\n$]", R_HL),
+		F_LDDER "\tcall ldiv\n", R_HL),
 	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER "$[\tcall amod\n$]", R_HL),
+		F_LDDER "\tcall amod\n", R_HL),
 	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		F_LDDER "$[\tcall lmod\n$]", R_HL),
-	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall amod\n$]", R_HL),
-	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0, "$[\tcall lmod\n$]", R_HL),
+		F_LDDER "\tcall lmod\n", R_HL),
+	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
+	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
 	/*
 	 * A constant dividend never got loaded - constants are left for
 	 * the fused rules, and division had no fused form - and a
@@ -1351,13 +1351,13 @@ struct rule rules[] = {
 	R(MOD,P_NUM,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n$[\tcall lmod\n$]", R_HL),
 	R(DIV,INHL,INBC,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDEC F_LDDB "$[\tcall adiv\n$]", R_HL),
+		F_LDEC F_LDDB "\tcall adiv\n", R_HL),
 	R(DIV,INHL,INBC,0,0,0, DIV, P_L, P_R, P_NONE, 0,
-		F_LDEC F_LDDB "$[\tcall ldiv\n$]", R_HL),
+		F_LDEC F_LDDB "\tcall ldiv\n", R_HL),
 	R(MOD,INHL,INBC,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDEC F_LDDB "$[\tcall amod\n$]", R_HL),
+		F_LDEC F_LDDB "\tcall amod\n", R_HL),
 	R(MOD,INHL,INBC,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		F_LDEC F_LDDB "$[\tcall lmod\n$]", R_HL),
+		F_LDEC F_LDDB "\tcall lmod\n", R_HL),
 
 	/*
 	 * Store to a frame slot.  A constant goes straight into the slot
@@ -2644,15 +2644,15 @@ struct rule rules[] = {
 	R(MINUS,INBC,P_NUM,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
 	R(LSHIFT,INBC,P_NUM,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
 	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "$[\tcall adiv\n$]", R_HL),
+		T_BC_HL F_LDDER "\tcall adiv\n", R_HL),
 	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "$[\tcall ldiv\n$]", R_HL),
+		T_BC_HL F_LDDER "\tcall ldiv\n", R_HL),
 	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "$[\tcall amod\n$]", R_HL),
+		T_BC_HL F_LDDER "\tcall amod\n", R_HL),
 	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "$[\tcall lmod\n$]", R_HL),
+		T_BC_HL F_LDDER "\tcall lmod\n", R_HL),
 	R(STAR,INBC,P_NUM,0,0,0, STAR, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "$[\tcall amul\n$]", R_HL),
+		T_BC_HL F_LDDER "\tcall amul\n", R_HL),
 	R(PLUS,INHL,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
 	R(MINUS,INHL,P_SMALL,0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
 	R(PLUS,INA,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),

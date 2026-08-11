@@ -5,8 +5,27 @@
 
 	psect	text
 	global	amul,lmul
+;
+;	BC is callee-save.  This routine keeps its byte counter in B and
+;	the right operand's high half in C, and it cannot hand the
+;	caller's back from inside: mult8b is CALLED for the first eight
+;	bits and FALLEN INTO for the second, so the ret that ends the
+;	routine is the same ret that returns from that call.  There is no
+;	single exit to restore at, so the save goes outside and the body
+;	is left exactly as it was.
+;
+;	Until this, "x * y" destroyed whatever the caller was keeping in
+;	BC.  Nothing noticed because every compiled function saves BC in
+;	its own prologue whether it needs to or not - which is the cost
+;	this pays for.
+;
 amul:
 lmul:
+	push	bc
+	call	imulw
+	pop	bc
+	ret
+imulw:
 	ld	a,e		; save d,e in c,a
 	ld	c,d
 	ex	de,hl		; save hl in de

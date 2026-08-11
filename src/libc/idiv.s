@@ -9,6 +9,16 @@
 	global	adiv,ldiv,amod,lmod
 	psect	text
 
+;	BC is callee-save, and this keeps the bit counter in B, uses C in
+;	negat, and counts with djnz.  It handed the caller's back nowhere.
+;	amod and lmod reach the same body through adiv and ldiv, so saving
+;	at those two entries covers all four; the two exits below are the
+;	only ways out of the shared body.
+;
+;	Until this, "x / y" and "x % y" destroyed whatever the caller kept
+;	in BC - unnoticed only because every compiled function saves BC in
+;	its prologue whether it needs to or not.
+
 amod:
 	call	adiv
 	ex	de,hl		;put modulus in hl
@@ -20,6 +30,7 @@ lmod:
 	ret
 
 ldiv:
+	push	bc
 	xor	a
 	ex	af,af'
 	ex	de,hl
@@ -27,6 +38,7 @@ ldiv:
 
 
 adiv:
+	push	bc
 	ld	a,h
 	xor	d		;set sign flag for quotient
 	ld	a,h		;get sign of dividend
@@ -37,7 +49,9 @@ adiv:
 dv1:	ld	b,1
 	ld	a,h
 	or	l
-	ret	z
+	jr	nz,dv8
+	pop	bc		;a zero dividend: quotient is zero
+	ret
 dv8:	push	hl
 	add	hl,hl
 	jr	c,dv2
@@ -82,6 +96,7 @@ dv3:	ex	(sp),hl
 	or	a			;test remainder sign bit
 	call	m,negat
 	ex	de,hl
+	pop	bc
 	ret
 
 negif:	bit	7,h

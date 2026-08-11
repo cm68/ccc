@@ -43,6 +43,9 @@ long n_invjp = 0;
 long n_outi = 0;
 long n_exx = 0;
 long n_m1cmp = 0;
+long n_ccall = 0;
+long n_cret = 0;
+long n_jpnext = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -338,6 +341,169 @@ r_invjp(void)
  * operand qualifies: "ld hl,(sym)" is a load, and its value cannot
  * be spelled in a .dw.
  */
+/*
+ * A call jumped around, which is what "if (c) foo();" comes to when
+ * foo takes no arguments:
+ *
+ *	jp z,L		3	    call nz,_foo	3
+ *	call _foo	3  ->
+ * L:			    L:
+ *
+ * The Z80 calls on a condition as readily as it jumps on one, so the
+ * hop is the whole cost.  Six bytes become three, 35 sites over the
+ * compiler's own sources.
+ *
+ * The label stays.  Another jump may target it - "if (a && b) foo();"
+ * lands two of them there, and only the second is adjacent to the call
+ * - and it costs nothing to leave.
+ *
+ * Only when the call is the ONLY thing hopped over.  With arguments
+ * the pushes and the caller's cleanup sit between the branch and the
+ * label, and making just the call conditional would push for a call
+ * that never happens.  Those cases fail the adjacency test below and
+ * are left alone.
+ */
+int
+r_ccall(void)
+{
+	char cc[4];
+	char buf[KLEN + 8];
+	char *comma;
+	int i, n, j1, j2;
+
+	if (!starts(0, "jp "))
+		return 0;
+	j1 = nextsig(0);
+	if (j1 < 0 || win[j1].kind != L_INSN || strncmp(win[j1].key, "call ", 5) != 0)
+		return 0;
+	if (strchr(win[j1].key + 5, ','))
+		return 0;			/* already conditional */
+	j2 = nextsig(j1);
+	if (j2 < 0 || win[j2].kind != L_LABEL)
+		return 0;
+	comma = strchr(win[0].key + 3, ',');
+	if (!comma)
+		return 0;			/* unconditional hop: not ours */
+	n = comma - (win[0].key + 3);
+	if (n < 1 || n > 2)
+		return 0;
+	memcpy(cc, win[0].key + 3, n);
+	cc[n] = 0;
+
+	/* the label hopped to must be the one right after the call */
+	n = strlen(comma + 1);
+	if (strncmp(win[j2].key, comma + 1, n) != 0 ||
+	    win[j2].key[n] != ':' || win[j2].key[n + 1] != '\0')
+		return 0;
+
+	for (i = 0; ccinv[i]; i += 2)
+		if (strcmp(cc, ccinv[i]) == 0)
+			break;
+	if (!ccinv[i])
+		return 0;
+
+	sprintf(buf, "\tcall %s,%s\n", ccinv[i + 1], win[j1].key + 5);
+	delline(j1, 1);
+	delline(0, 1);
+	insline(0, buf);
+	n_ccall++;
+	saved += 3;
+	return 1;
+}
+
+/*
+ * And the same for a return, which is "if (c) return;" in a function
+ * that has no frame to unwind:
+ *
+ *	jp z,L		3	    ret nz		1
+ *	ret		1  ->
+ * L:			    L:
+ *
+ * Four bytes become one.  This only arises since pass2 started
+ * returning with a ret rather than a jump to the epilogue - it can do
+ * that only where there is no frame, and where there is one the return
+ * is a jp to the unwind and the shape above never appears.
+ */
+int
+r_cret(void)
+{
+	char cc[4];
+	char buf[KLEN + 8];
+	char *comma;
+	int i, n, j1, j2;
+
+	if (!starts(0, "jp "))
+		return 0;
+	j1 = nextsig(0);
+	if (j1 < 0 || win[j1].kind != L_INSN || strcmp(win[j1].key, "ret") != 0)
+		return 0;
+	j2 = nextsig(j1);
+	if (j2 < 0 || win[j2].kind != L_LABEL)
+		return 0;
+	comma = strchr(win[0].key + 3, ',');
+	if (!comma)
+		return 0;
+	n = comma - (win[0].key + 3);
+	if (n < 1 || n > 2)
+		return 0;
+	memcpy(cc, win[0].key + 3, n);
+	cc[n] = 0;
+
+	n = strlen(comma + 1);
+	if (strncmp(win[j2].key, comma + 1, n) != 0 ||
+	    win[j2].key[n] != ':' || win[j2].key[n + 1] != '\0')
+		return 0;
+
+	for (i = 0; ccinv[i]; i += 2)
+		if (strcmp(cc, ccinv[i]) == 0)
+			break;
+	if (!ccinv[i])
+		return 0;
+
+	sprintf(buf, "\tret %s\n", ccinv[i + 1]);
+	delline(j1, 1);
+	delline(0, 1);
+	insline(0, buf);
+	n_cret++;
+	saved += 3;
+	return 1;
+}
+
+/*
+ * A jump to the very next instruction, which is no jump at all.
+ *
+ *	jp Xfoo
+ * Xfoo:
+ *
+ * Every function whose last statement is a return ends this way: the
+ * return is compiled as a jump to the epilogue, and the epilogue is
+ * what comes next.  pass2 cannot see it - it emits the jump while
+ * walking the body and the label when the body is done - and it is
+ * three bytes in 379 places over the compiler's own sources.
+ *
+ * The label stays: it is what every OTHER return in the function
+ * jumps to, and only this one jump is redundant.
+ */
+int
+r_jpnext(void)
+{
+	int j1, n;
+
+	if (!starts(0, "jp ") || strchr(win[0].key + 3, ','))
+		return 0;			/* conditional: it may fall through */
+	j1 = nextsig(0);
+	if (j1 < 0 || win[j1].kind != L_LABEL)
+		return 0;
+	n = strlen(win[0].key + 3);
+	if (strncmp(win[j1].key, win[0].key + 3, n) != 0 ||
+	    win[j1].key[n] != ':' || win[j1].key[n + 1] != '\0')
+		return 0;
+	delline(0, 1);
+	n_jpnext++;
+	saved += 3;
+	return 1;
+}
+
 int
 r_outi(void)
 {
@@ -512,6 +678,12 @@ applyrules(void)
 		return 1;
 	if (r_invjp())
 		return 1;
+	if (r_ccall())
+		return 1;
+	if (r_cret())
+		return 1;
+	if (r_jpnext())
+		return 1;
 	if (r_incsp())
 		return 1;
 	if (r_pushpop())
@@ -526,11 +698,20 @@ applyrules(void)
 void
 report(void)
 {
-	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld  invjp %ld  oarg %ld  exx %ld  m1cmp %ld"
-		"  pool %ld = %ld bytes\n",
+	/*
+	 * Two calls, not one.  A string literal is bounded at 126
+	 * characters here - past that c0 says "expr paren" or, spliced,
+	 * "unknown error" - and the one line this used to be was 125,
+	 * so the counters added since would have run it off the end.
+	 */
+	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld"
+		"  bounce %ld  and0 %ld  invjp %ld  oarg %ld\n",
 		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
-		n_outi, n_exx, n_m1cmp, poolmerged, saved);
+		n_outi);
+	fprintf(stderr, "peep: exx %ld  m1cmp %ld  ccall %ld  cret %ld"
+		"  jpnext %ld  pool %ld = %ld bytes\n",
+		n_exx, n_m1cmp, n_ccall, n_cret, n_jpnext,
+		poolmerged, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

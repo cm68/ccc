@@ -743,15 +743,34 @@ emitasm(char *tpl, Expr *e)
 			 * and when the variable was a loop subscript doing
 			 * the multiplying, the loop did not end.
 			 */
+			/*
+			 * Unconditional now, where it used to ask
+			 * bcinuse().  What is left inside a $[ $] pair is
+			 * a template that writes B ITSELF - the variable
+			 * shifts, which count with djnz - and the caller's
+			 * BC has to survive that whether or not a variable
+			 * of this function's own lives there.
+			 *
+			 * It could be conditional while the prologue saved
+			 * BC in every function: a function with nothing in
+			 * BC had already handed the caller's copy to the
+			 * frame, so clobbering it here cost nothing.  Now
+			 * that savesbc() answers from the header, such a
+			 * function saves nothing, and this is the only
+			 * thing standing between a variable shift and the
+			 * caller's register variable.
+			 *
+			 * It costs nothing today - no function in the tree
+			 * pairs a variable shift with an empty BC - which
+			 * is precisely why it must not be left to luck.
+			 */
 			if (*p == '[') {
-				if (bcinuse())
-					out("\tpush bc\n");
+				out("\tpush bc\n");
 				p++;
 				continue;
 			}
 			if (*p == ']') {
-				if (bcinuse())
-					out("\tpop bc\n");
+				out("\tpop bc\n");
 				p++;
 				continue;
 			}

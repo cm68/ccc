@@ -45,6 +45,8 @@ static int fnindex;		/* function index for unique labels */
  */
 static char funcname[20];
 static short framesize;		/* bytes of local stack frame */
+static short nparams;		/* how many parameters, for the frame test */
+static char noframe;		/* this function needs no frame at all */
 static short savebase;		/* scalar area size: save slots below it */
 static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
@@ -259,29 +261,28 @@ bcinuse(void)
 }
 
 /*
- * Must this function hand the caller's BC back?  Always.
+ * Must this function hand the caller's BC back?  When it keeps a
+ * variable there, which the function header says and bcinuse() reads.
  *
- * The register-variable homes are callee-saved, so a function that
- * keeps a variable in BC saves it - and that used to be the whole
- * test.  It is not enough, because the code generator also uses BC
- * as SCRATCH in functions that have no variable there at all: "ld
- * bc,4" for an offset, "ld c,l / ld b,h" to move a pair.  366 of the
- * tree's functions do it, and none of them were saving anything.
+ * This returned 1 unconditionally for a long while, and the reason
+ * given was that the code generator uses BC as SCRATCH in functions
+ * with no variable in it, which the header cannot say.  That was true
+ * once and is not now: over the tree's own 864 functions there is not
+ * one that writes BC without a variable living there.  What remained
+ * true was the other half - a CALLED helper could destroy it - and
+ * amul and adiv did, so every function in the tree paid a frame for
+ * two arithmetic routines.
  *
- * While callers saved BC around every call that did not matter.  Now
- * that they do not, it is the difference between a caller's variable
- * surviving a call and not: cpp lost the "out" parameter of filtbrace
- * that way, wrote a token through the null, and landed on the syscall
- * trap in page zero.
- *
- * The prologue is emitted before the body, so pass2 cannot know
- * whether the scratch will be used - and since nearly every function
- * uses it, the answer that costs least to be sure of is always.
+ * Those two now save what they use, as every other helper already
+ * did, so BC is preserved across any call a compiled function can
+ * make and the header's answer is the whole answer.  See the note in
+ * imul.s.  This is what makes fenter, fentn and fentx reachable at
+ * all - they had been dead code, unreachable through this test.
  */
 int
 savesbc(void)
 {
-	return 1;
+	return bcinuse();
 }
 
 void
@@ -295,6 +296,28 @@ emitprolog(void)
 		out("::\n");
 
 	bcoff = ixoff = 0;
+
+	/*
+	 * A function with no parameters, no locals and no register
+	 * variables has nothing to point a frame at.  IY is only ever
+	 * used to reach a parameter or a local - the Z80 has no (sp+d),
+	 * which is why the frame pointer exists at all - so with neither,
+	 * the whole prologue is nothing and the epilogue is one ret.
+	 *
+	 * Ten bytes to one, and two helper calls per invocation to none.
+	 * The caller is unaffected: arguments still go on the stack and
+	 * are still cleaned up by the caller, so this is not a second
+	 * calling convention, just the same one with nothing to set up.
+	 *
+	 * regsused == 0 is what says there is no callee-save to make.
+	 * It cannot be otherwise here - a register variable is a
+	 * parameter or a local, and there are none - but it is the
+	 * condition that actually matters, so it is the one tested.
+	 */
+	noframe = (nparams == 0 && framesize == 0 && savebase == 0 &&
+	    regsused == 0);
+	if (noframe)
+		return;
 
 	{
 		short off, rest;
@@ -397,6 +420,12 @@ emitepilog(void)
 	outc('X');
 	out(funcname + 1);
 	out(":\n");
+
+	/* no frame was made, so there is nothing to unwind */
+	if (noframe) {
+		out("\tret\n");
+		return;
+	}
 
 	/*
 	 * Restore callee-saves without touching the return value.
@@ -573,7 +602,23 @@ parseStmt(void)
 				freeexpr(assign);
 			}
 		}
-		/* Jump to function epilogue */
+		/*
+		 * Jump to the function epilogue - unless there is no
+		 * epilogue to speak of.  A frameless function has nothing
+		 * to unwind, so its Xname label is a bare ret, and jumping
+		 * three bytes to a one byte instruction is the long way
+		 * round to it.
+		 *
+		 * Returning here rather than at the label is also what
+		 * lets the conditional form exist at all: peep turns
+		 * "jp cc,L / ret / L:" into "ret ncc", which is one byte
+		 * where the jump around was three, and there is no such
+		 * thing as a conditional jump to an epilogue.
+		 */
+		if (noframe) {
+			out("\tret\n");
+			return;
+		}
 		out("\tjp\tX");
 		out(funcname + 1);
 		outc('\n');
@@ -722,6 +767,36 @@ parseStmt(void)
 				unsigned char v = (unsigned char)e->u.val;
 				int i;
 
+				/*
+				 * A case value that does not fit a byte cannot
+				 * be dispatched.  That is by design - the
+				 * three shapes above all compare eight bits -
+				 * and the design says such a value "cannot
+				 * match and goes to the default".
+				 *
+				 * Going to the default SILENTLY is the part
+				 * that is not worth keeping.  "case 256:" is
+				 * ordinary C, it compiled without a word, and
+				 * it took the default arm.  Where two such
+				 * values shared a low byte the duplicate check
+				 * below fired instead, which is how this was
+				 * found - Morrow's formatmw.c switches a
+				 * sector size over 128, 256, 512, 1024, 2048
+				 * and four of those mask to zero.
+				 *
+				 * So say so.  The limit stays; a program that
+				 * meets it now stops rather than running the
+				 * wrong arm, and the fix in the source is to
+				 * switch on something that fits - formatmw
+				 * divides by 128 and its labels become
+				 * 1,2,4,8,16.
+				 *
+				 * outf does %s, %c and int - there is no %ld.
+				 */
+				if (e->u.val < 0 || e->u.val > 255) {
+					outf("\t.error case %d does not fit a byte - switch on a narrower value\n",
+					    (int)e->u.val);
+				}
 				for (i = 0; i < sw->ncase; i++) {
 					if (sw->val[i] == v) {
 						outf("\t.error duplicate case %d\n",
@@ -832,6 +907,7 @@ parse(void)
 			out("; FUNC "); out(funcname); outc(':'); outc(t); outc('\n');
 #endif
 			n = read1();		/* param count */
+			nparams = n;
 			i = read1();		/* local count */
 			framesize = read2();	/* frame size */
 			savebase = read1();	/* scalar area size */
