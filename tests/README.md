@@ -128,7 +128,7 @@ produce parse errors and still pass**, which is why this suite proves much less
 than the three above. It is a crash net, not a correctness check.
 
 ```bash
-make -C tests test              # the curated list in tests/Makefile
+make -C tests test              # the curated list in tests/GNUmakefile
 make -C tests tests             # every .c file in the directory
 make -C tests test-fail         # the cases expected to fail (error detection)
 make -C tests test-all          # both
@@ -139,7 +139,7 @@ make -C tests test-all          # both
 Category targets: `test-expr`, `test-decl`, `test-cpp`, `test-kr`, `test-func`,
 `test-stmt`, `test-sizeof`, `test-typedef`, `test-cast`, `test-string`,
 `test-incr-decr`, `test-ptr-compat`, `test-lvalue`, `test-struct`. Each runs the
-corresponding `*_TESTS` list from `tests/Makefile`.
+corresponding `*_TESTS` list from `tests/GNUmakefile`.
 
 The categories cover: preprocessor directives and macros; declarations, structs,
 bitfields, and `sizeof`; expression parsing and constant folding; K&R and ANSI
@@ -147,7 +147,7 @@ function definitions; statements and control flow; scopes; string literals;
 casts; increment/decrement; pointer compatibility; and lvalue validation.
 
 To add a test: write the file with a header comment saying what it tests, add
-it to the right `*_TESTS` list in `tests/Makefile`, and run `make -C tests test`.
+it to the right `*_TESTS` list in `tests/GNUmakefile`, and run `make -C tests test`.
 
 ---
 

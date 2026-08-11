@@ -1,6 +1,6 @@
 #
-# cp/m system call Library Makefile
-# Builds the cp/m call library
+# micronix system call Library Makefile
+# Builds the micronix system call library
 #
 # One build area, ccc/ - see libc/Makefile.  The zc3/ area beside
 # it was the Hi-Tech bootstrap and is gone.
@@ -8,29 +8,21 @@
 # CC=gcc on the command line, and these are target runtime sources.
 #
 
-ARCHIVE = libcpm.a
+ARCHIVE = libu.a
 
 # The .s files here are sources, so CRUFTASM is deliberately absent.
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 .SUFFIXES:
 
-# fakecpcl.s was a stub __cpm_clean for when cleanup.c didn't compile
-SRCS = bdos.s bdoshl.s exec.s execl.s exit.s _exit.s \
-	fgetc.s getargs.s getuid.s # zrrtcpm.s fakecpcl.s
+SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
+	creat.s dup.s errno.s exec.s execv.s exit.s fdpos.s fork.s fstat.s \
+	getpid.s getuid.s gtty.s kill.s link.s mknod.s mount.s nice.s open.s \
+	pause.s perror.s pipe.s read.s seekraw.s setuid.s _signal.s sleep.s stat.s \
+	stime.s sbrk.s stty.s sync.s time.s umount.s unlink.s wait.s \
+	write.s
 
-CSRCS = abort.c chmod.c cleanup.c close.c creat.c dup.c \
-	fcbname.c fseek.c getargs.c getfcb.c getch.c isatty.c \
-	open.c read.c rename.c seek.c seekraw.c signal.c stat.c time.c \
-	unlink.c write.c \
-	perror.c sys_err.c
-#
-# perror.c and sys_err.c were sitting here unbuilt; sys_err.c carries
-# errno and the message table perror prints from, which is libu's
-# errno.s on the other side.  seekraw.c is the 16-bit seek the
-# compiler passes use, wrapping the lseek that maintains the fcb's
-# read/write pointer - CP/M has no seek call of its own.
+CSRCS = signal.c lseek.c seek.c
 
 # One build area, ccc/, holding the runtime this compiler built.
 # There was a zc3/ area beside it once, the same sources built by
@@ -44,7 +36,7 @@ CSRCS = abort.c chmod.c cleanup.c close.c creat.c dup.c \
 BUILD = z80
 OBJS = $(addprefix $(BUILD)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 
-all: $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o
+all: $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o
 
 # Rebuilt when the compiler changes: these objects exist to be run,
 # and a codegen fix that leaves stale ones behind reads as a fix that
@@ -61,16 +53,17 @@ $(BUILD)/$(ARCHIVE): $(OBJS)
 	rm -f $@
 	$(LIB) -cr $@ $(OBJS)
 
-# The CP/M startup object - see libu/Makefile.
-$(BUILD)/crtcpm.o: crtcpm.s
+# The Micronix startup object.  Linked by name, not pulled from the
+# archive, so it is built beside it rather than into it.
+$(BUILD)/crt0.o: crt0.s
 	@mkdir -p $(BUILD)
 	$(AS) $< -o $@
 
 target-install: all
-	@mkdir -p $(CPMDIR)/lib $(MXDIR)/lib $(UNIXDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(CPMDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(MXDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(BUILD)/crtcpm.o $(UNIXDIR)/lib
+	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(MXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(CPMDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(UNIXDIR)/lib
 install: target-install
 
 clean:
@@ -82,7 +75,7 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 regression:
-	../../tests/regress.sh --filter src/libcpm/ $(REGRESS_FLAGS)
+	../../tests/regress.sh --filter src/libu/ $(REGRESS_FLAGS)
 
 .PHONY: all install target-install clean clobber regression
 

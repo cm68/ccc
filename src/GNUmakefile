@@ -13,20 +13,37 @@
 # astpp; libc, libcpm, libu and include are the target runtime.
 #
 
-include ../tree.mk
-include ../cruft.mk
+include ../GNUmakefile.inc
 
 CC = gcc
 
 SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 
+#
+# THE SUBDIRECTORY LISTS ARE THE SWITCH.
+#
+# A component that is not being built comes out of the list it is in
+# and nothing else has to change - no ifdef, no target to remember,
+# and no half-built directory left behind to confuse the next build.
+# Putting it back is the same edit in reverse.
+#
+# CP/M is tabled, so cpm3 is out of HOSTDIRS and libcpm is out of
+# TARGETDIRS.  What that costs while it is out: unix/lib gets no
+# libcpm.a or crtcpm.o, so "ccc -m cpm" cannot link, and the "cpm",
+# "selfcheck", "selfhost" and "libcheck" targets below all want a
+# CP/M runtime that will not be there.  They are left in place because
+# tabled is not deleted.
+#
+
 # Host: what runs on the build machine, installed into unix/.  ccclib
 # comes first because the four passes link against its host archive.
-HOSTDIRS = ccclib cpp pass1 pass2 peep tools cpm3
+HOSTDIRS = ccclib cpp pass1 pass2 peep tools
+# tabled: cpm3
 
 # Target: the Z80 runtime, compiled by the compiler the host phase
-# just installed, into micronix/ and cpm/.
-TARGETDIRS = include ccclib libc libcpm libu
+# just installed, into micronix/.
+TARGETDIRS = include ccclib libc libu
+# tabled: libcpm
 
 #
 # The order is forced.  The runtime is compiled BY this compiler -
@@ -65,6 +82,11 @@ cpm: all
 selfcheck: cpm
 	$(SUBMAKE) -C cpm3 selfcheck
 
+# Deliberately NOT pruned.  A tree that built CP/M before still has
+# the objects and the build directories, and clean has to reach them
+# whether or not CP/M is in the build lists today.  A cleanup list
+# that tracks the build list leaves droppings behind exactly when a
+# component is switched off, which is when nobody is looking.
 ALLDIRS = ccclib cpp pass1 pass2 peep tools cpm3 libc libcpm libu include
 
 clean:

@@ -45,7 +45,7 @@
 ROOT = $(realpath ../..)
 RUN = $(realpath ../run)
 
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 GEN = python3 genprod.py
 
 GPSRC = $(wildcard $(RUN)/gp_*.c)
@@ -110,4 +110,10 @@ clean:
 clobber: clean
 	rm -f $(CRUFTLOG)
 
-.PHONY: all corpus complete correct cover bless sim footprint clean clobber
+# A test directory produces no deliverable.  The rule is here because
+# every directory in the tree answers to all, install, clean and
+# clobber, and a recursive install should not stop on a missing one.
+install:
+	@echo "tests/gen: nothing to install"
+
+.PHONY: all install corpus complete correct cover bless sim footprint clean clobber

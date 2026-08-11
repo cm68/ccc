@@ -15,30 +15,22 @@
 
 OUTDIR = stage1
 
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 CC = gcc
 
+# The compile itself is the default rule in GNUmakefile.inc.  There
+# was a .c.o here as well, and a second one under ifeq($(CC),zxc) for
+# the Hi-Tech bootstrap: both were dead, because GNU make prefers a
+# pattern rule to a suffix rule and the one in the include always won.
+# The bootstrap is over and zxc is gone from the tree; only the flags
+# are left, and they are still guarded because "make stage1" runs this
+# directory with CC=ccc.
 ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
 -Werror=implicit-function-declaration
 CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
-
-.SUFFIXES: .c .o
-.c.o:
-	$(CC) $(CFLAGS) -c $<
-endif
-
-ifeq ($(CC),zxc)
-
-.SUFFIXES: .c .o
-CFLAGS =
-.c.o:
-	zxc $(CFLAGS) -s $<
-	asz $(basename $<).as
-
 endif
 
 ALL = asz wsld wsnm wslib wssize ccc astpp
@@ -80,7 +72,16 @@ wssize: wssize.o
 # typed at a shell, which is what a real installation gets.  A driver
 # for Micronix wants /lib; a host install wants the prefix it was
 # installed under.
-CCCPREFIX ?= $(TOP)/unix
+#
+# So it is built for PREFIX, not for the build tree, and there is only
+# one of it.  That is what lets "make sysinstall" be a plain recursive
+# copy with nothing to rebuild: the driver sitting in unix/bin is
+# already the driver that belongs in $(PREFIX)/bin.
+#
+# Nothing in the tree is worse off for it.  Every rule here runs the
+# driver as $(CCC) - an absolute path - so argv[0] has a slash, libdir
+# comes out of the path, and DEFLIB is never consulted in-tree.
+CCCPREFIX ?= $(PREFIX)
 
 ccc: ccc.c
 	$(CC) $(CFLAGS) -DDEFTARGET='"micronix"' \
@@ -120,8 +121,8 @@ BINTOOLS = ccc wslib wsnm wssize
 
 install: all
 	@mkdir -p $(UNIXDIR)/bin $(UNIXDIR)/lib
-	cp $(BINTOOLS) $(UNIXDIR)/bin
-	cp $(LIBTOOLS) $(UNIXDIR)/lib
+	$(INSTALL) $(BINTOOLS) $(UNIXDIR)/bin
+	$(INSTALL) $(LIBTOOLS) $(UNIXDIR)/lib
 
 CCCFLAGS = -DCCC -i../include
 

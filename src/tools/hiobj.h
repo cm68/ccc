@@ -8,23 +8,29 @@
 #define HITECHOBJ_H
 
 /*
- * Whether the tools can read this format at all.
+ * Whether the tools can read this format at all.  Off.
  *
- * The host build wants it: there are Hi-Tech objects and libraries
- * lying around and nothing else will open them.  The self-hosted build
- * must not carry it.  It is a fifth of wsnm.c, and c0 runs out of
- * memory inside processHitech long before the end of the file - the
- * one source in the tree that will not compile under CP/M at any TPA.
- * Hi-Tech itself went to attic/ when it stopped being the bootstrap;
- * this is the reader outliving the thing that wrote the files.
+ * This is a reader that outlived the thing that wrote the files.
+ * Hi-Tech was the bootstrap compiler; it went to attic/ when ccc
+ * started building its own runtime, and nothing in the tree has
+ * emitted a Hi-Tech object since.  What is left is the ability to
+ * open one that predates all that, which is worth keeping as source
+ * and not worth carrying in the binaries.
  *
- * Keyed off CCC, which the driver defines when this compiler is
- * building the tree, so the host keeps the reader without anyone
- * having to remember a flag.  Define DO_HITECH by hand to force it in.
+ * It costs more than it looks.  It is a fifth of wsnm.c, and c0 runs
+ * out of memory inside processHitech long before the end of that
+ * file - the one source in the tree that will not compile under CP/M
+ * at any TPA.  So the self-hosted build could never have it, and the
+ * host build only ever used it by hand.
+ *
+ * Build any of the three tools with -DDO_HITECH to get it back.  Note
+ * that wsld and wslib spelled this HITECH, which nothing defined, so
+ * their half had been silently compiled out for some time; the name
+ * is DO_HITECH everywhere now and means the same thing in all three.
+ *
+ * There is deliberately no #define here: -DDO_HITECH on the command
+ * line is the whole mechanism.
  */
-#ifndef CCC
-#define DO_HITECH
-#endif
 
 /*
  * Record types

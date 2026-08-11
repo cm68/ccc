@@ -29,7 +29,7 @@
 
 char *progname;
 int verbose;
-#ifdef HITECH
+#ifdef DO_HITECH
 int hitech_mode;    /* -H flag: create HiTech format library */
 #endif
 
@@ -52,7 +52,7 @@ usage()
     fprintf(stderr, "  -x  extract files (all if none specified)\n");
     fprintf(stderr, "  -a  append files to archive\n");
     fprintf(stderr, "  -t  list archive contents\n");
-#ifdef HITECH
+#ifdef DO_HITECH
     fprintf(stderr, "  -H  create HiTech format library (default: Whitesmith)\n");
 #endif
     exit(1);
@@ -526,7 +526,7 @@ next_entry:
     }
 }
 
-#ifdef HITECH
+#ifdef DO_HITECH
 
 /*
  * Scan HiTech object file for symbols
@@ -1037,7 +1037,7 @@ int nfiles;
     free(buf);
 }
 
-#endif /* HITECH */
+#endif /* DO_HITECH */
 
 int
 main(argc, argv)
@@ -1064,7 +1064,7 @@ char **argv;
                 case 'r': mode = 4; break;
                 case 't': mode = 5; break;
                 case 'v': verbose = 1; break;
-#ifdef HITECH
+#ifdef DO_HITECH
                 case 'H': hitech_mode = 1; break;
 #endif
                 default: usage();
@@ -1083,7 +1083,7 @@ char **argv;
     files = &argv[i];
     nfiles = argc - i;
 
-#ifdef HITECH
+#ifdef DO_HITECH
     /* detect archive type for read operations */
     if (mode == 2 || mode == 5) {
         FILE *fp;
@@ -1130,7 +1130,7 @@ char **argv;
 
     switch (mode) {
     case 1:
-#ifdef HITECH
+#ifdef DO_HITECH
         if (hitech_mode)
             ht_create(archive, files, nfiles);
         else
@@ -1145,7 +1145,7 @@ char **argv;
             FILE *fp = fopen(archive, "rb");
             if (fp == NULL) {
                 /* archive doesn't exist, create it */
-#ifdef HITECH
+#ifdef DO_HITECH
                 if (hitech_mode)
                     ht_create(archive, files, nfiles);
                 else

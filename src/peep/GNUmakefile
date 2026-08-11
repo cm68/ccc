@@ -3,8 +3,7 @@
 #
 
 
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 CC = gcc
 
@@ -37,8 +36,9 @@ HEADERS = peep.h
 
 all: peep
 
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+# The compile itself is the default rule in GNUmakefile.inc; this
+# just says what every object here depends on besides its source.
+$(OBJECTS): $(HEADERS)
 
 peep: $(OBJECTS)
 ifeq ($(CC),gcc)
@@ -55,7 +55,7 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: peep
-	cp peep $(UNIXDIR)/lib
+	$(INSTALL) peep $(UNIXDIR)/lib
 
 # Stage1: build each source through the compiler being developed
 stage1: peep
@@ -128,7 +128,7 @@ regression:
 # as it runs on the machine it targets.
 mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
-	cp mxccc/peep.mx $(MXDIR)/bin
+	$(INSTALL) mxccc/peep.mx $(MXDIR)/bin
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm
@@ -152,7 +152,7 @@ com-ccc:
 
 com-install: com-ccc
 	@mkdir -p $(CPMDIR)/bin
-	cp comccc/peep.com $(CPMDIR)/bin
+	$(INSTALL) comccc/peep.com $(CPMDIR)/bin
 
 .PHONY: mx-ccc all clean clobber install stage1 sizecheck regression mx-install com-ccc com-install
 

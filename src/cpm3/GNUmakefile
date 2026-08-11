@@ -7,8 +7,7 @@
 # the things that do - the self-compile check - name it directly.
 #
 
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 CC = gcc
 
@@ -43,7 +42,7 @@ selfcheck: cpm3
 
 install: cpm3
 	@mkdir -p $(UNIXDIR)/bin
-	cp cpm3 $(UNIXDIR)/bin
+	$(INSTALL) cpm3 $(UNIXDIR)/bin
 
 clean:
 	rm -f $(OBJECTS) cpm3 $(CRUFT) $(CRUFTASM)

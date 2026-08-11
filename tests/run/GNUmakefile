@@ -18,9 +18,9 @@
 # own unsigned-char arithmetic - and went with the bootstrap.
 #
 
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
-.PHONY: all native ccc one clean clobber
+.PHONY: all install native ccc one clean clobber
 
 all: native ccc
 
@@ -68,5 +68,11 @@ clean:
 
 clobber: clean
 	rm -f $(CRUFTLOG)
+
+# A test directory produces no deliverable.  The rule is here because
+# every directory in the tree answers to all, install, clean and
+# clobber, and a recursive install should not stop on a missing one.
+install:
+	@echo "tests/run: nothing to install"
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

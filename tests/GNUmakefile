@@ -2,7 +2,7 @@
 # This file defines all tests organized by category
 VERBOSE = -s
 
-include ../cruft.mk
+include ../GNUmakefile.inc
 
 # Subdirectories with test machinery of their own.
 TESTDIRS = gen run
@@ -304,7 +304,19 @@ ALL_TESTS = \
 	$(PORT_TESTS)
 
 # Main test targets
-.PHONY: test tests test-fail test-all
+.PHONY: all install test tests test-fail test-all
+
+# Every directory in the tree answers to all, install, clean and
+# clobber, this one included.  What a test directory builds is test
+# results, so all runs them - here and in the two subdirectories that
+# have machinery of their own.
+all: test-all
+	@for d in $(TESTDIRS); do $(MAKE) -C $$d all || exit 1; done
+
+# Nothing here is a deliverable.  The rule exists so that a recursive
+# install from anywhere above does not stop on a missing target.
+install:
+	@echo "tests: nothing to install"
 
 test:
 	./runtest.sh -k $(VERBOSE) $(ALL_TESTS)

@@ -11,8 +11,7 @@
 # it too - it is the shape of the AST both of them walk.
 #
 
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 CC = gcc
 
@@ -43,8 +42,9 @@ Z80DIR = z80
 
 all: $(ARCHIVE)
 
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+# The compile itself is the default rule in GNUmakefile.inc; this
+# just says what every object here depends on besides its source.
+$(OBJECTS): $(HEADERS)
 
 permalloc.o: ../libc/permaloc.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -56,7 +56,7 @@ $(ARCHIVE): $(OBJECTS)
 # is only for anything else that wants it.
 install: all
 	@mkdir -p $(UNIXDIR)/lib
-	cp $(ARCHIVE) $(UNIXDIR)/lib
+	$(INSTALL) $(ARCHIVE) $(UNIXDIR)/lib
 
 # ---- target ------------------------------------------------------
 
@@ -79,9 +79,9 @@ z80: $(Z80DIR)/$(ARCHIVE)
 
 target-install: z80
 	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
-	cp $(Z80DIR)/$(ARCHIVE) $(MXDIR)/lib
-	cp $(Z80DIR)/$(ARCHIVE) $(CPMDIR)/lib
-	cp $(Z80DIR)/$(ARCHIVE) $(UNIXDIR)/lib
+	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(MXDIR)/lib
+	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(CPMDIR)/lib
+	$(INSTALL) $(Z80DIR)/$(ARCHIVE) $(UNIXDIR)/lib
 
 clean:
 	rm -f $(OBJECTS) $(ARCHIVE) $(CRUFT) $(CRUFTASM)

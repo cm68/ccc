@@ -1,14 +1,17 @@
 #
-# Top-level Makefile for ccc
+# Top-level GNUmakefile for ccc - everything driven from the build
+# host: the host build ("all") and the cross build ("micronix",
+# "cpm").  The native build has its own Makefiles and is not run from
+# here.
 #
-# Orchestrates src/ and holds the install trees.  See tree.mk for the
-# layout and README.md for what lives where.
+# Orchestrates src/ and holds the install trees.  See GNUmakefile.inc
+# for the three builds, the layout, and what the command names mean;
+# README.md for what lives where.
 #
 
 CC = gcc
 
-include tree.mk
-include cruft.mk
+include GNUmakefile.inc
 
 # Directories cleaned from here.  src does its own orchestration;
 # tests is not built by "all" but is where most of the tree's
@@ -32,28 +35,40 @@ host:
 target:
 	$(SUBMAKE) -C src target
 
-# Install an actual toolchain: the driver in bin, everything it runs
-# in the lib beside it.  PREFIX is where it will finally live and is
-# compiled into the driver as the fallback for a bare "ccc" typed at a
-# shell - argv[0] is the typed command, so that case cannot be worked
-# out at run time and there is no environment to ask.  Invoked by a
-# path, the install stays relocatable regardless.
+# INSTALLING IS TWO STEPS, and only the second one needs a password.
 #
-# DESTDIR stages it somewhere else for packaging; the driver still
-# believes it lives at PREFIX, which is what you want.
-PREFIX ?= /usr/local
+#   install     the tree walk.  Every directory copies what it built
+#               into $(UNIXDIR) - bin, lib and usr/include - and the
+#               result is a complete, working toolchain that happens
+#               to be sitting in the build tree.  No privilege, no
+#               destination outside the tree.
+#   sysinstall  that directory, copied onto $(PREFIX).
+#
+# "all" already runs the walk, because the target runtime is compiled
+# by the toolchain being installed and so has to come out of an
+# install tree rather than a scatter of build directories.  So this is
+# a no-op after a build, which is the point: sysinstall refreshes
+# $(PREFIX) without rebuilding anything.
+#
+# It used to depend on micronix and cpm as well - a full Z80 self-host
+# and a CP/M image build - to install a host cross compiler that
+# copies neither of them anywhere.  Those have their own targets.
+install: all
+	@echo "installed into $(UNIXDIR)"
 
-install: all micronix cpm
-	@# forced: the driver's fallback prefix is a -D, and make cannot
-	@# see that changing it makes the existing binary wrong
-	rm -f src/tools/ccc
-	$(SUBMAKE) -C src/tools ccc CCCPREFIX=$(PREFIX)
-	mkdir -p $(DESTDIR)$(PREFIX)/bin $(DESTDIR)$(PREFIX)/lib
-	cp src/tools/ccc $(DESTDIR)$(PREFIX)/bin
-	cp -r unix/lib/. $(DESTDIR)$(PREFIX)/lib
+# The system install.  A plain recursive copy of the tree that
+# "install" just built: unix/bin -> $(PREFIX)/bin, unix/lib ->
+# $(PREFIX)/lib, unix/usr/include -> $(PREFIX)/usr/include.  The
+# driver works out where its passes are from its own path - libdir is
+# bin/../lib, see tools/ccc.c - so the layout carries over unchanged
+# and nothing has to be rebuilt for the new location.
+#
+# sudo, because $(PREFIX) is not ours.  SUDO= runs it without, for a
+# DESTDIR you already own.
+sysinstall: install
+	$(SUDO) $(MKDIR) $(DESTDIR)$(PREFIX)
+	$(SUDO) $(CP) -r $(UNIXDIR)/. $(DESTDIR)$(PREFIX)
 	@echo "installed: $(DESTDIR)$(PREFIX)/bin/ccc, libraries in $(PREFIX)/lib"
-
-old-install: all
 
 clean:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clean; done

@@ -6,8 +6,7 @@
 %.c: %.x
 
 
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 CC = gcc
 
@@ -77,8 +76,9 @@ kwtab.c: mkkw
 dbgtags.c debug.h: ./makedebug.sh
 	./makedebug.sh
 
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+# The compile itself is the default rule in GNUmakefile.inc; this
+# just says what every object here depends on besides its source.
+$(OBJECTS): $(HEADERS)
 
 cpp: $(OBJECTS) $(LIBCCC)
 ifeq ($(CC),gcc)
@@ -113,8 +113,8 @@ clobber: clean
 # in this directory keeps the old name; only what the driver looks for
 # has to agree.
 install: cpp xdump
-	cp cpp $(UNIXDIR)/lib/pass0
-	cp xdump $(UNIXDIR)/bin
+	$(INSTALL) cpp $(UNIXDIR)/lib/pass0
+	$(INSTALL) xdump $(UNIXDIR)/bin
 
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: cpp
@@ -286,7 +286,7 @@ test: langtest
 # as it runs on the machine it targets.
 mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
-	cp mxccc/cpp.mx $(MXDIR)/bin/pass0.mx
+	$(INSTALL) mxccc/cpp.mx $(MXDIR)/bin/pass0.mx
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm
@@ -310,7 +310,7 @@ com-ccc: $(GENERATED)
 
 com-install: com-ccc
 	@mkdir -p $(CPMDIR)/bin
-	cp comccc/cpp.com $(CPMDIR)/bin
+	$(INSTALL) comccc/cpp.com $(CPMDIR)/bin
 
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind mx-install com-ccc com-install
 

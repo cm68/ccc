@@ -742,7 +742,7 @@ int maxlen;
     return i;
 }
 
-#ifdef HITECH
+#ifdef DO_HITECH
 
 /*
  * read Hi-Tech object file
@@ -1306,7 +1306,7 @@ char *name;
     return count;
 }
 
-#endif /* HITECH */
+#endif /* DO_HITECH */
 
 /*
  * Pass 1: assign segment addresses to each object
@@ -1832,7 +1832,7 @@ int is_text;
     if (!buf)
         error("out of memory");
 
-#ifdef HITECH
+#ifdef DO_HITECH
     if (obj->is_hitech) {
         /* Hi-Tech: copy from collected segment buffer */
         if (is_text) {
@@ -2024,7 +2024,7 @@ char *s;
     return val;
 }
 
-#ifdef HITECH
+#ifdef DO_HITECH
 
 /*
  * check if file is Hi-Tech object format
@@ -2090,7 +2090,7 @@ char *name;
     return result;
 }
 
-#endif /* HITECH */
+#endif /* DO_HITECH */
 
 /*
  * check if file is an archive
@@ -2119,7 +2119,7 @@ char *name;
     if (magic16 == AR_MAGIC)
         return 1;
 
-#ifdef HITECH
+#ifdef DO_HITECH
     /* check Hi-Tech library */
     if (is_hitech_lib(name))
         return 2;
@@ -2273,7 +2273,7 @@ char **argv;
     for (f = infiles; f; f = f->next) {
         if (f->is_archive == 0) {
             /* object file - auto-detect format */
-#ifdef HITECH
+#ifdef DO_HITECH
             if (is_hitech_obj(f->name))
                 read_ht_object(f->name);
             else
@@ -2290,7 +2290,7 @@ char **argv;
             if (f->is_archive == 1) {
                 /* Whitesmith archive */
                 added += read_archive(f->name);
-#ifdef HITECH
+#ifdef DO_HITECH
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */
                 added += read_ht_ar(f->name);

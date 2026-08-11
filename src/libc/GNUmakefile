@@ -25,8 +25,7 @@
 ARCHIVE = libc.a
 
 # The .s files here are sources, so CRUFTASM is deliberately absent.
-include ../../tree.mk
-include ../../cruft.mk
+include ../../GNUmakefile.inc
 
 .SUFFIXES:
 
@@ -107,9 +106,9 @@ $(BUILD)/$(ARCHIVE): $(OBJS)
 # both.  If it ever is not, that is a bug - see "make libcheck".
 target-install: all
 	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(UNIXDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(MXDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(CPMDIR)/lib
-	cp $(BUILD)/$(ARCHIVE) $(UNIXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(MXDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(CPMDIR)/lib
+	$(INSTALL) $(BUILD)/$(ARCHIVE) $(UNIXDIR)/lib
 install: target-install
 
 clean:
