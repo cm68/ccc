@@ -43,6 +43,13 @@ static int fnindex;		/* function index for unique labels */
  * room for the terminator.  The object format's own limit is the
  * assembler's to complain about, and it does.
  */
+/*
+ * Case values that cannot be dispatched.  Counted rather than fatal on
+ * the spot so one run names them all, and reported by pass2.c as a
+ * failed compile - see the note at the CASE below.
+ */
+int nbadcase;
+
 static char funcname[20];
 static short framesize;		/* bytes of local stack frame */
 static short nparams;		/* how many parameters, for the frame test */
@@ -794,6 +801,15 @@ parseStmt(void)
 				 * outf does %s, %c and int - there is no %ld.
 				 */
 				if (e->u.val < 0 || e->u.val > 255) {
+					/*
+					 * Counted as well as written out: the
+					 * count fails the compile here, with
+					 * the source still named, and the
+					 * .error catches anyone assembling a
+					 * .s kept from a -s run, which never
+					 * reaches the assembler otherwise.
+					 */
+					nbadcase++;
 					outf("\t.error case %d does not fit a byte - switch on a narrower value\n",
 					    (int)e->u.val);
 				}

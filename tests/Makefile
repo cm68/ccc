@@ -198,6 +198,10 @@ CPP_FAIL_TESTS = \
 INIT_FAIL_TESTS = \
 	union_init.c
 
+# Codegen limits that must be diagnosed, not silently miscompiled
+LIMIT_FAIL_TESTS = \
+	switch_big.c
+
 # Statement tests (expected to fail - testing error detection)
 STMT_FAIL_TESTS =
 
@@ -207,6 +211,7 @@ FAIL_TESTS = \
 	$(PTR_FAIL_TESTS) \
 	$(CPP_FAIL_TESTS) \
 	$(INIT_FAIL_TESTS) \
+	$(LIMIT_FAIL_TESTS) \
 	$(STMT_FAIL_TESTS)
 
 # Syscall tests

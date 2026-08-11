@@ -5,6 +5,7 @@
 
 /* counted in lower.c, one per shape the rules could not match */
 extern int nincomplete;
+extern int nbadcase;
 #include "libutil.h"
 #include <fcntl.h>
 #include <unistd.h>
@@ -160,6 +161,29 @@ main(int argc, char **argv)
 	 * complaint either.  Fail, so a build stops here rather than
 	 * linking a program with a statement missing from it.
 	 */
+	/*
+	 * A case value outside 0..255 cannot be dispatched at all: every
+	 * shape the dispatch has compares eight bits, and a word control
+	 * goes to the no-match label before the table is consulted, so
+	 * the arm is unreachable.  Said here, while the source being
+	 * compiled is still named, rather than left to the .error in the
+	 * output - that only surfaces if the assembler runs, and a -s
+	 * run never gets that far.
+	 */
+	if (nbadcase) {
+		char nbuf[12];
+		char *q = nbuf + 11;
+		int n = nbadcase;
+
+		*q = 0;
+		do { *--q = '0' + n % 10; n /= 10; } while (n);
+		errout(argv[2]);
+		errout(": ");
+		errout(q);
+		errout(" switch case value(s) outside 0..255 - the dispatch"
+		    " compares a byte, so those arms can never be reached\n");
+		return 1;
+	}
 	if (nincomplete) {
 		char nbuf[12];
 		char *q = nbuf + 11;
