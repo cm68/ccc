@@ -12,6 +12,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/*
+ * __malloc is the allocation that may come back empty.  On Micronix
+ * malloc reports and exits, so asking "is there room" has to go to the
+ * entry point underneath it; on the host, malloc is already that.
+ */
+#ifdef linux
+#define __malloc malloc
+#endif
 #endif
 
 #include "wsobj.h"
@@ -1614,11 +1623,93 @@ struct outreloc *rlist;
  * seg_base: base address adjustment for this object's segment
  * is_text: 1 for text segment, 0 for data segment (for -r reloc collection)
  */
+/*
+ * The segment being relocated, reached one byte at a time.
+ *
+ * There are two ways to hold it.  If the whole segment fits in memory
+ * it is read in, patched, and written once - one read and one write,
+ * which is what a link on a machine with room should cost.  If it does
+ * not fit, the raw bytes are copied to the output first and patched
+ * where they lie, through a window that is written back when it moves.
+ *
+ * Both look the same to apply_relocs, which is the point: the
+ * relocation logic is delicate and there is only one copy of it.  The
+ * memory case is simply a window as big as the segment, and the
+ * fallback is a write-back cache that spills.
+ *
+ * Relocation positions only ever move forward - the stream is a series
+ * of bumps along the segment - so one window is enough and it is never
+ * asked to go back.
+ */
+#define WINSZ 512
+
+static unsigned char *segbuf;       /* whole segment, or 0 when spilled */
+static unsigned char winbuf[WINSZ];
+static FILE *winfp;                 /* what the window is a window onto */
+static long winbase = -1;           /* file offset of winbuf[0] */
+static long winlo, winhi;           /* the segment, so a short window */
+static int winlen, windirty;        /* cannot write past the end of it */
+
+static void
+winflush()
+{
+    if (winbase >= 0 && windirty) {
+        if (fseek(winfp, winbase, SEEK_SET) != 0)
+            error("seek error");
+        if (fwrite(winbuf, 1, winlen, winfp) != winlen)
+            error("write error");
+    }
+    windirty = 0;
+}
+
+static void
+winload(off)
+long off;
+{
+    long start;
+
+    if (winbase >= 0 && off >= winbase && off < winbase + winlen)
+        return;
+    winflush();
+    start = off - ((off - winlo) % WINSZ);
+    winlen = WINSZ;
+    if (start + winlen > winhi)
+        winlen = (int)(winhi - start);
+    if (fseek(winfp, start, SEEK_SET) != 0)
+        error("seek error");
+    if (fread(winbuf, 1, winlen, winfp) != winlen)
+        error("read error");
+    winbase = start;
+}
+
+static unsigned char
+bget(pos)
+int pos;
+{
+    if (segbuf)
+        return segbuf[pos];
+    winload(winlo + pos);
+    return winbuf[winlo + pos - winbase];
+}
+
+static void
+bput(pos, v)
+int pos;
+unsigned char v;
+{
+    if (segbuf) {
+        segbuf[pos] = v;
+        return;
+    }
+    winload(winlo + pos);
+    winbuf[winlo + pos - winbase] = v;
+    windirty = 1;
+}
+
 void
-apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text)
+apply_relocs(obj, reloc_off, seg_size, seg_base, is_text)
 struct object *obj;
 long reloc_off;
-unsigned char *buf;
 int seg_size;
 unsigned short seg_base;
 int is_text;
@@ -1752,25 +1843,25 @@ int is_text;
                 if (hilo == 0) {
                     /* word relocation */
                     if (pos + 1 < seg_size) {
-                        val = buf[pos] | (buf[pos + 1] << 8);
+                        val = bget(pos) | (bget(pos + 1) << 8);
                         val += add;
-                        buf[pos] = val & 0xff;
-                        buf[pos + 1] = val >> 8;
+                        bput(pos, val & 0xff);
+                        bput(pos + 1, val >> 8);
                     }
                 } else if (hilo == 1) {
                     /* lo byte relocation */
-                    val = buf[pos] + (add & 0xff);
-                    buf[pos] = val & 0xff;
+                    val = bget(pos) + (add & 0xff);
+                    bput(pos, val & 0xff);
                 } else {
                     /* hi byte relocation */
-                    val = buf[pos] + (add >> 8);
-                    buf[pos] = val & 0xff;
+                    val = bget(pos) + (add >> 8);
+                    bput(pos, val & 0xff);
                 }
 
                 if (verbose > 2) {
                     printf("    reloc @%04x += %04x -> %02x (%s)\n",
                            seg_base + pos, add,
-                           hilo ? buf[pos] : (buf[pos] | (buf[pos+1]<<8)),
+                           hilo ? bget(pos) : (bget(pos) | (bget(pos+1)<<8)),
                            hilo == 0 ? "word" : hilo == 1 ? "lo" : "hi");
                 }
             }
@@ -1873,9 +1964,8 @@ unsigned short seg_base;
  * to the data location where they are defined
  */
 void
-patch_lnksyms(obj, buf, seg_size)
+patch_lnksyms(obj, seg_size)
 struct object *obj;
-unsigned char *buf;
 int seg_size;
 {
     unsigned short vals[LSYM_COUNT];
@@ -1890,8 +1980,8 @@ int seg_size;
 
     for (i = 0; i < LSYM_COUNT; i++) {
         if (lnksyms[i].obj == obj && lnksyms[i].off + 1 < seg_size) {
-            buf[lnksyms[i].off] = vals[i] & 0xff;
-            buf[lnksyms[i].off + 1] = vals[i] >> 8;
+            bput(lnksyms[i].off, vals[i] & 0xff);
+            bput(lnksyms[i].off + 1, vals[i] >> 8);
             if (verbose > 1)
                 printf("  patched %s at data+0x%04x = 0x%04x\n",
                        lnksyms[i].name, lnksyms[i].off, vals[i]);
@@ -1912,50 +2002,97 @@ unsigned short seg_base;
 int is_text;
 FILE *dest;
 {
-    unsigned char *buf;
+    static unsigned char cbuf[WINSZ];
+    long obase;
+    int done, want;
 
     if (seg_size == 0)
         return;
 
-    buf = (unsigned char *)xalloc(seg_size);
-    if (!buf)
-        error("out of memory");
+    /*
+     * Ask for the whole segment.  __malloc rather than malloc: coming
+     * back empty is not a failure here, it is the answer to "is there
+     * room", and the spilled path below is what happens when there is
+     * not.
+     */
+    segbuf = (unsigned char *)__malloc(seg_size);
 
 #ifdef DO_HITECH
     if (obj->is_hitech) {
-        /* Hi-Tech: copy from collected segment buffer */
+        if (!segbuf)
+            error("out of memory");     /* hi-tech has no spilled path */
         if (is_text) {
             if (obj->ht_text)
-                memcpy(buf, obj->ht_text, seg_size);
+                memcpy(segbuf, obj->ht_text, seg_size);
             else
-                memset(buf, 0, seg_size);
-            apply_htrel(obj, buf, SEG_TEXT, seg_size, seg_base);
+                memset(segbuf, 0, seg_size);
+            apply_htrel(obj, segbuf, SEG_TEXT, seg_size, seg_base);
         } else {
             if (obj->ht_data)
-                memcpy(buf, obj->ht_data, seg_size);
+                memcpy(segbuf, obj->ht_data, seg_size);
             else
-                memset(buf, 0, seg_size);
-            apply_htrel(obj, buf, SEG_DATA, seg_size, seg_base);
-            patch_lnksyms(obj, buf, seg_size);
+                memset(segbuf, 0, seg_size);
+            apply_htrel(obj, segbuf, SEG_DATA, seg_size, seg_base);
+            patch_lnksyms(obj, seg_size);
         }
-    } else
+        if (fwrite(segbuf, 1, seg_size, dest) != seg_size)
+            error("write error");
+        free(segbuf);
+        segbuf = 0;
+        return;
+    }
 #endif
-    {
-        /* Whitesmith: read from file */
-        fseek(obj->fp, (long)(obj->file_base + seg_start), SEEK_SET);
-        if (fread(buf, 1, seg_size, obj->fp) != seg_size)
-            error("read error");
 
-        apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text);
+    if (fseek(obj->fp, (long)(obj->file_base + seg_start), SEEK_SET) != 0)
+        error("seek error");
+
+    if (segbuf) {
+        /* it fits: one read, patch it, one write */
+        if (fread(segbuf, 1, seg_size, obj->fp) != seg_size)
+            error("read error");
+        apply_relocs(obj, reloc_off, seg_size, seg_base, is_text);
         if (!is_text)
-            patch_lnksyms(obj, buf, seg_size);
+            patch_lnksyms(obj, seg_size);
+        if (fwrite(segbuf, 1, seg_size, dest) != seg_size)
+            error("write error");
+        free(segbuf);
+        segbuf = 0;
+        return;
     }
 
-    /* write to output */
-    if (fwrite(buf, 1, seg_size, dest) != seg_size)
-        error("write error");
+    /*
+     * It does not fit.  Copy the segment out as it stands and patch it
+     * where it lies, through the window.  Costs a second pass over the
+     * bytes and a seek per window, and is what makes a link possible at
+     * all when the segment is bigger than the room left.
+     */
+    obase = ftell(dest);
+    for (done = 0; done < seg_size; done += want) {
+        want = seg_size - done;
+        if (want > WINSZ)
+            want = WINSZ;
+        if (fread(cbuf, 1, want, obj->fp) != want)
+            error("read error");
+        if (fwrite(cbuf, 1, want, dest) != want)
+            error("write error");
+    }
 
-    free(buf);
+    winfp = dest;
+    winlo = obase;
+    winhi = obase + seg_size;
+    winbase = -1;
+    windirty = 0;
+
+    apply_relocs(obj, reloc_off, seg_size, seg_base, is_text);
+    if (!is_text)
+        patch_lnksyms(obj, seg_size);
+
+    winflush();
+    winbase = -1;
+
+    /* the window left it wherever it last wrote; the next segment appends */
+    if (fseek(dest, obase + seg_size, SEEK_SET) != 0)
+        error("seek error");
 }
 
 /*
@@ -1975,7 +2112,12 @@ pass2_output()
     /* default to 15-char symbols */
     symlen = out_symlen ? out_symlen : 15;
 
-    outfp = fopen(outfile, "wb");
+    /*
+     * "w+b", not "wb": a segment too big to hold is copied out and
+     * then patched where it lies, which means reading back what was
+     * just written.
+     */
+    outfp = fopen(outfile, "w+b");
     if (outfp == NULL)
         error2("cannot create", outfile);
 
@@ -2428,8 +2570,14 @@ char **argv;
     /* Pass 2: write output */
     pass2_output();
 
-    /* Print load map */
-    print_map();
+    /*
+     * The map and the symbol list are a diagnostic, not a product.
+     * A link of any size buries whatever the user was actually told
+     * under a few hundred lines of it, and on this machine every one
+     * of those lines is a write() through the simulator.
+     */
+    if (verbose)
+        print_map();
 
     /* close all object files (avoid double-close for archive members) */
     {
