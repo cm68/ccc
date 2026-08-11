@@ -2225,11 +2225,25 @@ struct rule rules[] = {
 	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
 	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
-	/* unary: operand is the LEFT child (T_IDX_S_LD reads $R) */
+	/*
+	 * Prefix on a word in a frame slot.  Load, step, store - and the
+	 * new value is the answer, so unlike the postfix forms above
+	 * there is nothing to undo.
+	 *
+	 * Written through $t and $T so it lands wherever it was asked
+	 * to.  Naming l and h outright, as this did, meant there was no
+	 * rule at all when the answer was wanted in DE - which is what a
+	 * relational asks for its right operand.  "if (++i >= n)" then
+	 * had no reduction: pass2 loaded n into HL, loaded i on top of
+	 * it, and jumped on whatever flags inc hl had left.  See
+	 * PREINCBUG.
+	 */
 	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
-	  "\tld l,($L)\n\tld h,($L+)\n" F_INCHL T_IDX_S_ST, R_HL),
+	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
 	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
-	  "\tld l,($L)\n\tld h,($L+)\n" F_DECHL T_IDX_S_ST, R_HL),
+	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
 	/*
 	 * A byte step on a frame slot needs no register at all: inc/dec
 	 * (iy+d) is one read-modify-write and it sets Z itself.  Where
