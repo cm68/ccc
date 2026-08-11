@@ -1,0 +1,105 @@
+.he "wslib (1)                    8/11/26                    wslib (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+wslib
+- object file librarian
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+wslib -[flags] archive [file ...]
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Wslib
+collects object files into an archive that
+.bd
+wsld
+can search.  An archive is not simply a concatenation: it carries a
+directory of the symbols its members define, so the linker can decide
+which members it needs without reading all of them.
+
+The point of a library is that only what is referenced is taken from
+it.  A program that calls one routine from an archive of two hundred
+gets one routine.  Nothing is gained by splitting a program's own
+objects into a library, and something is lost - the order the linker
+sees them in stops being the order they were given.
+
+The first argument after the flags names the archive.  The rest name
+members to operate on; where none are given, the operation applies to
+all of them.
+
+Exactly one of these says what to do:
+
+.in +10
+.ta 10
+.ti -10
+-r	Replace the named members, adding any that are not already
+there.  This is the usual way to build an archive.  With -c the
+archive is created if it does not exist.
+
+.ti -10
+-a	Append the named files to the end of the archive, without
+looking to see whether they are already in it.
+
+.ti -10
+-x	Extract the named members into files in the current
+directory.  The archive is not changed.
+
+.ti -10
+-t	List the archive's members.
+
+.ti -10
+-c	Create the archive, discarding whatever was there.  With -r
+it means create only if absent.
+
+.in -10
+and these may be added to any of them:
+
+.in +10
+.ta 10
+.ti -10
+-v	Name each member as it is processed.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), wsld (1), wsnm (1), asz (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+A file that is not an object in the expected format is reported and
+refused.  An archive that ends in the middle of a member is reported
+as truncated.
+
+
+.in -5
+.bd
+NOTES
+.in +5
+.br
+A driver built with Hi-Tech format support - which is not the default,
+and has not been since that compiler stopped being the bootstrap -
+also takes -H to write an archive in that format.

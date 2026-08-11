@@ -1,0 +1,119 @@
+.he "wsld (1)                     8/11/26                     wsld (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+wsld
+- link editor
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+wsld [options] file ...
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Wsld
+combines object files and libraries into one module, resolving the
+references between them.  The objects are in the Whitesmiths' format
+that
+.bd
+asz
+writes and
+.bd
+wslib
+archives.  The result is an executable image unless -r says otherwise,
+and is left in "a.out" if -o does not name it.
+
+Files are taken in the order given, which matters.  An object is
+linked unconditionally; a library is searched, and only those members
+that resolve a reference outstanding at the time the library is
+reached are taken from it.  A library named before the object that
+needs it contributes nothing.  This is why the C library appears twice
+in some link lines: the system-call library calls back into it, and
+the linker makes one pass.
+
+The first file is normally the startup object - crt0.o for Micronix,
+crtcpm.o for CP/M - which is what sets up the arguments and calls
+main.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-o file	Write the output to
+.bd
+file.
+The default is "a.out".
+
+.ti -10
+-r	Emit relocatable output, to be linked again later.  The
+relocation information and the symbol table are kept, and undefined
+symbols are not an error.
+
+.ti -10
+-s	Strip the symbol table from the output.
+
+.ti -10
+-9	Write nine-character symbols rather than fifteen, for output
+that has to be read by older tools.
+
+.ti -10
+-l x	Search the library "libx.a" at this point in the file list.
+
+.ti -10
+-L dir	Add
+.bd
+dir
+to the list of directories searched for libraries.
+
+.ti -10
+-Ttext=n	Set the base address of the text segment.  Micronix
+programs start at 0x100.
+
+.ti -10
+-Tdata=n	Set the base address of the data segment.  The default
+is the end of text.
+
+.ti -10
+-Tbss=n	Set the base address of the bss segment.  The default
+is the end of data.
+
+.ti -10
+-V	List the object files that were linked, with the address each
+segment was given.
+
+.ti -10
+-v	Report what the link is doing.  Repeat it for more.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), asz (1), wslib (1), wsnm (1), wssize (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+A symbol that nothing defines is reported by name and the link fails,
+unless -r was given.  A symbol defined twice is reported with both
+definitions.

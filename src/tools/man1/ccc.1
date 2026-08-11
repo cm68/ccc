@@ -1,0 +1,222 @@
+.he "ccc (1)                      8/11/26                      ccc (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+ccc
+- C compiler
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+ccc [options] file ...
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Ccc
+is the supervisor for the C compiler.  It sorts its arguments by
+suffix and runs the passes that each one needs.
+
+Arguments ending in ".c" are C source and are put through the whole
+chain:
+.bd
+pass0
+lexes and preprocesses,
+.bd
+c0
+parses,
+.bd
+c1
+generates code,
+.bd
+asz
+assembles.
+Arguments ending in ".s" are assembler source and are assembled.
+Arguments ending in ".o" or ".a" are objects and archives and are
+passed to
+.bd
+wsld
+to be linked.  Unless told otherwise the result is left in "a.out".
+
+Nothing about where the compiler lives is compiled in.
+.bd
+Ccc
+works out where its passes are from the path it was invoked by: the
+directory it was found in, with "lib" beside rather than under it, so
+/bin/ccc uses /lib and /usr/local/bin/ccc uses /usr/local/lib.  A name
+typed with no slash in it says nothing about where the shell found it,
+and only that case falls back to the directory the driver was built
+for.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-o file	Write the output to
+.bd
+file.
+With -c or -s it names the object or the assembly instead, and only
+one input file may be given.  The default is "a.out".
+
+.ti -10
+-c	Compile and assemble, but do not link.  Leaves one ".o" per
+source.
+
+.ti -10
+-s	Compile only, leaving the assembly in a ".s" file.  The
+assembler is not run.
+
+.ti -10
+-O	Run
+.bd
+peep
+over the assembly before it is assembled.  This is worth a few percent
+of the text, which on this machine is the difference between a program
+fitting and not.
+
+.ti -10
+-k	Keep every intermediate - the ".x", ".1", ".2", ".s" and ".o" -
+rather than removing them on the way out.  For looking at what a pass
+did.
+
+.ti -10
+-m sys	Produce binaries for
+.bd
+system,
+which is "micronix" or "cpm".  This selects the startup file and the
+system-call library only; every target's libraries sit side by side in
+the one directory.
+
+.ti -10
+-I dir	Add
+.bd
+dir
+to the list searched for include files in quotes.
+
+.ti -10
+-i dir	Set the directory searched for include files in angle
+brackets.  The default is worked out from where the driver was found,
+and is /usr/include on an ordinary installation.
+
+.ti -10
+-Dname	Define
+.bd
+name
+to the preprocessor, as though by a #define.  With no value it is
+defined as 1.
+
+.ti -10
+-l x	Link with the library "libx.a", searched for in the library
+directories.
+
+.ti -10
+-L dir	Add
+.bd
+dir
+to the list searched for libraries.
+
+.ti -10
+-S	Strip the symbol table from the output.
+
+.ti -10
+-9	Write nine-character symbols in the output rather than
+fifteen, for objects that have to be read by older tools.
+
+.ti -10
+-E	Preprocess only, and write the result to standard output.
+
+.ti -10
+-H	Give
+.bd
+c0
+the human-readable ".i" file rather than the ".x" lexeme stream.
+Slower, and for reading rather than for building.
+
+.ti -10
+-x	Print each command as it is run.
+
+.ti -10
+-n	Print the commands without running any of them.
+
+.ti -10
+-C flags	Pass -v
+.bd
+flags
+to
+.bd
+pass0.
+
+.ti -10
+-1 flags	Pass -v
+.bd
+flags
+to
+.bd
+c0.
+
+.ti -10
+-2 flags	Pass -v
+.bd
+flags
+to
+.bd
+c1.
+
+.in -10
+.in -5
+.bd
+FILES
+.in +5
+.br
+/lib/pass0 - the preprocessor and lexer.
+
+/lib/c0 - the parser.
+
+/lib/c1 - the code generator.
+
+/lib/peep - the peephole optimizer, run for -O.
+
+/lib/asz - the assembler.
+
+/lib/wsld - the linker.
+
+/lib/libc.a - the C library.
+
+/lib/libu.a - the Micronix system-call library; libcpm.a is CP/M's.
+
+/lib/crt0.o - the startup file; crtcpm.o is CP/M's.
+
+/tmp/ccc* - the intermediates, removed on the way out unless -k.
+.sp 2
+
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+pass0 (1), c0 (1), c1 (1), peep (1), asz (1), wsld (1), wslib (1),
+wsnm (1), wssize (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+The driver reports which pass failed and on which file, and stops
+there.  A pass that fails leaves its intermediates behind only if -k
+was given.

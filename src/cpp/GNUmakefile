@@ -112,7 +112,7 @@ clobber: clean
 # lexed .x that c0 reads rather than preprocessed C.  The build product
 # in this directory keeps the old name; only what the driver looks for
 # has to agree.
-install: cpp xdump
+install: cpp xdump man-install
 	$(INSTALL) cpp $(HOSTDIR)/lib/pass0
 	$(INSTALL) xdump $(HOSTDIR)/bin
 
@@ -315,6 +315,19 @@ com-install: com-ccc
 	@mkdir -p $(CPMDIR)/bin
 	$(INSTALL) comccc/cpp.com $(CPMDIR)/bin
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind mx-install com-ccc com-install
+# The manual goes with what it documents.  man(1) on the target looks
+# in /usr/man/man<n> - the path is in the binary - so the staged tree
+# carries the pages under usr, the same as the headers.
+#
+# They live in man1/ rather than here, and have to: ".1" is pass1's
+# AST suffix and is swept by CRUFT, so a page beside the source would
+# be removed by the next "make clean".
+MANPAGES = man1/pass0.1
+
+man-install:
+	@mkdir -p $(MXDIR)/usr/man/man1
+	$(INSTALL) $(MANPAGES) $(MXDIR)/usr/man/man1
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind mx-install com-ccc com-install man-install
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

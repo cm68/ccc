@@ -1,0 +1,76 @@
+.he "wssize (1)                   8/11/26                   wssize (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+wssize
+- print the segment sizes of an object file
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+wssize file ...
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Wssize
+prints the size of each segment of an object file or an executable, and
+their total.  One line per file, under a heading:
+
+.in +5
+.sp
+   text	   data	    bss	    dec	    hex	filename
+.sp
+.in -5
+.bd
+Text
+is the code,
+.bd
+data
+the initialised data, and
+.bd
+bss
+the data that is zero when the program starts and so occupies no room
+in the file.  The total is given twice, in decimal and in hexadecimal,
+because one is easier to compare against the last build and the other
+against an address.
+
+An archive is read member by member and each member is reported under
+its own name, so the size of a library is the sum of what it would
+contribute rather than the size of the file.
+
+The number that matters on this machine is the total.  A program has
+to fit in memory alongside whatever it allocates, and bss counts
+against that even though it costs nothing on disc.
+
+There are no options.
+
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), wsld (1), wsnm (1), wslib (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+A file too small to hold a header, or one whose header is not in the
+expected format, is reported and skipped; the remaining files are
+still read.

@@ -1,0 +1,79 @@
+.he "wsnm (1)                     8/11/26                     wsnm (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+wsnm
+- print the contents of an object file
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+wsnm [options] file.o ...
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Wsnm
+prints what is inside an object file or an archive.  With no options it
+prints the symbol table: for each symbol its value, the segment it
+belongs to, whether it is global or local, and whether it is defined
+there or referenced from elsewhere.
+
+An archive is read member by member, each member's contents printed
+under its name, so the same options that work on an object work on a
+library.
+
+It is the tool for the question "why will this not link", which is
+usually answered by finding which object defines a symbol, or that
+none does.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-v	Print the header: the size of each segment, the entry point,
+and whether the file is relocatable.
+
+.ti -10
+-r	Print the relocation entries - each place the linker will
+have to patch, and what it will patch it with.
+
+.ti -10
+-b	Print the text and data segments as a hexadecimal dump.
+
+.ti -10
+-d	Disassemble the text segment.
+
+.ti -10
+-g	Write assembler source that would produce the object again.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), wsld (1), wslib (1), wssize (1), asz (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+A file that is not an object in the expected format is reported and
+skipped; the remaining files are still read.

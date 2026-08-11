@@ -54,7 +54,7 @@ clobber: clean
 	rm -f ./peep $(CRUFTLOG)
 	rm -rf $(CRUFTDIRS)
 
-install: peep
+install: peep man-install
 	$(INSTALL) peep $(HOSTDIR)/lib
 
 # Stage1: build each source through the compiler being developed
@@ -157,6 +157,19 @@ com-install: com-ccc
 	@mkdir -p $(CPMDIR)/bin
 	$(INSTALL) comccc/peep.com $(CPMDIR)/bin
 
-.PHONY: mx-ccc all clean clobber install stage1 sizecheck regression mx-install com-ccc com-install
+# The manual goes with what it documents.  man(1) on the target looks
+# in /usr/man/man<n> - the path is in the binary - so the staged tree
+# carries the pages under usr, the same as the headers.
+#
+# They live in man1/ rather than here, and have to: ".1" is pass1's
+# AST suffix and is swept by CRUFT, so a page beside the source would
+# be removed by the next "make clean".
+MANPAGES = man1/peep.1
+
+man-install:
+	@mkdir -p $(MXDIR)/usr/man/man1
+	$(INSTALL) $(MANPAGES) $(MXDIR)/usr/man/man1
+
+.PHONY: mx-ccc all clean clobber install stage1 sizecheck regression mx-install com-ccc com-install man-install
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

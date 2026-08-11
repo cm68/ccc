@@ -119,7 +119,7 @@ clobber: clean
 LIBTOOLS = asz wsld astpp
 BINTOOLS = ccc wslib wsnm wssize
 
-install: all
+install: all man-install
 	@mkdir -p $(HOSTDIR)/bin $(HOSTDIR)/lib
 	$(INSTALL) $(BINTOOLS) $(HOSTDIR)/bin
 	$(INSTALL) $(LIBTOOLS) $(HOSTDIR)/lib
@@ -237,7 +237,20 @@ link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 regression:
 	../../tests/regress.sh --filter src/tools/ $(REGRESS_FLAGS)
 
-.PHONY: all clean clobber test install stage1 sizecheck link regression
+# The manual goes with what it documents.  man(1) on the target looks
+# in /usr/man/man<n> - the path is in the binary - so the staged tree
+# carries the pages under usr, the same as the headers.
+#
+# They live in man1/ rather than here, and have to: ".1" is pass1's
+# AST suffix and is swept by CRUFT, so a page beside the source would
+# be removed by the next "make clean".
+MANPAGES = man1/ccc.1 man1/wsld.1 man1/wslib.1 man1/wsnm.1 man1/wssize.1
+
+man-install:
+	@mkdir -p $(MXDIR)/usr/man/man1
+	$(INSTALL) $(MANPAGES) $(MXDIR)/usr/man/man1
+
+.PHONY: all clean clobber test install stage1 sizecheck link regression man-install
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

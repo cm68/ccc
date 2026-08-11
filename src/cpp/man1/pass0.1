@@ -1,0 +1,134 @@
+.he "pass0 (1)                    8/11/26                    pass0 (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+pass0
+- C preprocessor and lexer
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+pass0 [options] source.c
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Pass0
+is the first pass of the C compiler.  It is not the C preprocessor of
+a Unix and does not write preprocessed C: it expands the directives,
+and then reduces what is left to a stream of lexemes for
+.bd
+c0
+to parse.  The compiler is spared reading characters twice, which on
+this machine is worth having.
+
+Given "-o base", the lexeme stream is written to "base.x".  That is
+what
+.bd
+c0
+reads.  With -p a readable form of the same thing is written to
+"base.i" as well.
+
+It handles #define with and without arguments, #undef, #include,
+#if, #ifdef, #ifndef, #else, #elif, #endif and #line, and the usual
+predefined names.  Conditional arithmetic is done at the width the
+target uses, not the host's, so an expression tests the same way in
+the compiler as it will in the program.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-o base	Write the lexeme stream to "base.x".  Required unless -E
+was given.
+
+.ti -10
+-I dir	Add
+.bd
+dir
+to the list searched for files named in quotes.  These are searched
+before the system directory.
+
+.ti -10
+-i dir	Set the directory searched for files named in angle brackets.
+
+.ti -10
+-Dname	Define
+.bd
+name,
+as though the source began with a #define.  With no value it is
+defined as 1.
+
+.ti -10
+-E	Preprocess and write the result to standard output rather
+than to a lexeme file.
+
+.ti -10
+-p	Write "base.i" beside "base.x": the same output in a form
+that can be read.
+
+.ti -10
+-N	Suppress the line markers that tell the later passes which
+line of which file a lexeme came from.  Diagnostics from
+.bd
+c0
+and
+.bd
+c1
+lose their positions, so this is for looking at output, not for
+building.
+
+.ti -10
+-h	Print a summary of these options.
+
+.ti -10
+-v mask	Set the debugging verbosity to the hexadecimal
+.bd
+mask.
+Present only in a compiler built with debugging.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), c0 (1), c1 (1), xdump (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+Errors name the file and line they were found on and are written to
+standard error.  The exit status is non-zero if any were reported.
+
+
+.in -5
+.bd
+NOTES
+.in +5
+.br
+The program is built under the name
+.bd
+cpp
+and installed as
+.bd
+pass0,
+which is the name the driver runs it by.  It is the first pass rather
+than a preprocessor, and the name says so.

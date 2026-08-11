@@ -105,6 +105,12 @@ tests/sim
 !src/*/*.s
 !src/tools/tests/*.s
 
+# The manual.  ".1" up there is pass1's AST; down here it is section
+# one of the manual, and the pages are sources.  They live in man1/
+# for exactly this reason - the suffix is spoken for - and the same
+# collision is why "make clean" cannot sweep them either.
+!src/*/man1/*.1
+
 # regress.sh baselines are checked in: .x lexeme dumps, .rc exit codes
 # and .err stderr, all of which the rules above would otherwise hide.
 !tests/baseline/**
