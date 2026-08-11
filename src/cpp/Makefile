@@ -107,8 +107,13 @@ clobber: clean
 	rm -f ./cpp mkkw xdump $(CRUFTLOG)
 	rm -rf $(CRUFTDIRS)
 
+# Installed as pass0, which is the name the driver runs it by - it is
+# the first pass, not the C preprocessor of a Unix, and it writes the
+# lexed .x that c0 reads rather than preprocessed C.  The build product
+# in this directory keeps the old name; only what the driver looks for
+# has to agree.
 install: cpp xdump
-	cp cpp $(UNIXDIR)/lib
+	cp cpp $(UNIXDIR)/lib/pass0
 	cp xdump $(UNIXDIR)/bin
 
 # Stage1: run cpp, c0, and c1 on each source file
@@ -281,7 +286,7 @@ test: langtest
 # as it runs on the machine it targets.
 mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
-	cp mxccc/cpp.mx $(MXDIR)/bin
+	cp mxccc/cpp.mx $(MXDIR)/bin/pass0.mx
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm

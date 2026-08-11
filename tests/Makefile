@@ -376,7 +376,7 @@ regression:
 
 # Generate .ast from .c (cpp creates .x, cc1 parses to AST)
 %.ast: %.c
-	../unix/lib/cpp -DCCC -i../micronix/include -I. $<
+	../unix/lib/pass0 -DCCC -i../micronix/include -I. $<
 	../unix/bin/cc1 -o $@ $*.x
 
 # Generate pretty-printed .pp from .ast

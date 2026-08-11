@@ -3,7 +3,7 @@
 #
 # The compiler is four passes and a shared support library:
 #
-#   cpp     preprocessor and token normalizer   -> unix/lib/cpp
+#   cpp     preprocessor and token normalizer   -> unix/lib/pass0
 #   pass1   parser, emits the AST               -> unix/lib/c0
 #   pass2   code generator                      -> unix/lib/c1
 #   peep    peephole optimizer                  -> unix/lib/peep

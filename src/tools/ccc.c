@@ -10,7 +10,19 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-#define MAX_ARGS 2560
+/*
+ * Thirteen arrays in main are MAX_ARGS pointers wide, so this number
+ * is multiplied by twenty-six bytes of stack frame.  At 2560 that is
+ * 66560 bytes - more than the Z80 has address space for - and the
+ * frame size wrapped instead of being refused: main's frame came out
+ * as 1154, and the offset of a local landed at 19374, which added to
+ * IY put the address inside .text.  The driver then wrote its
+ * argument vector over its own code.
+ *
+ * 128 is far more than a command line on this machine will ever
+ * carry, and keeps the frame near three kilobytes.
+ */
+#define MAX_ARGS 128
 
 char *progname;
 
@@ -437,6 +449,32 @@ execFiltered(char *cmd, char **args, char *nfile)
     }
 }
 
+/*
+ * The eleven paths this builds are file scope, not locals in main.
+ * Together they are eleven kilobytes, and a frame that size on a Z80
+ * pushes every local past the 7-bit (iy+d) window - so their
+ * addresses stop being (iy+d) operands and have to be worked out into
+ * HL.  A store whose address AND value are both in HL has no rule in
+ * pass2, and ten assignments in this file quietly produced no code at
+ * all.  See GAP at the top of the tree.
+ *
+ * They are written once and read throughout, so file scope costs
+ * nothing, and an eleven kilobyte frame was never defensible on this
+ * machine anyway.
+ */
+static char cpp_path[1024];
+static char cc1_path[1024];
+static char cc2_path[1024];
+static char asm_path[1024];
+static char ld_path[1024];
+static char astpp_path[1024];
+static char peep_path[1024];
+
+static char chdr_path[1024];
+static char libc_path[1024];
+static char libu_path[1024];
+static char sysinc_path[1024];
+
 int
 main(int argc, char **argv)
 {
@@ -481,19 +519,6 @@ main(int argc, char **argv)
     int cc1_base_argc = 0;
     int cc2_base_argc = 0;
 
-    char cpp_path[1024];
-    char cc1_path[1024];
-    char cc2_path[1024];
-    char asm_path[1024];
-    char ld_path[1024];
-    char astpp_path[1024];
-    char peep_path[1024];
-
-    char chdr_path[1024];
-    char libc_path[1024];
-    char libu_path[1024];
-    char sysinc_path[1024];
-
     int status;
     int i;
 
@@ -525,7 +550,7 @@ main(int argc, char **argv)
      * The passes, the assembler and the linker all live there.  They
      * are not user commands and do not belong on a search path.
      */
-    sprintf(cpp_path, "%s/cpp", libdir);
+    sprintf(cpp_path, "%s/pass0", libdir);
     sprintf(cc1_path, "%s/c0", libdir);
     sprintf(cc2_path, "%s/c1", libdir);
     sprintf(asm_path, "%s/asz", libdir);
@@ -753,7 +778,26 @@ main(int argc, char **argv)
      */
     cpm_target = (strcmp(target, "cpm") == 0);
     sprintf(libc_path, "%s/libc.a", libdir);
-    sprintf(sysinc_path, "-i%s/include", libdir);
+    /*
+     * The headers do not live beside the passes on a Unix, they live
+     * in /usr/include, and that is where the Micronix tree keeps them
+     * - so libdir/../usr/include, which is /usr/include when the
+     * driver is /bin/ccc and lib/../usr/include in an install tree.
+     * Nothing about where the tree lives is compiled in, the same way
+     * libdir itself is worked out from argv[0].
+     *
+     * CP/M has no /usr and its install is flat, so it keeps the
+     * headers beside everything else the driver owns.
+     *
+     * Getting this wrong cost the native build every program with an
+     * include in it: the driver asked for /lib/include, which does
+     * not exist, and pass0 said "cannot find include file: stdio.h"
+     * for a header sitting in /usr/include the whole time.
+     */
+    if (cpm_target)
+        sprintf(sysinc_path, "-i%s/include", libdir);
+    else
+        sprintf(sysinc_path, "-i%s/../usr/include", libdir);
     if (cpm_target) {
         sprintf(libu_path, "%s/libcpm.a", libdir);
         sprintf(chdr_path, "%s/crtcpm.o", libdir);
@@ -867,7 +911,7 @@ main(int argc, char **argv)
         if (!no_exec) {
             status = execCommand(cpp_path, cpp_args);
             if (status != 0) {
-                fprintf(stderr, "Error: cpp failed on %s\n", src);
+                fprintf(stderr, "Error: pass0 failed on %s\n", src);
                 rmtmps();
                 exit(status);
             }
