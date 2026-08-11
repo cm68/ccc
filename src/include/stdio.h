@@ -1,5 +1,18 @@
 #define	BUFSIZ		512
-#define	_NFILE		6
+/*
+ * Six left three for the program, because stdin, stdout and stderr
+ * hold the first three for the whole life of it.  wsld wants more
+ * than that on its own: it keeps every input open at once - crt0.o,
+ * the objects, libc.a, libu.a - and the output as well, and it fell
+ * over on libu.a with "cannot open" for a file that was there and
+ * readable.  fopen has no descriptor left to fail on at that point;
+ * it never gets as far as open.
+ *
+ * A FILE is eight bytes, so this costs 48 bytes of bss in every
+ * program.  The 512 byte buffer behind one is only allocated when a
+ * file is actually opened, so nothing pays for slots it does not use.
+ */
+#define	_NFILE		12
 # ifndef FILE
 #define	uchar	unsigned char
 
@@ -55,6 +68,18 @@ FILE *		fopen();
 FILE *		freopen();
 FILE *		fdopen();
 long		ftell();
+/*
+ * A prototype, and it has to be one: fseek takes a long, and almost
+ * every caller in the tree writes fseek(fp, 0, SEEK_SET) with a plain
+ * int.  Undeclared, that pushed two bytes where the body reads four,
+ * so the offset was built from the offset and the whence, and whence
+ * itself came off the stack from beyond the arguments.  lseek saw a
+ * whence it did not recognise, returned EINVAL without ever issuing
+ * the seek, and fseek reported failure - silently, since hardly
+ * anyone checks it.  asz assembled into a temp file, seeked back to
+ * copy it into the object, and copied nothing.
+ */
+int		fseek(FILE *, long, int);
 char *		fgets();
 char *		_bufallo();
 int _flsbuf();
