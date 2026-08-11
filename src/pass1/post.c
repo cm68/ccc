@@ -32,10 +32,19 @@
  * from wherever the first had stopped: end of file.  It emitted an
  * empty AST for every input and exited 0.
  *
- * Only widening is done here.  A narrower parameter is already
- * right: everything is pushed in two-byte slots, the callee reads
- * the low byte of one, and the machine is little-endian, so the
- * byte it wants is the byte that is there.
+ * The other direction matters just as much, and for the same
+ * reason: an argument occupies whole slots, so a long handed to an
+ * int parameter puts four bytes where the callee reads two.  It
+ * takes the low word as its own and the high word as the next
+ * argument, and everything after that is off by one slot - the
+ * mirror image of the bug above, found by reading it backwards.
+ *
+ * Only long crossing that line does anything.  A char or short
+ * argument is already pushed as a word (pusharg promotes anything
+ * that is not a long), so passing an int where the prototype says
+ * char moves the same two bytes either way: the callee reads the
+ * low byte of the slot, and on a little-endian machine that is the
+ * byte it wants.
  */
 struct expr *
 argcvt(struct expr *a, struct type *pt)
@@ -50,8 +59,38 @@ argcvt(struct expr *a, struct type *pt)
 		(a->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC | TF_AGGREGATE)))
 		return a;
 
-	if (pt->size <= a->type->size)
-		return a;
+	if (pt->size <= a->type->size) {
+		/* same number of slots: nothing to do */
+		if (a->type->size <= 2 || pt->size > 2)
+			return a;
+
+		/*
+		 * A constant is truncated here rather than wrapped, on
+		 * the same grounds as the relabel below - and it has to
+		 * lose the high half now, or the value emitted is still
+		 * the wide one under the narrow name.  Signed targets
+		 * sign-extend from the new width so it still means what
+		 * the type says.  NARROW says the rest explicitly; it is
+		 * what a cast to the same type would have built.
+		 */
+		if (a->flags & E_CONST) {
+			if (pt->size == 1) {
+				a->v &= 0xff;
+				if (!(pt->flags & TF_UNSIGNED) && (a->v & 0x80))
+					a->v |= 0xffffff00L;
+			} else {
+				a->v &= 0xffff;
+				if (!(pt->flags & TF_UNSIGNED) && (a->v & 0x8000L))
+					a->v |= 0xffff0000L;
+			}
+			a->type = pt;
+			return a;
+		}
+
+		w = mkexpr(NARROW, a);
+		w->type = pt;
+		return w;
+	}
 
 	/*
 	 * A constant is emitted at the width of its type, so widening it
