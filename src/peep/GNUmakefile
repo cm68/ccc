@@ -25,7 +25,10 @@ OUTDIR = stage1
 # Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
 # was the Hi-Tech bootstrap.
 ZCC = ccc
-ZCFLAGS = -DCCC $(INC)
+# -O, because -O is what ships.  A size report taken without the
+# peephole measures a binary nobody builds, and it is the number that
+# decides whether a pass fits.
+ZCFLAGS = -O -DCCC $(INC)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
 SIZEDIR = sizecheck-$(ZCC)
@@ -63,7 +66,7 @@ stage1: peep
 	@for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: "; \
-		if $(CCC) -s -DCCC $(INC) -I. $$f \
+		if $(CCC) -O -s -DCCC $(INC) -I. $$f \
 			> $(OUTDIR)/$$b.err 2>&1 && [ -f $$b.s ]; then \
 			mv $$b.s $(OUTDIR)/ ; echo "ok"; \
 		else echo "FAIL"; cat $(OUTDIR)/$$b.err; fi \

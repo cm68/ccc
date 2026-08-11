@@ -80,7 +80,10 @@ for t in "${TESTS[@]}" ; do
 	# /tmp under the compiler's pid.  ~700 per run of this suite, and
 	# pids recycle - a stale one is a landmine for whatever process
 	# draws that number next.  Add -k by hand when debugging a case.
-	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -c"
+	# -O, because -O is what ships.  A crash net that runs the
+	# compiler differently from every build in the tree is not
+	# watching the compiler anybody uses.
+	CCC_OPTS="-O -DTEST=$t -I.. $VERBOSE -c"
 	if $compile_only ; then CCC_OPTS="$CCC_OPTS -s" ; fi
 	echo $CCC $CCC_OPTS $t
 

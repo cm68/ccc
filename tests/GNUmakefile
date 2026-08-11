@@ -384,7 +384,7 @@ regression:
 
 # Build executable from .c file using ccc
 %: %.c
-	../desthost/bin/ccc -k -o $@ $<
+	../desthost/bin/ccc -O -k -o $@ $<
 
 # Generate .ast from .c (cpp creates .x, cc1 parses to AST)
 %.ast: %.c

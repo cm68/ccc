@@ -22,10 +22,16 @@ work="$here/out"
 
 SIM=${SIM:-$root/tests/sim}
 CCC=$root/desthost/bin/ccc
-# Extra flags for the ccc mode.  CCCFLAGS=-O runs the peephole, so the
-# suite can check that optimised code still computes the same answers -
-# which is the only test of the peephole that means anything.
-CCCFLAGS=${CCCFLAGS:-}
+# Extra flags for the ccc mode.  -O by default, because -O is what
+# ships: every library in the tree and every pass built for the target
+# is compiled with the peephole on, and a suite that runs without it
+# proves the wrong binary correct.  Running optimised code and getting
+# the same answers is the only test of the peephole that means
+# anything, and it should not need remembering.
+#
+# CCCFLAGS= turns it off, for telling a codegen bug from a peephole
+# one when something here fails.
+CCCFLAGS=${CCCFLAGS:--O}
 TMOUT=${TMOUT:-10}
 
 mode=$1

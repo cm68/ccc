@@ -45,7 +45,10 @@ endif
 # Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
 # was the Hi-Tech bootstrap.
 ZCC = ccc
-ZCFLAGS = -DCCC $(INC)
+# -O, because -O is what ships.  A size report taken without the
+# peephole measures a binary nobody builds, and it is the number that
+# decides whether a pass fits.
+ZCFLAGS = -O -DCCC $(INC)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
 

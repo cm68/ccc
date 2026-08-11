@@ -201,7 +201,7 @@ stage1:
 	@for f in $(SRCS); do \
 		b=$${f%.c}; \
 		printf "%-20s" "$$f: "; \
-		$(CCC) -DCCC -k -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
+		$(CCC) -O -DCCC -k -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
         mv $$b.tok $$b.x $$b.ast $$b.dat $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
 	done
 	@echo "Stage1 complete"
