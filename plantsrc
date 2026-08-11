@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# plantsrc - put the compiler's own sources into the simulator
+#
+# The cross build is the truth; this copies the sources it builds from
+# into the Micronix filesystem so the compiler that has been planted
+# there can be run over them.  Nothing here builds anything, and
+# nothing here reads back out of the image: the simulator is never
+# truth, and anything found wrong in there gets fixed in this tree and
+# planted again.
+#
+# Sources only.  The object directories - z80, mxccc, comccc - are
+# this machine's output for that machine's target and have no business
+# in there; a native build makes its own.
+#
+# usage: ./plantsrc [<filesystem>]
+#
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
+#
+
+top=`dirname $0`
+top=`cd $top && pwd`
+
+root=${1:-$HOME/src/micronix/filesystem}
+dest=$root/usr/src/ccc
+
+#
+# The directories the compiler is built out of.  include carries a sys
+# subdirectory; everything else is flat.
+#
+dirs="ccclib cpp pass1 pass2 peep tools include libc libu"
+
+if [ ! -d "$root/bin" -o ! -d "$root/usr" ]; then
+	echo "plantsrc: $root is not a micronix filesystem" >&2
+	exit 1
+fi
+
+if [ ! -d "$top/src/cpp" ]; then
+	echo "plantsrc: $top is not the ccc tree" >&2
+	exit 1
+fi
+
+#
+# A name longer than fourteen characters cannot exist on the file
+# system this is going to, and the simulator will take it anyway
+# because it is running on a directory rather than an image - so the
+# check has to be here or it is nowhere.  Refuse rather than plant
+# something that will not survive being made into a real disc.
+#
+# It has to look at exactly what the copy below takes - the top of
+# each directory and include/sys - or it fails on test data that is
+# never planted, which is what it did first time out.
+long=`cd $top/src && find $dirs -maxdepth 1 -type f \
+	\( -name '*.[chs]' -o -name '[Mm]akefile' \) -printf '%f\n' 2>/dev/null;
+	cd $top/src && find $dirs -maxdepth 2 -path '*/sys/*.h' \
+	-printf '%f\n' 2>/dev/null`
+long=`echo "$long" | awk 'length($0) > 14' | sort -u`
+if [ -n "$long" ]; then
+	echo "plantsrc: names too long for a 14 character file system:" >&2
+	echo "$long" | sed 's/^/	/' >&2
+	exit 1
+fi
+
+files=0
+for d in $dirs; do
+	mkdir -p $dest/$d
+	for f in `cd $top/src/$d && ls *.c *.h *.s Makefile makefile 2>/dev/null`; do
+		cp -p $top/src/$d/$f $dest/$d/$f
+		files=`expr $files + 1`
+	done
+	if [ -d $top/src/$d/sys ]; then
+		mkdir -p $dest/$d/sys
+		for f in `cd $top/src/$d/sys && ls *.h 2>/dev/null`; do
+			cp -p $top/src/$d/sys/$f $dest/$d/sys/$f
+			files=`expr $files + 1`
+		done
+	fi
+	echo "	$d"
+done
+
+echo "plantsrc: $files files into $dest"
