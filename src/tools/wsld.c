@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #endif
 
 #include "wsobj.h"
@@ -484,6 +485,8 @@ char *name;
      * program has - and holding them bought nothing, because every
      * offset that matters is recorded above.
      */
+    fclose(fp);
+    obj->fp = NULL;
 }
 
 /*
@@ -1900,13 +1903,14 @@ int seg_size;
  * copy segment data with relocations applied
  */
 void
-copy_segment(obj, seg_start, seg_size, reloc_off, seg_base, is_text)
+copy_segment(obj, seg_start, seg_size, reloc_off, seg_base, is_text, dest)
 struct object *obj;
 int seg_start;
 int seg_size;
 long reloc_off;
 unsigned short seg_base;
 int is_text;
+FILE *dest;
 {
     unsigned char *buf;
 
@@ -1948,7 +1952,7 @@ int is_text;
     }
 
     /* write to output */
-    if (fwrite(buf, 1, seg_size, outfp) != seg_size)
+    if (fwrite(buf, 1, seg_size, dest) != seg_size)
         error("write error");
 
     free(buf);
@@ -1963,6 +1967,10 @@ pass2_output()
     struct object *obj;
     unsigned char config;
     int symlen;
+    FILE *datafp;
+    char tmpname[32];
+    unsigned char xferbuf[512];
+    int n;
 
     /* default to 15-char symbols */
     symlen = out_symlen ? out_symlen : 15;
@@ -1985,19 +1993,45 @@ pass2_output()
     write_word(text_base);      /* text offset */
     write_word(text_base + total_text);     /* data offset */
 
-    /* write text segments */
+    /*
+     * One pass over the inputs.
+     *
+     * The output wants all the text and then all the data, but an
+     * object carries both - so walking the objects once per segment
+     * kind means opening every input twice, or holding them all open,
+     * and _NFILE is twelve.  The data goes to a second stream instead
+     * and is appended when the text is done, which costs one temporary
+     * file and lets the link hold one input at a time.
+     */
+    sprintf(tmpname, "/tmp/wsld%d", getpid());
+    datafp = fopen(tmpname, "w+b");
+    if (datafp == NULL)
+        error2("cannot create", tmpname);
+    unlink(tmpname);            /* it lives only as long as the handle */
+
     for (obj = objects; obj; obj = obj->next) {
+        obj->fp = fopen(obj->path, "rb");
+        if (obj->fp == NULL)
+            error2("cannot reopen", obj->path);
+
         copy_segment(obj, 16, obj->text_size,
                      obj->textRelocOff,
-                     text_base + obj->text_off, 1);
-    }
-
-    /* write data segments */
-    for (obj = objects; obj; obj = obj->next) {
+                     text_base + obj->text_off, 1, outfp);
         copy_segment(obj, 16 + obj->text_size, obj->data_size,
                      obj->dataRelocOff,
-                     data_base + total_text + obj->data_off, 0);
+                     data_base + total_text + obj->data_off, 0, datafp);
+
+        fclose(obj->fp);
+        obj->fp = NULL;
     }
+
+    /* and now the data, onto the end of the text */
+    if (fseek(datafp, 0L, SEEK_SET) != 0)
+        error("seek error");
+    while ((n = fread(xferbuf, 1, sizeof(xferbuf), datafp)) > 0)
+        if (fwrite(xferbuf, 1, n, outfp) != n)
+            error("write error");
+    fclose(datafp);
 
     /* write symbol table (after text and data) unless stripped */
     if (!sflag) {
