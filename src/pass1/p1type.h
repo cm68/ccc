@@ -77,6 +77,14 @@ extern void slimFnArgs(struct type *t);
 #define TF_FUNC         0x08
 #define	TF_POINTER		0x10
 #define	TF_ARRAY		0x20
+/*
+ * A union, as against a struct.  Both are TF_AGGREGATE and both lay
+ * every member at its own offset - a union's happen all to be 0 - so
+ * nothing in the type told the two apart, and the tag's kind (kutag)
+ * is no help for an untagged one.  Initialization is the place it
+ * matters: K&R's book does not allow a union to be initialized at all.
+ */
+#define	TF_UNION		0x40
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
 extern struct type *getbasetype();

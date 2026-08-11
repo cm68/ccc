@@ -194,6 +194,10 @@ PTR_FAIL_TESTS = \
 CPP_FAIL_TESTS = \
 	undef_undefined.c
 
+# Initializer tests (expected to fail - testing error detection)
+INIT_FAIL_TESTS = \
+	union_init.c
+
 # Statement tests (expected to fail - testing error detection)
 STMT_FAIL_TESTS =
 
@@ -202,6 +206,7 @@ FAIL_TESTS = \
 	$(LVALUE_FAIL_TESTS) \
 	$(PTR_FAIL_TESTS) \
 	$(CPP_FAIL_TESTS) \
+	$(INIT_FAIL_TESTS) \
 	$(STMT_FAIL_TESTS)
 
 # Syscall tests
@@ -257,6 +262,20 @@ MISC_TESTS = \
 	test_load_store.c
 
 # All tests combined
+
+# A whole real program of the period, not a construct.
+#
+# Morrow Designs' 1982 hard disc formatter, 1600 lines of Whitesmiths-era
+# C, carried in unmodified except where ccc's own limits are commented.
+# It is here because it broke three separate things every construct test
+# missed: a K&R "char *av[]" parameter, the address of a function passed
+# to a sort routine - which crashed c1 outright, 95K of assembler in,
+# with no diagnostic from any pass - and a switch over sector sizes
+# whose labels do not fit the byte the dispatch compares.  A file this
+# size reaches paths no small case does.
+PORT_TESTS = \
+	formatmw.c
+
 ALL_TESTS = \
 	$(EXPR_TESTS) \
 	$(DECL_TESTS) \
@@ -276,7 +295,8 @@ ALL_TESTS = \
 	$(LVALUE_TESTS) \
 	$(MINIMAL_TESTS) \
 	$(SYSCALL_TESTS) \
-	$(MISC_TESTS)
+	$(MISC_TESTS) \
+	$(PORT_TESTS)
 
 # Main test targets
 .PHONY: test tests test-fail test-all

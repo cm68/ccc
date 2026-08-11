@@ -29,6 +29,7 @@ long lret(a) short a; { return a * 1000L; }
 typedef short (*SFP)();
 
 short (*gfp)();
+short (*gtab[2])();
 long (*glp)();
 short calls;
 
@@ -37,6 +38,7 @@ short bump(a) short a; { calls++; return a + 1; }
 main()
 {
 	short (*fp)();
+	short (*ltab[2])();
 	SFP tfp;
 	short r;
 	long l;
@@ -94,11 +96,39 @@ main()
 	CHECK(15, fp(5), 6);
 	CHECK(16, calls, 1);
 
-	/* an array of them, which is the usual reason for having any */
+	/*
+	 * An ARRAY of them, which is the usual reason for having any -
+	 * and which this said it was testing while testing two scalars.
+	 * That gap is why "int (*tab[2])();" went wrong unnoticed: as a
+	 * local it is rebuilt in pass1's second phase, the "()" was
+	 * dropped, and the type read "array of pointer to short".  The
+	 * call then derefed the function's address as though it were a
+	 * pointer variable and jumped through the first two bytes of the
+	 * function's own code.  It compiled clean; the simulated leg
+	 * simply never came back.
+	 */
 	fp = add2;
 	gfp = neg;
 	CHECK(17, fp(20, 22), 42);
 	CHECK(18, gfp(42), -42);
+
+	ltab[0] = add2;
+	ltab[1] = neg;
+	CHECK(22, (*ltab[0])(20, 22), 42);
+	CHECK(23, (*ltab[1])(42), -42);
+	CHECK(24, ltab[0](5, 6), 11);		/* same call, no star */
+	CHECK(25, ltab[1](6), -6);
+
+	gtab[0] = neg;
+	gtab[1] = add2;
+	CHECK(26, (*gtab[0])(11), -11);
+	CHECK(27, (*gtab[1])(11, 4), 15);
+	CHECK(28, gtab[1](2, 2), 4);
+
+	/* subscripted by a variable, so the index is not folded away */
+	i = 1;
+	CHECK(29, ltab[i](8), -8);
+	CHECK(30, (*gtab[i])(8, 1), 9);
 
 	/* the explicit spelling through a local, and a local typedef */
 	fp = add2;

@@ -23,6 +23,30 @@ doInitlzr(struct name *v)
 
     gettoken(); /* consume = token */
 
+    /*
+     * A UNION initializer, in any spelling.
+     *
+     * K&R's book does not allow one at all - initializers are for
+     * scalars, arrays and structs, and a union is none of those.  ANSI
+     * later admitted the braced form for the union's FIRST member, and
+     * the bare "= 0" that Whitesmiths read as "zero fill" was never C
+     * anywhere.  Both were accepted here and both came out two bytes
+     * long, so a 512 byte sector buffer had two bytes of storage and
+     * everything declared after it was laid down inside it.
+     *
+     * Refused rather than sized, because there is nothing to gain by
+     * accepting it: a union DECLARED and not initialized goes to bss
+     * at its full size, and crt0 clears bss, so
+     *
+     *	union diskbuf disk0;
+     *
+     * already means what "= 0" was trying to say.  The gripe is in the
+     * emitting phase only, so it is said once rather than once per
+     * walk of the declarator.
+     */
+    if (phase != 1 && v && v->type && (v->type->flags & TF_UNION))
+        gripe(ER_D_UI);
+
     /* Phase 1: skip tokens, emit string data */
     if (phase == 1) {
         if (cur.type == BEGIN) {

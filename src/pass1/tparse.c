@@ -477,7 +477,8 @@ getbasetype()
             // Forward declaration of a new tag (e.g., typedef struct S S_t;)
             // Create an incomplete type
             if (s) {
-                t = getType(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
+                t = getType(TF_AGGREGATE | TF_INCOMPLETE |
+                    (is_union ? TF_UNION : 0), 0, 0);
                 t->size = 0;
                 n = newName(s, is_union ? kutag : kstag, t, 1);
                 return t;
@@ -492,10 +493,12 @@ getbasetype()
             // Reuse existing incomplete type to maintain pointer identity
             t = n->type;
             t->flags &= ~TF_INCOMPLETE;  // will be completed below
+            if (is_union)
+                t->flags |= TF_UNION;
             t->size = 0;
         } else {
             // Create new type
-            t = getType(TF_AGGREGATE, 0, 0);
+            t = getType(TF_AGGREGATE | (is_union ? TF_UNION : 0), 0, 0);
             t->size = 0;
         }
 

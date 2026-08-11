@@ -386,8 +386,27 @@ prmDecl(void)
             if (sz) FreeExpr(sz);
         }
         expect(RBRACK, ER_D_FA);
-        param_type = getType(TF_POINTER,
-            param_type->sub ? param_type->sub : param_type, 0);
+        /*
+         * "T a[]" as a parameter is "T *a", so the decay ADDS a
+         * pointer to whatever the declarator has built.  Taking sub
+         * when there was one took a level OFF instead, so
+         *
+         *	int f(char *a[])
+         *
+         * came out as "char *a" rather than "char **a" - the same type
+         * as "char a[]", and the tree said so: *a was a DEREF of width
+         * byte, loading one byte of a two byte pointer.  Nothing here
+         * is ever an array (parsePtrPfx only builds pointers, and a
+         * parenthesised declarator went to prmFnPtr above), so there
+         * is no array level to unwrap and sub was never the element
+         * type - it was the thing the element points AT.
+         *
+         * It hid because the two widths agree for "int *a[]", which is
+         * the spelling anyone tries first: pointer-to-int and
+         * pointer-to-pointer are both two bytes, so only char and long
+         * showed it.
+         */
+        param_type = getType(TF_POINTER, param_type, 0);
     }
 
     // Create parameter entry for type->elem with actual name
@@ -507,8 +526,21 @@ skipParams(struct name *nm, struct type *prefix)
      * calls fopen was emitted as two bytes of bss, defining in every
      * object what it was only declaring.
      */
+    /*
+     * An ARRAY of them - "int (*tab[2])();" - is the same shape with a
+     * dimension in the middle: the element is the pointer to nothing.
+     * The array-ness made it fail both tests above, so phase 2 built
+     * no suffix, the local kept "array of pointer to nothing", and
+     * "(*tab[0])()" was a deref of something pfxStar could not tell
+     * was a function pointer.  It added a load, and the call went to
+     * whatever the first two bytes of the function held.  A global was
+     * fine - it keeps its phase 1 type - so this only bit locals, and
+     * it bit them silently.
+     */
     if (nm->type &&
         (((nm->type->flags & TF_POINTER) && !nm->type->sub) ||
+         ((nm->type->flags & TF_ARRAY) && nm->type->sub &&
+          (nm->type->sub->flags & TF_POINTER) && !nm->type->sub->sub) ||
          ((lexlevel > 1 || idOnce(nm->id)) &&
           !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
         suffix = (struct type *)permalloc(sizeof(*suffix));
@@ -733,6 +765,10 @@ declare(struct type **btp, unsigned char struct_elem)
          !(nm->type && (nm->type->flags & TF_ARRAY))) ||
         ((suffix->flags & TF_FUNC) && nm->type &&
          (nm->type->flags & TF_POINTER) && !nm->type->sub) ||
+        /* and the same behind a dimension: int (*tab[2])() */
+        ((suffix->flags & TF_FUNC) && nm->type &&
+         (nm->type->flags & TF_ARRAY) && nm->type->sub &&
+         (nm->type->sub->flags & TF_POINTER) && !nm->type->sub->sub) ||
         /*
          * A function DECLARED inside a body - "extern short _pnum(),
          * _fnum();", K&R's way of saying a routine does not return
@@ -746,8 +782,30 @@ declare(struct type **btp, unsigned char struct_elem)
          * function-ness of its own, which is what the phase 2
          * caution below is about.
          */
+        /*
+         * ...but NOT a name that is already a pointer to a function.
+         * That carries no TF_FUNC of its own either - the func-ness is
+         * one level down, in the sub - so it answered this test and
+         * fell through to the plain "nm->type = suffix" below, which
+         * replaced pointer-to-function with the bare function type.
+         *
+         * A file-scope declarator is walked twice, and the two walks
+         * see different things: the first meets the anonymous pointer
+         * left by "(*fp)" and wraps the "()" suffix into it correctly,
+         * the second meets the finished pointer-to-function and
+         * flattened it.  Then the redeclaration check compared the two
+         * and said so, which is why
+         *
+         *	int (*fp)();
+         *
+         * on a line by itself - no second declaration anywhere - was
+         * "redecl disagrees".  extern, a local, a parameter and an
+         * array of them all took other paths and were fine.
+         */
         ((suffix->flags & TF_FUNC) && nm->type &&
-         !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
+         !(nm->type->flags & (TF_FUNC | TF_ARRAY)) &&
+         !((nm->type->flags & TF_POINTER) && nm->type->sub &&
+           (nm->type->sub->flags & TF_FUNC))))) {
         /*
          * Function suffixes are only applied in phase 1: in phase 2 a
          * reused nm already has its type correctly set, and re-applying
@@ -784,6 +842,36 @@ declare(struct type **btp, unsigned char struct_elem)
              * is the base type (int), so we just use suffix directly.
              */
             nm->type = getType(TF_POINTER, suffix, 0);
+        } else if (nm->type && (nm->type->flags & TF_ARRAY) &&
+                   (suffix->flags & TF_FUNC) && nm->type->sub &&
+                   (nm->type->sub->flags & TF_POINTER) &&
+                   !(nm->type->sub->flags & TF_ARRAY) &&
+                   !nm->type->sub->sub) {
+            /*
+             * An ARRAY of function pointers, "int (*tab[2])()".  The
+             * same shape as the scalar above with a dimension in the
+             * middle: the recursion read "(*tab[2])" and produced an
+             * array of the ANONYMOUS pointer, and this level's "()" is
+             * what that pointer points at.
+             *
+             * Rebuilding rather than plugging sub, because an array
+             * type comes from getType and is shared - writing through
+             * it would retype every other array of the same shape.
+             *
+             * Without this the array fell past every case here to the
+             * plain "nm->type = suffix" below and the whole
+             * declaration became a bare function type.  At file scope
+             * that then disagreed with itself on the second walk and
+             * said "redecl disagrees"; as a local it was quieter and
+             * worse - the type said "array of pointer to int", so
+             * "(*tab[0])()" derefed the function's address as though
+             * it were a pointer variable, loaded the first two bytes
+             * of the function's own code and called THAT.  It compiled
+             * clean and ran away.
+             */
+            nm->type = getType(TF_ARRAY | TF_POINTER,
+                               getType(TF_POINTER, suffix, 0),
+                               nm->type->count);
         } else if (nm->type && (nm->type->flags & TF_FUNC) &&
                    nm->type->sub && (nm->type->sub->flags & TF_POINTER) &&
                    !(nm->type->sub->flags & TF_ARRAY) &&

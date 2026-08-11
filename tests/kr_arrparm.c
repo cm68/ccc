@@ -14,7 +14,8 @@
  * ANSI only, so it then met raw K&R and answered "fn array" - an
  * honest complaint about a shape it should never have been shown.
  * The same types spelled as pointers, and the same types in an ANSI
- * prototype, always worked.  See ARRAY_ERROR.
+ * prototype, always worked.  Run rather than merely compiled in
+ * tests/run/rt_arrparm.c, which checks the decay is real.
  */
 
 int one(a)

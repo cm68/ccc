@@ -31,6 +31,7 @@ ER_D_IN		bad init
 ER_D_AI		auto aggr init
 ER_D_RD		redecl disagrees
 ER_D_IA		sizeof indeterminate
+ER_D_UI		union init
 
 # parse errors
 ER_P_SC		bad sclass

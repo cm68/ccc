@@ -11,7 +11,8 @@
  * Both legs run this: there is nothing target-specific about it, so
  * the host compiler is the reference, and it is the reference for the
  * SHAPE too - if ccc and the host disagree about what "char *av[]"
- * means as a parameter, one of them is wrong about C.  See ARRAY_ERROR.
+ * means as a parameter, one of them is wrong about C.  The compile
+ * side of this is tests/kr_arrparm.c.
  */
 #include "rt.h"
 
@@ -85,6 +86,55 @@ int n;
 	return v[0];
 }
 
+
+/*
+ * The ANSI spelling of the same thing, which is a different path and
+ * was wrong in a different way.  "char *a[]" as a parameter is
+ * "char **a", but the decay in prmDecl took a pointer level OFF
+ * instead of adding one, so it came out "char *a" - the same type as
+ * "char a[]".  *a was then a byte load out of a two-byte pointer.
+ *
+ * It hid because "int *a[]" is the spelling anyone tries first and
+ * pointer-to-int and pointer-to-pointer are both two bytes on this
+ * machine, so it read the right number by luck.  char and long do not
+ * agree, and they are what these check.
+ */
+static int acnt(char *av[])
+{
+	int i;
+
+	i = 0;
+	while (av[i])
+		i++;
+	return i;
+}
+
+static int adeep(char *av[])
+{
+	return av[1][2] & 0xff;
+}
+
+static long alsum(long *a[], int n)
+{
+	int i;
+	long t;
+
+	t = 0;
+	for (i = 0; i < n; i++)
+		t += *a[i];
+	return t;
+}
+
+static int aisum(int *a[], int n)
+{
+	int i, t;
+
+	t = 0;
+	for (i = 0; i < n; i++)
+		t += *a[i];
+	return t;
+}
+
 main()
 {
 	int a[4];
@@ -111,6 +161,23 @@ main()
 
 	/* the address arithmetic a decayed parameter allows */
 	CHECK(10, sum(&a[1], 3), 21 + 31 + 41);
+
+	/* the ANSI spelling of an array-of-pointer parameter */
+	{
+		long l0, l1, *lp[2];
+		int i0, i1, *ip[2];
+
+		CHECK(11, acnt(v), 3);
+		CHECK(12, adeep(v), 'e');
+
+		l0 = 100000L; l1 = 23L;
+		lp[0] = &l0; lp[1] = &l1;
+		CHECK(13, alsum(lp, 2) == 100023L, 1);
+
+		i0 = 7; i1 = 9;
+		ip[0] = &i0; ip[1] = &i1;
+		CHECK(14, aisum(ip, 2), 16);
+	}
 
 	return 0;
 }

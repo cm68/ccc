@@ -318,12 +318,35 @@ pfxAddr(void)
             e->type = getType(TF_POINTER, e->type, 0);
         e1->left = NULL;
         freeNode(e1);
-    } else if (e->type->flags & TF_ARRAY) {
+    } else if (e->type->flags & (TF_ARRAY | TF_FUNC)) {
+        /*
+         * An array and a FUNCTION are both already their own address,
+         * so &a is a, with the type made a pointer.  The function half
+         * of this was missing: a function designator is not a DEREF
+         * and was not an array, so "&order" fell into the else below
+         * and was handed back as a one-child AND.
+         *
+         * AND is BINARY in astops.h - the one table pass1 writes by,
+         * pass2 reads by and astpp prints by - so a node with a left
+         * and no right desynchronises the stream at that point.  pass2
+         * read the next node as the missing operand, ran off the end,
+         * and died.  That is the c1 SIGSEGV on Morrow's formatmw.c:
+         * report() passes &order and &ex to sort(), and c1 wrote 95K
+         * of assembler and then crashed with no diagnostic from
+         * anything.  A bare "order" always worked, which is why it
+         * looked like a code generation fault rather than a parse one.
+         */
         e->type = getType(TF_POINTER, e->type, 0);
     } else {
-        e1 = mkexpr(AND, e);
-        e1->type = getType(TF_POINTER, e->type, 0);
-        e = e1;
+        /*
+         * Not an lvalue, so there is no address to take - "&(a + 1)".
+         * This used to build the same malformed AND and desynchronise
+         * the stream exactly as above, turning a source error into a
+         * crash in the next pass.  Say so here, where the line number
+         * is still right, and hand back the operand so parsing can go
+         * on and find any further errors.
+         */
+        gripe(ER_E_LV);
     }
     return e;
 }

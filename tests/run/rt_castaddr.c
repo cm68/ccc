@@ -8,7 +8,7 @@
  * controller its command address.  It compiled to NOTHING - not to
  * wrong code, to no code - because pass2 had no rule for it, and a
  * missing rule leaves an XXXXXX comment, which the assembler never
- * sees.  See CASTBUG.
+ * sees.
  *
  * What pass1 hands pass2 is
  *

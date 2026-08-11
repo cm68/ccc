@@ -12,16 +12,63 @@
 
 /*
  * Find struct member at given offset (members are linked in reverse order)
+ *
+ * The LAST match, not the first, because the list is reverse declaration
+ * order: the last entry carrying an offset is the one declared first.
+ *
+ * For a struct that is the same member either way - offsets are unique,
+ * so there is only one match.  For a UNION every member sits at offset
+ * 0, and the difference is the whole answer: C says a brace initializer
+ * for a union initializes its FIRST member, and taking the first match
+ * took the LAST one declared.
+ *
+ *	union v { int i; char b[4]; } u = { 0x1234 };
+ *
+ * picked b, a char[4], and streamed 0x1234 into it as though four bytes
+ * of array were a long.  It came to the right SIZE by luck and put the
+ * value in the wrong shape.
  */
 struct name *
 findMemberOff(struct name *members, int offset)
 {
+    struct name *found = NULL;
+
     while (members) {
         if (members->w.m.offset == offset)
-            return members;
+            found = members;
         members = members->next;
     }
-    return NULL;
+    return found;
+}
+
+/*
+ * The width the leading value of a scalar initializer goes in: the
+ * size of the first scalar inside the object.
+ *
+ * An aggregate initialised with a scalar is not C - see the streaming
+ * of one below - but it has to be given SOME width, and the width the
+ * object's first element would have taken is the one that agrees with
+ * the braced spelling of the same thing.
+ */
+static int
+leadWidth(struct type *t)
+{
+    struct name *m;
+    int guard = 16;		/* a type cannot nest forever */
+
+    while (t && guard--) {
+        if (t->flags & TF_ARRAY) {
+            t = t->sub;
+        } else if (t->flags & TF_AGGREGATE) {
+            m = findMemberOff(t->elem, 0);
+            if (!m)
+                break;
+            t = m->type;
+        } else {
+            break;
+        }
+    }
+    return (t && t->size) ? (int)t->size : 2;
 }
 
 /*
@@ -46,6 +93,7 @@ streamInitVal(struct type *type)
     unsigned char is_struct;
     cstring str;
     int slen, arrlen, i, b;
+    int totalsz, leadsz, emitted;
     char buf[20];              /* used as strname in STRING, buf in expr */
     struct expr *e;
     long val;
@@ -160,13 +208,51 @@ streamInitVal(struct type *type)
          * every skip byte in its trie was nought and only the one
          * directive spelled without them still matched.
          */
+        /*
+         * An AGGREGATE initialised with a scalar - "union u a = 0;",
+         * "char image[512] = 0;", "struct cmd bad[128] = 0;".
+         *
+         * This is not C in any edition.  K&R's own book does not allow
+         * a union to be initialized at all, and ANSI, which does, wants
+         * a brace-enclosed initializer for the union's first member; a
+         * bare scalar for an array or a struct is a constraint
+         * violation everywhere.  Whitesmiths accepted it and read it as
+         * "zero fill the object", and because it accepted it the idiom
+         * is through every source of that period - including this
+         * tree's own boot loader, where "union diskbuf disk0 = 0;" is a
+         * 512 byte sector buffer.
+         *
+         * So it is accepted here and the object is filled.  What could
+         * not stand was the SIZE: the value was emitted at the width of
+         * a register and that was the whole object, so a 512 byte
+         * buffer occupied two bytes and everything declared after it
+         * was laid down inside it.  Nothing was said, the program
+         * linked, and the first write through the buffer landed on the
+         * next variable.  The Micronix boot loader read one inode block
+         * and wrote 19 bytes of it over the disk spec it had just
+         * range-checked against, so the read that passed the check
+         * destroyed the limit the next one used.
+         *
+         * The same width bug reached VALID C through the braced form:
+         * "{ 0 }" on a union streams the member, and a member that is
+         * itself an array came through here and got two bytes.
+         */
+        totalsz = 0;
+        leadsz = size;
+        if (type && (type->flags & (TF_ARRAY | TF_AGGREGATE)) &&
+            !((type->flags & TF_ARRAY) && type->count < 0)) {
+            totalsz = typesize(type);
+            leadsz = leadWidth(type);
+        }
+        emitted = 0;
         e = foldTree(parseExpr(OP_PRI_COMMA));
         if (e) {
             if (e->op == CONST) {
                 val = (long)e->v;  /* e->v IS the value, not a pointer */
-                if (size == 1)
+                emitted = leadsz;
+                if (leadsz == 1)
                     asmDb((int)val);
-                else if (size == 4) {
+                else if (leadsz == 4) {
                     /*
                      * Four bytes, low word first, which is how everything
                      * that reads one expects to find it: "ld de,(x)" then
@@ -178,8 +264,10 @@ streamInitVal(struct type *type)
                      */
                     asmDw((int)(val & 0xffffL));
                     asmDw((int)((val >> 16) & 0xffffL));
-                } else
+                } else {
                     asmDw((int)val);
+                    emitted = 2;
+                }
             } else if (e->op == SYM) {
                 member = (struct name *)e->var;
                 if (member->sclass & SC_STATIC)
@@ -187,6 +275,7 @@ streamInitVal(struct type *type)
                 else
                     fmtstr(buf, "_%s", nameOf(member->id));
                 asmDwSym(buf);
+                emitted = 2;
             } else if (e->op == PLUS && e->left->op == SYM &&
                        e->right && (e->right->flags & E_CONST)) {
                 /*
@@ -214,14 +303,26 @@ streamInitVal(struct type *type)
                     fmtstr(buf, "_%s+%d", nameOf(member->id),
                         (int)e->right->v);
                 asmDwSym(buf);
+                emitted = 2;
             } else {
                 /* Unsupported initializer - emit zero */
-                if (size == 1)
+                if (leadsz == 1) {
                     asmDb(0);
-                else
+                    emitted = 1;
+                } else {
                     asmDw(0);
+                    emitted = 2;
+                }
             }
             FreeExpr(e);
+        }
+        /*
+         * and the rest of the object.  totalsz is 0 for a plain scalar,
+         * so this costs nothing where nothing is needed.
+         */
+        while (emitted < totalsz) {
+            asmDb(0);
+            emitted++;
         }
         count = 1;
     }
