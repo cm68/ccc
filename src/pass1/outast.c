@@ -34,6 +34,25 @@ emitChild(struct expr *e)
 }
 
 /*
+ * pass2 takes the signedness of a comparison from its operands' width
+ * letters, and an address arrives there as a plain sixteen bit integer
+ * - a signed one, because pointers have no type of their own that far
+ * down.  Two addresses either side of 0x8000 then compare backwards.
+ *
+ * Only the comparison needs saying: a store or a load of an address
+ * does not care which way it would have been signed, and retyping
+ * those would just miss the rules that already match them.  So the
+ * ordered comparisons retype their own operands here, and nothing else
+ * changes.  See SIGNEDPOINTER.
+ */
+static void
+cmpunsigned(struct expr *e)
+{
+	if (e && e->type && (e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
+		e->type = ushorttype;
+}
+
+/*
  * Emit an operand of an operator that works at width t, widening it
  * first if it is narrower.  Signed sources sign-extend and unsigned
  * ones zero-extend, which is precisely why the tree has to carry the
@@ -347,6 +366,8 @@ emitExpr(struct expr *e)
 		 * promotion the comparison would otherwise get. */
 		{
 			struct type *w = opwidth(e);
+			cmpunsigned(left);
+			cmpunsigned(right);
 			emit1(op == GT ? LT : LE);
 			emit1(typeSfx(type));
 			emitOperand(right, w);
@@ -395,6 +416,11 @@ emitExpr(struct expr *e)
 			emitChild(right);
 		} else {
 			struct type *w = opwidth(e);
+			/* ordered comparisons of addresses go unsigned */
+			if (op == LT || op == LE) {
+				cmpunsigned(left);
+				cmpunsigned(right);
+			}
 			/*
 			 * An equality test between two byte-valued
 			 * operands is a byte test.  The integer

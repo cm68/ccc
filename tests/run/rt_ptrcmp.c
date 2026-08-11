@@ -1,107 +1,88 @@
 /*
- * A pointer compared against an array name.
+ * Comparing two pointers that straddle 0x8000.
  *
- * A SYMREF is left unreduced so the store and load rules can use it as
- * an address, so anywhere its *value* is wanted it has to be loaded
- * first.  The equality rules got that and the ordering rules did not,
- * which is a distinction with a reason: "a > b" is canonicalised to
- * "b < a", and that is what moves the symbol to the left, where no
- * rule would take it.  "s == buf" leaves the symbol on the right,
- * where it becomes DE and the ordinary rules match.
+ * Pointers have no type of their own by the time the code generator
+ * sees them - pass2 knows b B s S l L v and nothing else - so pass1
+ * decides their signedness when it writes the AST.  It wrote 's', and
+ * every pointer comparison in the compiler's life came out signed.
+ * Two addresses either side of 0x8000 therefore compared backwards:
+ * 0x8008 is -32760 and 0x7ff6 is +32758.
  *
- * So == and != and >= worked, and > and < did not - and did not fail
- * cleanly either.  "s > buf" gave -1 and "s < buf" gave an address.
+ * That is not an edge case on a machine whose heap grows up through
+ * the middle of the address space.  malloc guards its block search
+ * with "p+nw >= p" to catch address wraparound, and once the heap
+ * passed 0x8000 the guard refused every free block above it - for
+ * good.  The linker could not link the peephole optimiser: one
+ * fourteen byte request grew the arena 246 times, 31,734 bytes, and
+ * never took the 162 byte block it kept being offered.  See
+ * SIGNEDPOINTER.
  *
- * Found in cpp.  macro.c trims trailing whitespace from a macro body
- * with
- *
- *	while (s > macbuffer && (s[-1] == ' ' || s[-1] == '\t'))
- *
- * which never ran, so a body kept its trailing blanks - and
- * "#define cdump(x)" with no body at all walked off the end of the
- * definition and ate the first character of the next line, turning
- * "int a;" into "nt a;".
+ * The heap has to be walked up past 0x8000 for this to bite, which is
+ * why nothing caught it before: a small program never gets there.
  */
 #include "rt.h"
 
-char buf[64];
-short arr[8];
-char *base;
+extern char *	malloc();
 
-short
-trimmed(s)
-char *s;
-{
-	short n;
-
-	n = 0;
-	while (s > buf && s[-1] == ' ') {
-		s--;
-		n++;
-		if (n > 20)
-			return -1;	/* runaway */
-	}
-	return n;
-}
+char lowbuf[8];
 
 main()
 {
-	char *s;
-	short *p;
-	short n;
+	char *	lo;
+	char *	hi;
+	char *	p;
+	short	i;
 
-	s = &buf[2];
-	base = buf;
-
-	/* as a value */
-	CHECK(1, s > buf, 1);
-	CHECK(2, s < buf, 0);
-	CHECK(3, s >= buf, 1);
-	CHECK(4, s <= buf, 0);
-	CHECK(5, s == buf, 0);
-	CHECK(6, s != buf, 1);
-
-	/* the array on the other side */
-	CHECK(7, buf < s, 1);
-	CHECK(8, buf > s, 0);
-	CHECK(9, buf <= s, 1);
-	CHECK(10, buf >= s, 0);
-
-	/* the same address reached three ways must compare equal */
-	s = buf;
-	CHECK(11, s > buf, 0);
-	CHECK(12, s >= buf, 1);
-	CHECK(13, s > &buf[0], 0);
-	CHECK(14, s > base, 0);
+	lo = lowbuf;			/* data: low */
+	hi = lowbuf;
 
 	/*
-	 * As a condition rather than a value.  Written with a variable
-	 * rather than an if/else around CHECK: CHECK is itself an if,
-	 * so an else next to it binds to CHECK's and not to mine.
+	 * Climb past 0x8000, which on this machine takes about thirty
+	 * kilobytes: the heap starts a little above the program, and the
+	 * bug only bites once an address has the top bit set.  On the
+	 * host it is nothing at all and the checks below still hold.  Compared as numbers rather than as
+	 * pointers, so that finding the high address does not depend on
+	 * the thing being tested.
 	 */
-	s = &buf[2];
-	n = 0;
-	if (s > buf)
-		n = 1;
-	CHECK(15, n, 1);
-	n = 0;
-	if (buf > s)
-		n = 1;
-	CHECK(22, n, 0);
+	for (i = 0; i < 70; i++) {
+		p = malloc(512);
+		if ((unsigned)p > (unsigned)hi)
+			hi = p;
+	}
 
-	/* and driving a loop, which is macro.c's shape */
-	buf[0] = 'a';
-	buf[1] = ' ';
-	buf[2] = ' ';
-	CHECK(16, trimmed(&buf[3]), 2);
-	CHECK(17, trimmed(&buf[1]), 0);	/* buf[0] is not a space */
-	CHECK(18, trimmed(buf), 0);	/* already at the base */
+	/* the plain facts: an address in data is below one in the heap */
+	CHECK(1, lo < hi, 1);
+	CHECK(2, hi > lo, 1);
+	CHECK(3, lo > hi, 0);
+	CHECK(4, hi < lo, 0);
+	CHECK(5, lo <= hi, 1);
+	CHECK(6, hi >= lo, 1);
 
-	/* an array of something wider than a byte scales the same */
-	p = &arr[3];
-	CHECK(19, p > arr, 1);
-	CHECK(20, p < arr, 0);
-	CHECK(21, p - arr, 3);
+	/*
+	 * The comparison must agree with the same question asked of the
+	 * addresses as numbers.
+	 *
+	 * No check here compares a pointer with itself: "p >= p" has no
+	 * rule in pass2 and is refused outright, for signed shorts as
+	 * much as for addresses, so it is a separate gap and not this
+	 * one.  Nor does it cast an address to long: (unsigned long)p
+	 * sign-extends, which is a third thing again.
+	 */
+	CHECK(7, lo < hi, (unsigned)lo < (unsigned)hi);
+	CHECK(8, hi > lo, (unsigned)hi > (unsigned)lo);
+	CHECK(9, lo >= hi, (unsigned)lo >= (unsigned)hi);
+	CHECK(10, hi <= lo, (unsigned)hi <= (unsigned)lo);
+
+	/*
+	 * malloc's own guard, which is what the bug actually broke: does
+	 * p + n run past the end of memory?  It does not, and must not
+	 * be said to just because p + n crossed 0x8000.
+	 */
+	p = hi;
+	CHECK(11, (p + 18) >= p, 1);
+	CHECK(12, p <= (p + 18), 1);
 
 	return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
