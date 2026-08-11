@@ -91,6 +91,26 @@ emitOperand(struct expr *e, struct type *t)
 }
 
 /*
+ * Does evaluating this subtree do anything besides produce a value?
+ *
+ * Asked of an lvalue that is about to be emitted a second time, so
+ * the question is whether reading it twice is the same as reading it
+ * once.  Anything that steps a variable, stores, or calls out is not,
+ * and the answer has to be yes for the whole subtree - the address in
+ * "*p++" is a plain DEREF at the top with the step underneath it.
+ */
+static int
+sideeffect(struct expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->op == INCR || e->op == DECR || e->op == CALL ||
+	    e->op == BFASSIGN || isAssignOp(e->op))
+		return 1;
+	return sideeffect(e->left) || sideeffect(e->right);
+}
+
+/*
  * Output an expression in paren-free format
  * Constants: just the value (hex with dot)
  * Symbols: $name
@@ -376,6 +396,101 @@ emitExpr(struct expr *e)
 		break;
 
 	default:
+		/*
+		 * A chained assignment whose inner target is a dereference:
+		 *
+		 *	*p = *q = 0;
+		 *
+		 * pass2 has no rule for an assignment whose value is another
+		 * assignment's, when that one stored through a pointer, and
+		 * emitted no code at all for the statement - both stores
+		 * gone, counted as an expression it could not build.  The
+		 * inner target being a plain variable has a rule and is left
+		 * alone; this is only the shape that has none.
+		 *
+		 * Emitted as the comma it is equivalent to, the same way
+		 * "*++p" becomes "(++p, *p)" above:
+		 *
+		 *	(*q = 0, *p = *q)
+		 *
+		 * Reading the inner target back rather than reusing the
+		 * value is what keeps the conversion right: the value of
+		 * "y = z" is z converted to y's type, so a narrow y between
+		 * two wide ones has to narrow.  Emitting z twice would store
+		 * the unconverted value in the outer target.
+		 *
+		 * It costs a second load, so only where the load can be
+		 * repeated, and BOTH halves of the inner assignment have to
+		 * be still for that.  The target, because "*p++ = *q++ = 0"
+		 * would step q twice.  And the value, because it runs first
+		 * and can move the target out from under the re-read:
+		 *
+		 *	foo = *bar = kee();
+		 *
+		 * where kee() assigns to bar.  The store goes to the address
+		 * bar held, and a re-read of "*bar" afterwards is a read of
+		 * somewhere else entirely - so foo would get whatever lives
+		 * at the new address instead of what was just stored.
+		 *
+		 * Neither is rewritten.  They are left exactly as they were
+		 * for pass2 to refuse, which is a failed compile and not a
+		 * quiet miscompile.
+		 */
+		/*
+		 * A word only, which is to say an int or a pointer.
+		 *
+		 * The read this puts back has to be one pass2 can build, or
+		 * the rewrite trades a shape it cannot build for another
+		 * one.  A long lands as a long load through an address in a
+		 * register and a byte lands in E, and there is no rule for
+		 * either - so "gl = *pl = 7L" and "g1_b = *pb = 5" reduce as
+		 * they stand and would stop if this touched them, while
+		 * "*p = *q = 7L" and the byte form of it stay unbuilt.  That
+		 * is the same trade refused twice, and refusing it leaves
+		 * every width no worse than it was.
+		 *
+		 * The rules to close those two are the other half of this,
+		 * and they belong in pass2 - but c1 is over its budget on
+		 * both targets, so they wait for room rather than crowd it.
+		 */
+		if (op == ASSIGN && right && right->op == ASSIGN &&
+		    right->left && right->left->op == DEREF &&
+		    right->type && right->type->size == inttype->size &&
+		    !sideeffect(right->left) && !sideeffect(right->right)) {
+			emit1(COMMA);
+			emit1(typeSfx(type));
+			emitExpr(right);		/* the inner store */
+			emit1(ASSIGN);
+			emit1(typeSfx(type));
+			inLvalue = 1;
+			emitChild(left);
+			/*
+			 * Reading the inner target back means putting a DEREF
+			 * on, not just emitting its node again.  The
+			 * assignment parser has already taken one off to
+			 * leave an address - what stands there says "the
+			 * target is at this address", not "the value at it" -
+			 * so emitting it as an operand stored the pointer
+			 * itself: "*p = *q = 0" cleared *q and then set *p to
+			 * q.  Clean code, no marker, wrong answer.
+			 *
+			 * The widening is what emitOperand would have done,
+			 * done here because the DEREF has to go between it
+			 * and the address.
+			 */
+			if (right->type && type &&
+			    right->type->size < type->size &&
+			    !(right->type->flags &
+			      (TF_POINTER | TF_ARRAY | TF_FUNC))) {
+				emit1((right->type->flags & TF_UNSIGNED) ?
+				    WIDEN : SEXT);
+				emit1(typeSfx(type));
+			}
+			emit1(DEREF);
+			emit1(typeSfx(right->type));
+			emitExpr(right->left);
+			break;
+		}
 		/* All operators get width suffix */
 		emit1(op);
 		emit1(typeSfx(type));
