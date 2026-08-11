@@ -26,6 +26,19 @@ extern void *	calloc(size_t, size_t);
 extern void	free(void *);
 extern void *	malloc(size_t);
 extern void *	realloc(void *, size_t);
+/*
+ * malloc does not come back empty: on a machine this size there is
+ * nothing useful to do with a failed allocation, and what actually
+ * happened when nobody checked was that the null was written through
+ * into page zero, over the rst 08 syscall trap - after which the
+ * program quietly restarted itself.  malloc reports and exits.
+ *
+ * __malloc is the allocator underneath, and it does return 0.  It is
+ * for the rare caller that can genuinely carry on without the memory
+ * and wants to be told - a cache that grows until it cannot, say -
+ * rather than for saving the trouble of a check.
+ */
+extern void *	__malloc(size_t);
 extern void	abort(void);
 extern void	exit(int);
 extern char *	getenv(char *);
