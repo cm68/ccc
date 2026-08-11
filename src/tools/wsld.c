@@ -65,6 +65,7 @@ int num_globals;
  */
 struct object {
     char *name;
+    char *path;                     /* the file to reopen for pass 2 */
     FILE *fp;
     long file_base;                 /* base offset in file (for archives) */
     unsigned char config;
@@ -97,6 +98,16 @@ struct object {
 
 struct object *objects;
 struct object *objects_tail;
+
+struct infile {
+    char *name;
+    int is_archive;
+    FILE *fp;           /* archives: opened once, kept for pass 2 */
+    struct infile *next;
+};
+
+struct infile *infiles;
+struct infile *infiles_tail;
 
 /*
  * pending relocation for -r output
@@ -390,6 +401,7 @@ char *name;
     obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = name;
+    obj->path = name;
     obj->fp = fp;
 
     obj->config = read_byte(fp);
@@ -465,6 +477,13 @@ char *name;
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
                obj->textRelocOff, obj->dataRelocOff);
     }
+
+    /*
+     * Done with it until pass 2, which opens it again by name.  Held
+     * open, fourteen objects and three libraries is more files than a
+     * program has - and holding them bought nothing, because every
+     * offset that matters is recorded above.
+     */
 }
 
 /*
@@ -586,6 +605,7 @@ char *membername;
     obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
+    obj->path = arname;
     obj->fp = fp;
     obj->file_base = base;
 
@@ -661,6 +681,7 @@ char *membername;
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
                obj->textRelocOff, obj->dataRelocOff);
     }
+
 }
 
 /*
@@ -668,9 +689,10 @@ char *membername;
  * returns number of objects added
  */
 int
-read_archive(name)
-char *name;
+read_archive(f)
+struct infile *f;
 {
+    char *name = f->name;
     FILE *fp;
     unsigned char buf[2];
     unsigned short magic16;
@@ -680,9 +702,39 @@ char *name;
     int count = 0;
     long base;
 
-    fp = fopen(name, "rb");
-    if (fp == NULL)
-        error2("cannot open", name);
+    /*
+     * Once for the whole link.  The rescan loop below calls this again
+     * on every pass, and the members taken out of an archive keep its
+     * handle for pass 2 - so reopening leaked a FILE and its 512 byte
+     * buffer per pass, and _NFILE is twelve.  Linking anything that
+     * needed three passes over libc ran out of files on an archive
+     * that was already open.
+     */
+    if (!f->fp) {
+        struct infile *o;
+
+        /*
+         * A library can be named more than once - the driver passes
+         * "-lc -lu -lc" so that libc and libu can satisfy each other -
+         * and each mention is its own record.  They are the same file
+         * and must share the one handle: three opens of libc.a used
+         * three of the twelve a program has, and the output file had
+         * nowhere left to go.
+         */
+        for (o = infiles; o; o = o->next)
+            if (o != f && o->fp && strcmp(o->name, name) == 0)
+                break;
+        if (o) {
+            f->fp = o->fp;
+        } else {
+            f->fp = fopen(name, "rb");
+            if (f->fp == NULL)
+                error2("cannot open", name);
+        }
+    }
+    fp = f->fp;
+    if (fseek(fp, 0L, SEEK_SET) != 0)
+        error2("seek error", name);
 
     if (fread(buf, 1, 2, fp) != 2)
         error2("read error", name);
@@ -726,11 +778,7 @@ char *name;
         off = base + len;
     }
 
-    /* note: we don't close fp because objects keep it open for pass 2 */
-    if (count == 0) {
-        fclose(fp);
-    }
-
+    /* the handle stays on the infile record; pass 2 still needs it */
     return count;
 }
 
@@ -812,6 +860,7 @@ char *name;
     obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = name;
+    obj->path = name;
     obj->fp = fp;
     obj->is_hitech = 1;
 
@@ -1042,6 +1091,7 @@ char *membername;
     obj = (struct object *)xalloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
+    obj->path = arname;
     obj->fp = fp;
     obj->file_base = base;
     obj->is_hitech = 1;
@@ -2166,14 +2216,6 @@ char *name;
 /*
  * input file list for archive re-processing
  */
-struct infile {
-    char *name;
-    int is_archive;
-    struct infile *next;
-};
-
-struct infile *infiles;
-struct infile *infiles_tail;
 
 void
 add_infile(name, is_ar)
@@ -2183,6 +2225,7 @@ int is_ar;
     struct infile *f = (struct infile *)xalloc(sizeof(struct infile));
     f->name = name;
     f->is_archive = is_ar;
+    f->fp = NULL;
     f->next = 0;
 
     if (!infiles) {
@@ -2324,7 +2367,7 @@ char **argv;
         for (f = infiles; f; f = f->next) {
             if (f->is_archive == 1) {
                 /* Whitesmith archive */
-                added += read_archive(f->name);
+                added += read_archive(f);
 #ifdef DO_HITECH
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */
@@ -2346,6 +2389,7 @@ char **argv;
 
     /* Pass 1: assign addresses and resolve symbols */
     pass1_layout();
+
 
     /* Pass 2: write output */
     pass2_output();
