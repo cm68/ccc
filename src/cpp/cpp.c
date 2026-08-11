@@ -257,9 +257,9 @@ main(int argc, char **argv)
     /* Create output file names */
     fmtstr(lexFile, "%s.x", outbase);
 #ifndef CPM
-    fmtstr(ppFile, "%s.i", outbase);
+    fmtstr(ppFile, "%s.tok", outbase);
 #endif
-    fmtstr(idFile, "%s.n", outbase);
+    fmtstr(idFile, "%s.nam", outbase);
 
 #ifdef DEBUG
 #ifndef CCC

@@ -89,9 +89,9 @@ of the text, which on this machine is the difference between a program
 fitting and not.
 
 .ti -10
--k	Keep every intermediate - the ".x", ".1", ".2", ".s" and ".o" -
-rather than removing them on the way out.  For looking at what a pass
-did.
+-k	Keep every intermediate - the ".x", ".tok", ".nam", ".ast",
+".dat", ".s" and ".o" - rather than removing them on the way out.  For
+looking at what a pass did.
 
 .ti -10
 -m sys	Produce binaries for
@@ -143,7 +143,7 @@ fifteen, for objects that have to be read by older tools.
 -H	Give
 .bd
 c0
-the human-readable ".i" file rather than the ".x" lexeme stream.
+the readable ".tok" file rather than the ".x" lexeme stream.
 Slower, and for reading rather than for building.
 
 .ti -10

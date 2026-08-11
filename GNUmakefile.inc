@@ -172,7 +172,8 @@ CCDEP   = $(HOSTLIB)/pass0 $(HOSTLIB)/c0 \
 # per-directory oversight that nobody notices until the tree has a
 # hundred core files in it.
 #
-# The chain is  .c -> .i/.x (cpp) -> .1/.2 (pass1) -> .s (pass2)
+# The chain is  .c -> .x/.tok/.nam (pass0) -> .ast/.dat (c0)
+# -> .s (c1)
 # -> .o (asz) -> image, and every one of those steps can be asked for
 # on its own or can die part way and leave its output behind.  Add
 # what falls out of debugging a compiler - core dumps, valgrind logs,
@@ -186,8 +187,8 @@ CCDEP   = $(HOSTLIB)/pass0 $(HOSTLIB)/c0 \
 # under the suffix pass2 writes its output to.  Directories where .s
 # is only ever output add CRUFTASM as well.
 #
-CRUFT = *.i *.x *.1 *.2 *.pp *.ast *.o *.obj *.rel *.a \
-	*.n *.noi *.lk *.cdb *.d *.lst *.sym *.map *.mem \
+CRUFT = *.tok *.x *.nam *.ast *.dat *.pp *.o *.obj *.rel *.a \
+	*.noi *.lk *.cdb *.d *.lst *.sym *.map *.mem \
 	*.com *.ws *.bin *.hex *.ihx *.mx \
 	*.log *.err *.out a.out tags \
 	core core.[0-9]* vgcore.* tmp[0-9]*

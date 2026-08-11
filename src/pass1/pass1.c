@@ -89,7 +89,7 @@ unsigned char phase;  // 1 = build symbol table, 2 = emit AST
  *
  * Parameters:
  *   f  - Input lexeme file (preprocessed .x file from cpp)
- *   o1 - Output AST file (base.1)
+ *   o1 - Output AST file (base.ast)
  *   o2 - Assembly file for global data (base.2)
  *
  * Side effects:
@@ -105,7 +105,7 @@ process(char *f, char *o1, char *o2)
     }
 #endif
 
-    /* Open output file for AST (o1 from ccc: base.1) */
+    /* Open output file for AST (o1 from ccc: base.ast) */
     astFd = creat(o1, 0644);
     if (astFd & 0x80) {
 #ifndef CCC
@@ -217,7 +217,7 @@ usage(char *complaint)
 {
     char *p;
     write(2, complaint, strlen(complaint));
-    p = fmtstr(usagebuf, "usage: %s [options] <.x> <.ast> <.s>\n", progname);
+    p = fmtstr(usagebuf, "usage: %s [options] <.x> <.ast> <.dat>\n", progname);
     write(2, usagebuf, p - usagebuf);
 #ifdef DEBUG
     fdprintf(2,"\t-v <verbosity>\n");

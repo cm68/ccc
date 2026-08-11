@@ -119,11 +119,11 @@ stage1: c0
 		printf "%-12s" "$$b: "; \
 		if ! ../cpp/cpp -DCCC $(INC) -p -o $(OUTDIR)/$$b $$f 2> $$err; then \
 			echo "FAIL (cpp)"; \
-		elif ! ./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err; then \
+		elif ! ./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.ast $(OUTDIR)/$$b.dat 2>> $$err; then \
 			echo "FAIL (c0)"; \
-		elif ! $(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err; then \
+		elif ! $(ASTPP) $(OUTDIR)/$$b.ast > $(OUTDIR)/$$b.pp 2>> $$err; then \
 			echo "FAIL (astpp)"; \
-		elif ! $(C1) -v 8 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
+		elif ! $(C1) -v 8 $(OUTDIR)/$$b.ast $(OUTDIR)/$$b.dat $(OUTDIR)/$$b.s 2>> $$err; then \
 			echo "FAIL (c1)"; \
 		else \
 			echo "ok"; \
@@ -162,14 +162,14 @@ $(OUTDIR)/%.x: %.c $(HEADERS) $(CPP)
 	@mkdir -p $(OUTDIR)
 	$(CPP) -DCCC $(INC) -p -o $(OUTDIR)/$* $<
 
-$(OUTDIR)/%.1 $(OUTDIR)/%.2: $(OUTDIR)/%.x c0
-	./c0 $< $(OUTDIR)/$*.1 $(OUTDIR)/$*.2
+$(OUTDIR)/%.ast $(OUTDIR)/%.dat: $(OUTDIR)/%.x c0
+	./c0 $< $(OUTDIR)/$*.ast $(OUTDIR)/$*.dat
 
-$(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
+$(OUTDIR)/%.pp: $(OUTDIR)/%.ast $(ASTPP)
 	$(ASTPP) $< > $@
 
-$(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
-	$(C1) -v 8 $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
+$(OUTDIR)/%.s: $(OUTDIR)/%.ast $(OUTDIR)/%.dat $(C1)
+	$(C1) -v 8 $(OUTDIR)/$*.ast $(OUTDIR)/$*.dat $@
 
 regression:
 	../../tests/regress.sh --filter ccc/pass1/ $(REGRESS_FLAGS)

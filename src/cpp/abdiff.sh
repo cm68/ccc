@@ -47,7 +47,7 @@ save)
 	rm -rf "$BASE"
 	for d in $DIRS; do
 		mkdir -p "$BASE/$d"
-		cp "$TOP/ccc/$d/stage1"/*.x "$TOP/ccc/$d/stage1"/*.n \
+		cp "$TOP/ccc/$d/stage1"/*.x "$TOP/ccc/$d/stage1"/*.nam \
 		   "$TOP/ccc/$d/stage1"/*.s "$BASE/$d/" 2>/dev/null
 	done
 	run_libs "$BASE"

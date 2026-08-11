@@ -176,7 +176,7 @@ usage(void)
     printf("                 the .o or .s (default: a.out)\n");
     printf("  -c             Compile and assemble only, keep .o\n");
     printf("  -s             Compile only, keep .s (no assembly)\n");
-    printf("  -k             Keep all intermediates (.x, .1, .2, .s, .o)\n");
+    printf("  -k             Keep all intermediates (.x, .ast, .dat, .s, .o)\n");
     printf("  -O             Run the peephole optimizer over the assembly\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
@@ -185,7 +185,7 @@ usage(void)
     printf("  -m <system>    Target system: micronix (default) or cpm\n");
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
-    printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
+    printf("  -H             Use .tok (readable) input for pass1 instead of .x\n");
     printf("  -l<lib>        Link with library lib<lib>.a\n");
     printf("  -L<dir>        Add <dir> to library search path\n");
     printf("  -x             Print commands as they execute\n");
@@ -881,16 +881,16 @@ main(int argc, char **argv)
         sprintf(lex_file, "%s.x", tmpbase);
         addtmp(lex_file);
         prep_file = malloc(strlen(tmpbase) + 10);
-        sprintf(prep_file, "%s.i", tmpbase);
+        sprintf(prep_file, "%s.tok", tmpbase);
         addtmp(prep_file);
         name_file = malloc(strlen(tmpbase) + 10);
-        sprintf(name_file, "%s.n", tmpbase);
+        sprintf(name_file, "%s.nam", tmpbase);
         addtmp(name_file);
         temp1_file = malloc(strlen(tmpbase) + 10);
-        sprintf(temp1_file, "%s.1", tmpbase);
+        sprintf(temp1_file, "%s.ast", tmpbase);
         addtmp(temp1_file);
         temp2_file = malloc(strlen(tmpbase) + 10);
-        sprintf(temp2_file, "%s.2", tmpbase);
+        sprintf(temp2_file, "%s.dat", tmpbase);
         addtmp(temp2_file);
 
         asm_file = malloc(strlen(base) + strlen(tmpbase) +

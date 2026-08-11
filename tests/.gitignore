@@ -3,10 +3,10 @@
 *.o
 *.out
 *.a
-*.1
-*.2
+*.ast
+*.dat
 *.s
-*.i
+*.tok
 *.x
 
 # regress.sh baseline tree must be tracked

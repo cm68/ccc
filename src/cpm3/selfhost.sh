@@ -171,12 +171,12 @@ for p in $passes; do
 		sz=$(wc -c < "$src")
 		start=$(date +%s)
 
-		( cd "$work" && rm -f h.x h.n h.1 h.2 h.s g.x g.n g.1 g.2 g.s )
+		( cd "$work" && rm -f h.x h.nam h.ast h.dat h.s g.x g.nam g.ast g.dat g.s )
 
 		if ! ( cd "$work" &&
 		       "$top"/desthost/lib/pass0 -DCCC $inc -o h "$b.c" &&
-		       "$top"/desthost/lib/c0 h.x h.1 h.2 &&
-		       "$top"/desthost/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1; then
+		       "$top"/desthost/lib/c0 h.x h.ast h.dat &&
+		       "$top"/desthost/lib/c1 h.ast h.dat h.s ) >/dev/null 2>&1; then
 			printf '%-8s %-12s %7s %6s  %s\n' \
 				"$p" "$b" "$sz" - "skip (host)"
 			continue
@@ -189,15 +189,15 @@ for p in $passes; do
 		# "expr.c" there differ in the .x for that reason alone
 		# and nothing else.
 		case " $LEGS " in *" mx "*)
-			( cd "$work" && rm -f m.x m.n m.1 m.2 m.s )
+			( cd "$work" && rm -f m.x m.nam m.ast m.dat m.s )
 			timeout $TMO $mxsim -d "$work" /pass0 -DCCC $inc \
 				-o m "$b.c" >/dev/null 2>&1 </dev/null ||
 				why="mx:cpp"
 			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
-				/c0 m.x m.1 m.2 >/dev/null 2>&1 </dev/null ||
+				/c0 m.x m.ast m.dat >/dev/null 2>&1 </dev/null ||
 				why="mx:c0"; }
 			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
-				/c1 m.1 m.2 m.s >/dev/null 2>&1 </dev/null ||
+				/c1 m.ast m.dat m.s >/dev/null 2>&1 </dev/null ||
 				why="mx:c1"; }
 			;;
 		esac
@@ -208,10 +208,10 @@ for p in $passes; do
 				"$top/destcpm/bin/cpp.com" -DCCC $inc -o g "$b.c" \
 				>/dev/null 2>&1 || why="cpm:cpp"; }
 			[ -z "$why" ] && { timeout $TMO $sim $drives \
-				"$top/destcpm/bin/c0.com" g.x g.1 g.2 >/dev/null 2>&1 ||
+				"$top/destcpm/bin/c0.com" g.x g.ast g.dat >/dev/null 2>&1 ||
 				why="cpm:c0"; }
 			[ -z "$why" ] && { timeout $TMO $sim $drives \
-				"$top/destcpm/bin/c1.com" g.1 g.2 g.s >/dev/null 2>&1 ||
+				"$top/destcpm/bin/c1.com" g.ast g.dat g.s >/dev/null 2>&1 ||
 				why="cpm:c1"; }
 			;;
 		esac
@@ -239,10 +239,10 @@ for p in $passes; do
 			*)   continue ;;
 			esac
 			cmp -s "$work/$o.x" "$work/h.x" || why="$why $leg:.x"
-			cmp -s "$work/$o.1" "$work/h.1" || why="$why $leg:.1"
-			cmp -s "$work/$o.2" "$work/h.2" || why="$why $leg:.2"
+			cmp -s "$work/$o.ast" "$work/h.ast" || why="$why $leg:.1"
+			cmp -s "$work/$o.dat" "$work/h.dat" || why="$why $leg:.2"
 			# .n by meaning, not by bytes - see nchk.py
-			python3 "$here/nchk.py" "$work/h.n" "$work/$o.n" \
+			python3 "$here/nchk.py" "$work/h.nam" "$work/$o.nam" \
 				>/dev/null 2>&1 || why="$why $leg:.n"
 			cmp -s "$work/$o.s" "$work/h.stripped" ||
 				why="$why $leg:.s"

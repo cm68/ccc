@@ -54,11 +54,22 @@ nidopen(char *f1)
 	 * buffer has no reason to be on the stack at all.
 	 */
 	static char nf[256];
-	int n = strlen(f1);
+	char *dot;
 
+	/*
+	 * base.ast -> base.nam.  Cut at the LAST dot rather than
+	 * assuming what follows it is one character long: this read
+	 * "nf[n - 2] == '.'" when the tree file was called base.1, and
+	 * silently did nothing the moment it was not.  The sidecar was
+	 * then never opened, every identifier stayed the two-byte id it
+	 * arrived as, and c1 emitted symbols with the raw id in them -
+	 * assembler that the assembler rejected, naming a line thirty
+	 * further down than the pass that wrote it.
+	 */
 	strcpy(nf, f1);
-	if (n > 2 && nf[n - 2] == '.')	/* base.1 -> base.n */
-		nf[n - 1] = 'n';
+	dot = strrchr(nf, '.');
+	if (dot)
+		strcpy(dot, ".nam");
 	nidfd = open(nf, O_RDONLY);
 }
 

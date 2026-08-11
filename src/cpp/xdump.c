@@ -51,9 +51,9 @@ loadnames(char *xname)
     strcpy(nname, xname);
     dot = strrchr(nname, '.');
     if (dot)
-        strcpy(dot, ".n");
+        strcpy(dot, ".nam");
     else
-        strcat(nname, ".n");
+        strcat(nname, ".nam");
     nf = fopen(nname, "rb");
     if (!nf)
         return;

@@ -63,7 +63,7 @@ complete: corpus
 		elif grep -q XXXXXX $$b.s; then \
 			echo "$$b: missing production:"; \
 			grep -m 3 XXXXXX $$b.s; fail=1; fi; \
-		rm -f $$b.s $$b.x $$b.n $$b.1 $$b.2 $$b.o; \
+		rm -f $$b.s $$b.x $$b.namam $$b.ast $$b.dat $$b.o; \
 	done; \
 	[ $$fail = 0 ] && echo "complete: no missing productions" || exit 1
 

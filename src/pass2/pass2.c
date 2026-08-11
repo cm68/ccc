@@ -37,7 +37,7 @@ void
 usage(char *complaint)
 {
 	errout(complaint);
-	errout("usage: c1 [options] <.ast> <inits.s> <out.s>\n");
+	errout("usage: c1 [options] <.ast> <.dat> <out.s>\n");
 #ifdef DEBUG
 	errout("  -v <mask>    Set verbosity (hex bitmask)\n");
 #ifndef CCC

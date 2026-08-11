@@ -43,25 +43,25 @@ for src in $srcs; do
 	# under a short name.
 	cp "$src" "$work/t.c"
 
-	( cd "$work" && rm -f t.x t.n t.1 t.2 t.s h.* )
+	( cd "$work" && rm -f t.x t.nam t.ast t.dat t.s h.* )
 
 	# The host, as the reference.  Run from the same directory on
 	# the same relative name: cpp records the source file it was
 	# given in the lexeme stream, so a full path here and a bare
 	# name under CP/M would differ for that reason alone.
 	( cd "$work" && "$top"/desthost/lib/pass0 -DCCC -o h t.c ) >/dev/null 2>&1
-	( cd "$work" && "$top"/desthost/lib/c0 h.x h.1 h.2 ) >/dev/null 2>&1
-	( cd "$work" && "$top"/desthost/lib/c1 h.1 h.2 h.s ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/lib/c0 h.x h.ast h.dat ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/lib/c1 h.ast h.dat h.s ) >/dev/null 2>&1
 
 	# and the same three under CP/M
 	( cd "$work" && "$sim" -d . cpp.com -DCCC -o t t.c ) >/dev/null 2>&1
-	( cd "$work" && "$sim" -d . c0.com t.x t.1 t.2 ) >/dev/null 2>&1
-	( cd "$work" && "$sim" -d . c1.com t.1 t.2 t.s ) >/dev/null 2>&1
+	( cd "$work" && "$sim" -d . c0.com t.x t.ast t.dat ) >/dev/null 2>&1
+	( cd "$work" && "$sim" -d . c1.com t.ast t.dat t.s ) >/dev/null 2>&1
 
 	bad=""
 	cmp -s "$work/t.x" "$work/h.x" || bad="$bad .x"
-	cmp -s "$work/t.1" "$work/h.1" || bad="$bad .1"
-	cmp -s "$work/t.2" "$work/h.2" || bad="$bad .2"
+	cmp -s "$work/t.ast" "$work/h.ast" || bad="$bad .1"
+	cmp -s "$work/t.dat" "$work/h.dat" || bad="$bad .2"
 	grep -v '^;' "$work/h.s" > "$work/h.stripped" 2>/dev/null || true
 	cmp -s "$work/t.s" "$work/h.stripped" || bad="$bad .s"
 

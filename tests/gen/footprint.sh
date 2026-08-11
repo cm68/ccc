@@ -22,7 +22,7 @@
 # a source in, a gap and a verdict out - and the simulator spends
 # forty seconds on a source, most of it in c1.  The only thing that
 # ever made this serial was the scratch names: every source wrote
-# s.x and h.1 into one directory.  Named per source instead, the
+# s.x and h.ast into one directory.  Named per source instead, the
 # whole table is one wave rather than fifty-five.  FPJOBS overrides
 # the width.
 #
@@ -82,8 +82,8 @@ measure() {
 
 	(cd "$jd" &&
 	 "$root"/src/cpp/cpp -DCCC -iinc -I$d -Ilib -o $h $d/$b.c &&
-	 "$root"/src/pass1/c0 $h.x $h.1 $h.2 &&
-	 "$root"/src/pass2/c1 $h.1 $h.2 $h.s) >/dev/null 2>&1 || true
+	 "$root"/src/pass1/c0 $h.x $h.ast $h.dat &&
+	 "$root"/src/pass2/c1 $h.ast $h.dat $h.s) >/dev/null 2>&1 || true
 
 	(cd "$jd" && timeout 300 $SIM cpp.mx -DCCC -iinc -I$d -Ilib \
 		-o $s $d/$b.c </dev/null) >"$o.cpp" 2>&1 || true
@@ -95,7 +95,7 @@ measure() {
 	fi
 	cmp -s "$jd/$s.x" "$jd/$h.x" || bad "$d/$b: cpp DIVERGES"
 
-	(cd "$jd" && timeout 300 $SIM c0.mx $s.x $s.1 $s.2 \
+	(cd "$jd" && timeout 300 $SIM c0.mx $s.x $s.ast $s.dat \
 		</dev/null) >"$o.c0" 2>&1 || true
 	g0=$(gapof "$o.c0"); : "${g0:=?}"
 	if grep -q "out of memory" "$o.c0"; then
@@ -103,12 +103,12 @@ measure() {
 		printf '%-18s %-13s %-13s %-13s\n' "$d/$b" "$gc" OOM - >>"$res"
 		return 0
 	fi
-	cmp -s "$jd/$s.1" "$jd/$h.1" && cmp -s "$jd/$s.2" "$jd/$h.2" ||
+	cmp -s "$jd/$s.ast" "$jd/$h.ast" && cmp -s "$jd/$s.dat" "$jd/$h.dat" ||
 		bad "$d/$b: c0 DIVERGES"
 
 	g1=-
-	if [ -s "$jd/$s.2" ] && [ -s "$jd/$s.1" ]; then
-		(cd "$jd" && timeout 600 $SIM c1.mx $s.1 $s.2 $s.s \
+	if [ -s "$jd/$s.dat" ] && [ -s "$jd/$s.ast" ]; then
+		(cd "$jd" && timeout 600 $SIM c1.mx $s.ast $s.dat $s.s \
 			</dev/null) >"$o.c1" 2>&1 || true
 		g1=$(gapof "$o.c1"); : "${g1:=?}"
 		if grep -q "out of memory" "$o.c1"; then

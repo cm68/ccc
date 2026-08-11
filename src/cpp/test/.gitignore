@@ -1,4 +1,4 @@
 # Test artifacts
 *.x
-*.i
+*.tok
 *.out

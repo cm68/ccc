@@ -5,7 +5,7 @@
 # One source at a time was the shape this started in, and it cost a
 # quarter of an hour: the simulator is where the time goes and every
 # file waits for the one before it.  Nothing here is shared but the
-# names - h.1, s.s and the rest, all written into $RUN by whichever
+# names - h.ast, s.s and the rest, all written into $RUN by whichever
 # file was current - so each source gets its own directory and they
 # all run at once.  SIMJOBS overrides the width.
 #
@@ -25,8 +25,8 @@ one() {
 	(cd "$jd" &&
 	 "$root"/src/cpp/cpp -DRT_CCC -i"$root"/src/include -I"$run" \
 		-o $b "$run/$b.c" >/dev/null 2>&1
-	 "$root"/src/pass1/c0 $b.x h.1 h.2 >/dev/null 2>&1
-	 "$root"/src/pass2/c1 h.1 h.2 h.s >/dev/null 2>&1
+	 "$root"/src/pass1/c0 $b.x h.ast h.dat >/dev/null 2>&1
+	 "$root"/src/pass2/c1 h.ast h.dat h.s >/dev/null 2>&1
 	 timeout 300 "$root"/tests/sim -d "$jd" /c0.mx /$b.x /s.1 /s.2 \
 		</dev/null >/dev/null 2>&1
 	 timeout 600 "$root"/tests/sim -d "$jd" /c1.mx /s.1 /s.2 /s.s \
@@ -54,5 +54,5 @@ for b in $list; do
 	[ -f "$out/$b.bad" ] && fail=1
 done
 rm -rf "$out"
-(cd "$run" && rm -f h.* s.* gp_*.x gp_*.n c0.mx c1.mx)
+(cd "$run" && rm -f h.* s.* gp_*.x gp_*.nam c0.mx c1.mx)
 exit $fail

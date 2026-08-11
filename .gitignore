@@ -17,12 +17,23 @@ tags
 __pycache__/
 
 # Compiler pass intermediates.  The passes chain
-# .c -> .i (cpp text) -> .x (cpp lexemes) -> .1 (AST) + .2 (pass1 asm)
-# -> .s/.as (asm) -> .o/.obj (object) -> binary
-*.i
+# .c -> .x (lexemes) + .tok (the same, readable) + .nam (the name
+# table the later passes are filtered through) -> .ast (tree)
+# + .dat (initialised data) -> .s/.as (asm) -> .o/.obj -> binary
+#
+# Two conventions were being squatted on and both are given back.
+# ".1" through ".8" are manual section sources, and the tree and data
+# files had no business holding two of them.  ".i" is post-processed
+# cpp output that a person can read - C, not tokens - and ours is a
+# token dump, so it is ".tok" and ".i" is left free.  This compiler
+# could produce a real ".i"; lowering would make it a trainwreck to
+# read, but it would be C and it would be the thing the suffix means.
+#
 *.x
-*.1
-*.2
+*.tok
+*.nam
+*.ast
+*.dat
 *.s
 *.as
 *.asm
@@ -38,7 +49,6 @@ __pycache__/
 *.sym
 *.map
 *.mem
-*.n
 *.noi
 *.lk
 *.cdb
@@ -105,11 +115,6 @@ tests/sim
 !src/*/*.s
 !src/tools/tests/*.s
 
-# The manual.  ".1" up there is pass1's AST; down here it is section
-# one of the manual, and the pages are sources.  They live in man1/
-# for exactly this reason - the suffix is spoken for - and the same
-# collision is why "make clean" cannot sweep them either.
-!src/*/man1/*.1
 
 # regress.sh baselines are checked in: .x lexeme dumps, .rc exit codes
 # and .err stderr, all of which the rules above would otherwise hide.

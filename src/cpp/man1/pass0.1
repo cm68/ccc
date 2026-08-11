@@ -40,7 +40,7 @@ what
 .bd
 c0
 reads.  With -p a readable form of the same thing is written to
-"base.i" as well.
+"base.tok" as well, and the name table to "base.nam".
 
 It handles #define with and without arguments, #undef, #include,
 #if, #ifdef, #ifndef, #else, #elif, #endif and #line, and the usual
@@ -78,8 +78,8 @@ defined as 1.
 than to a lexeme file.
 
 .ti -10
--p	Write "base.i" beside "base.x": the same output in a form
-that can be read.
+-p	Write "base.tok" beside "base.x": the same output in a
+form that can be read.
 
 .ti -10
 -N	Suppress the line markers that tell the later passes which

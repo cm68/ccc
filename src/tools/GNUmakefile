@@ -106,7 +106,7 @@ test: asz
 # what the check script produces rather than sweeping the suffix.
 clean:
 	rm -f $(CRUFT) $(CRUFTASM)
-	rm -f tests/*.out tests/*.a tests/*.o tests/*.n tests/*.lst tests/core
+	rm -f tests/*.out tests/*.a tests/*.o tests/*.nam tests/*.lst tests/core
 
 clobber: clean
 	rm -f $(ALL) $(CRUFTLOG)
@@ -202,7 +202,7 @@ stage1:
 		b=$${f%.c}; \
 		printf "%-20s" "$$f: "; \
 		$(CCC) -DCCC -k -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
-        mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
+        mv $$b.tok $$b.x $$b.ast $$b.dat $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
 	done
 	@echo "Stage1 complete"
 
