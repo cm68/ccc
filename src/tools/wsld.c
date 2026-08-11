@@ -742,6 +742,8 @@ int maxlen;
     return i;
 }
 
+#ifdef HITECH
+
 /*
  * read Hi-Tech object file
  */
@@ -1304,6 +1306,8 @@ char *name;
     return count;
 }
 
+#endif /* HITECH */
+
 /*
  * Pass 1: assign segment addresses to each object
  */
@@ -1828,6 +1832,7 @@ int is_text;
     if (!buf)
         error("out of memory");
 
+#ifdef HITECH
     if (obj->is_hitech) {
         /* Hi-Tech: copy from collected segment buffer */
         if (is_text) {
@@ -1844,7 +1849,9 @@ int is_text;
             apply_htrel(obj, buf, SEG_DATA, seg_size, seg_base);
             patch_lnksyms(obj, buf, seg_size);
         }
-    } else {
+    } else
+#endif
+    {
         /* Whitesmith: read from file */
         fseek(obj->fp, obj->file_base + seg_start, SEEK_SET);
         if (fread(buf, 1, seg_size, obj->fp) != seg_size)
@@ -2017,6 +2024,8 @@ char *s;
     return val;
 }
 
+#ifdef HITECH
+
 /*
  * check if file is Hi-Tech object format
  * looks for IDENT record: 0x0A 0x00 0x07 (len=10, type=7)
@@ -2081,6 +2090,8 @@ char *name;
     return result;
 }
 
+#endif /* HITECH */
+
 /*
  * check if file is an archive
  * returns: 0 = not archive, 1 = WS archive, 2 = HT library
@@ -2108,9 +2119,11 @@ char *name;
     if (magic16 == AR_MAGIC)
         return 1;
 
+#ifdef HITECH
     /* check Hi-Tech library */
     if (is_hitech_lib(name))
         return 2;
+#endif
 
     return 0;
 }
@@ -2260,9 +2273,11 @@ char **argv;
     for (f = infiles; f; f = f->next) {
         if (f->is_archive == 0) {
             /* object file - auto-detect format */
+#ifdef HITECH
             if (is_hitech_obj(f->name))
                 read_ht_object(f->name);
             else
+#endif
                 read_object(f->name);
         }
     }
@@ -2275,9 +2290,11 @@ char **argv;
             if (f->is_archive == 1) {
                 /* Whitesmith archive */
                 added += read_archive(f->name);
+#ifdef HITECH
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */
                 added += read_ht_ar(f->name);
+#endif
             }
         }
         pass++;

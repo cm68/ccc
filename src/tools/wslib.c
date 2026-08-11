@@ -29,7 +29,9 @@
 
 char *progname;
 int verbose;
+#ifdef HITECH
 int hitech_mode;    /* -H flag: create HiTech format library */
+#endif
 
 /* Symbol table for HiTech library creation */
 #define MAX_SYMS 500
@@ -50,7 +52,9 @@ usage()
     fprintf(stderr, "  -x  extract files (all if none specified)\n");
     fprintf(stderr, "  -a  append files to archive\n");
     fprintf(stderr, "  -t  list archive contents\n");
+#ifdef HITECH
     fprintf(stderr, "  -H  create HiTech format library (default: Whitesmith)\n");
+#endif
     exit(1);
 }
 
@@ -521,6 +525,8 @@ next_entry:
         error2("cannot rename", tmpname);
     }
 }
+
+#ifdef HITECH
 
 /*
  * Scan HiTech object file for symbols
@@ -1031,6 +1037,8 @@ int nfiles;
     free(buf);
 }
 
+#endif /* HITECH */
+
 int
 main(argc, argv)
 int argc;
@@ -1056,7 +1064,9 @@ char **argv;
                 case 'r': mode = 4; break;
                 case 't': mode = 5; break;
                 case 'v': verbose = 1; break;
+#ifdef HITECH
                 case 'H': hitech_mode = 1; break;
+#endif
                 default: usage();
                 }
                 p++;
@@ -1073,6 +1083,7 @@ char **argv;
     files = &argv[i];
     nfiles = argc - i;
 
+#ifdef HITECH
     /* detect archive type for read operations */
     if (mode == 2 || mode == 5) {
         FILE *fp;
@@ -1115,12 +1126,15 @@ char **argv;
             return 0;
         }
     }
+#endif
 
     switch (mode) {
     case 1:
+#ifdef HITECH
         if (hitech_mode)
             ht_create(archive, files, nfiles);
         else
+#endif
             do_create(archive, files, nfiles);
         break;
     case 2: do_extract(archive, files, nfiles); break;
@@ -1131,9 +1145,11 @@ char **argv;
             FILE *fp = fopen(archive, "rb");
             if (fp == NULL) {
                 /* archive doesn't exist, create it */
+#ifdef HITECH
                 if (hitech_mode)
                     ht_create(archive, files, nfiles);
                 else
+#endif
                     do_create(archive, files, nfiles);
             } else {
                 fclose(fp);
