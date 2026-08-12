@@ -408,6 +408,21 @@ scaleptr(struct expr *e)
         *side = narrowidx(*side);
     }
 
+    /*
+     * Arithmetic on a pointer moves by the size of what it points at,
+     * so a pointer to something with no size cannot do arithmetic.
+     * K&R's additive operators want a pointer to an OBJECT type, and
+     * void is not one - "v + 1" on a void * is a GNU extension and
+     * not C.  This did it anyway: the size came out 0, the index was
+     * multiplied by it, and the addition moved nowhere at all, with
+     * nothing said.  A generic pointer has to be cast to what it
+     * points at before it can be walked.
+     */
+    if (incomplete(pt->sub)) {
+        gripe(ER_E_IC);
+        return e;
+    }
+
     if (!pt->sub || (size = pt->sub->size) == 1)
         return e;                       /* a byte needs no scaling */
 

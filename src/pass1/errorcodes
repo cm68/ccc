@@ -92,3 +92,4 @@ ER_S_IF		too many ifs
 ER_D_FL		locals too large
 ER_S_FN		too many functions
 ER_S_BLK	too many blocks
+ER_E_IC		incomplete type

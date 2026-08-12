@@ -88,6 +88,7 @@ extern void slimFnArgs(struct type *t);
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
 extern struct type *getbasetype();
+extern int incomplete(struct type *t);
 extern unsigned char parseSclass();
 extern int isBasicType(struct type *t);
 struct type *getType(char flags, struct type *sub, int count);

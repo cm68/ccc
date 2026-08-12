@@ -413,7 +413,7 @@ pfxSizeof(void)
      * function at a time: nothing may depend on a declaration further
      * down the file.
      */
-    if (t && (t->flags & TF_ARRAY) && t->count <= 0)
+    if (incomplete(t))
         gripe(ER_D_IA);
     return mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
 }

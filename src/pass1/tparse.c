@@ -167,6 +167,33 @@ compatFnTyp(struct type *t1, struct type *t2)
  * asked for none and the compiler read an empty file and said nothing
  * - which is what this was found by.
  */
+/*
+ * A type whose size nothing has settled.
+ *
+ * void is the permanent case - it has no size by definition, and a
+ * pointer to it is the generic pointer, not a pointer to something
+ * one byte long.  A struct only forward-declared and an array with no
+ * extent are the temporary ones: a later declaration may complete
+ * them, and until it does neither sizeof nor pointer arithmetic has
+ * an answer.
+ *
+ * Asking anyway is a constraint violation, not something to compute
+ * around.  Both callers used to compute around it and get 0.
+ */
+int
+incomplete(struct type *t)
+{
+	if (!t)
+		return 1;
+	if (t == voidtype)
+		return 1;
+	if (t->flags & TF_INCOMPLETE)
+		return 1;
+	if ((t->flags & TF_ARRAY) && t->count <= 0)
+		return 1;
+	return 0;
+}
+
 int
 typesize(struct type *t)
 {
