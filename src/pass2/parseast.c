@@ -762,7 +762,18 @@ parseStmt(void)
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  LABEL %s\n", buf);
 #endif
+		/*
+		 * A label belongs to its function, not to the file.  Two
+		 * functions may each have "done:" - ordinary C, and
+		 * micronix's fio.c does it in iread and iwrite - and
+		 * emitting both as @done put two labels of one name in
+		 * one assembly.  The assembler took the second quietly
+		 * and one function's "goto done" jumped into the other.
+		 * The function index makes them distinct and keeps the
+		 * name the source gave them.
+		 */
 		out(LBLPFX);
+		outd(fnindex);
 		out(buf);
 		out(":\n");
 		return;
@@ -774,6 +785,7 @@ parseStmt(void)
 #endif
 		out("\tjp ");
 		out(LBLPFX);
+		outd(fnindex);
 		out(buf);
 		outc('\n');
 		return;
