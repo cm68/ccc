@@ -57,7 +57,7 @@ emitLocals(struct local *locals)
 			continue;
 		if (local->sclass & SC_STATIC)
 			staticName(lbuf, local->id, curFuncId,
-			    local->level > 2 ? local->static_id : 0);
+			    local->static_id);
 		else if (local->static_id)
 			fmtstr(lbuf, "L%d", local->static_id - 1);
 		else
@@ -189,7 +189,7 @@ emitGv(struct name *var)
 	{
 		char *p = staticName(fullname, var->id,
 		    var->level > 1 ? curFuncId : 0,
-		    var->level > 2 ? var->static_id : 0);
+		    var->static_id);
 		*p++ = ':';
 		*p = 0;
 	}

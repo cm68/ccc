@@ -275,7 +275,7 @@ streamInitVal(struct type *type)
                 if (member->sclass & SC_STATIC)
                     staticName(buf, member->id,
                         member->level > 1 ? curFuncId : 0,
-                        member->level > 2 ? member->static_id : 0);
+                        member->static_id);
                 else
                     fmtstr(buf, "_%s", nameOf(member->id));
                 asmDwSym(buf);
@@ -305,7 +305,7 @@ streamInitVal(struct type *type)
                         char nb[32];
                         staticName(nb, member->id,
                             member->level > 1 ? curFuncId : 0,
-                            member->level > 2 ? member->static_id : 0);
+                            member->static_id);
                         fmtstr(buf, "%s+%d", nb, (int)e->right->v);
                     }
                 else

@@ -201,7 +201,7 @@ emitExpr(struct expr *e)
 		else if (np->sclass & SC_STATIC)
 			staticName(fullname, np->id,
 			    np->level > 1 ? curFuncId : 0,
-			    np->level > 2 ? np->static_id : 0);
+			    np->static_id);
 		else if (np->static_id)
 			fmtstr(fullname, "L%d", np->static_id - 1);
 		else

@@ -116,7 +116,7 @@ doInitlzr(struct name *v)
     if (v->sclass & SC_STATIC) {
         char *p = staticName(fullname, v->id,
             v->level > 1 ? curFuncId : 0,
-            v->level > 2 ? v->static_id : 0);
+            v->static_id);
         *p++ = ':';
         *p = 0;
     } else

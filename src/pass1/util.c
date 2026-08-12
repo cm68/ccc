@@ -54,15 +54,9 @@ char *
 staticName(char *buf, unsigned short id, unsigned short fid,
     unsigned char sid)
 {
-	char *p;
-
-	if (fid)
-		p = fmtstr(buf, "_%s.%s", nameOf(fid), nameOf(id));
-	else
-		p = fmtstr(buf, "_%s", nameOf(id));
-	if (sid)
-		p = fmtstr(p, ".%d", sid - 1);
-	return p;
+	if (!fid)
+		return fmtstr(buf, "_%s", nameOf(id));
+	return fmtstr(fmtstr(buf, "_%s", nameOf(fid)), ".%d", sid - 1);
 }
 
 #ifndef CCC

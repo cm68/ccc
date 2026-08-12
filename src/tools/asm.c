@@ -651,6 +651,64 @@ get_token()
             }
         }
         token_buf[i++] = '\0';
+
+        /*
+         * "_cinit.3" is a compiler-generated static: the function it
+         * belongs to, and which of that function's statics it is.
+         * The '.' is not part of the name, it marks the join - and
+         * the join is made HERE because this is the layer that knows
+         * how wide the symbol table field is.
+         *
+         * When the two do not fit, the FUNCTION name gives way and
+         * the number survives whole.  The number is what makes the
+         * symbol unique; truncating it would put two of a function's
+         * statics at one address, silently, which is exactly what the
+         * warning below cannot prevent once it has happened.
+         */
+        {
+            register char *h = token_buf;
+            int lim = m_flag ? 9 : 15;
+
+            /*
+             * The marker is a '.', which the assembler already takes
+             * inside a symbol - it is how .edata and .ebss are
+             * spelled.  Only a trailing run of digits is a join, and
+             * only on a name that does not START with a dot, so the
+             * segment sentinels and any hand-written name keep the
+             * dots they were given.
+             */
+            if (*token_buf != '.') {
+                register char *t;
+
+                h = 0;
+                for (t = token_buf; *t; t++)
+                    if (*t == '.')
+                        h = t;
+                if (h) {
+                    for (t = h + 1; *t >= '0' && *t <= '9'; t++)
+                        ;
+                    if (*t || t == h + 1)
+                        h = 0;          /* not a join */
+                }
+            } else {
+                h = 0;
+            }
+            if (h) {
+                register char *num = h + 1;     /* the digits */
+                int nlen = strlen(num);
+                register char *d;
+
+                if (nlen > lim)
+                    nlen = lim;
+                if (h - token_buf > lim - nlen)
+                    h = token_buf + (lim - nlen);
+                for (d = h; *num; )
+                    *d++ = *num++;
+                *d = '\0';
+                i = (d - token_buf) + 1;
+            }
+        }
+
         if (i > (m_flag ? 10 : 16)) {  /* >9 or >15 chars plus null terminator */
             printf("%s:%d warning: symbol '%s' longer than %d characters\n",
                    infile, lineNum, token_buf, m_flag ? 9 : 15);
@@ -869,6 +927,22 @@ int visible;
         (sym->seg != seg)) {
 		printf("pass: %d from: %s to: %s\n", pass, segname[sym->seg], segname[seg]);
         gripe2("segment for symbol changed", name);
+    }
+    /*
+     * Two labels of one name.  It used to take the second quietly,
+     * which put both at one address - and the compiler now generates
+     * names, so the odd collision is not something a person wrote and
+     * can see.  A static in f() is _f2; a global that happens to be
+     * called f2 is the same symbol, and only this notices.
+     *
+     * On value, not merely on being defined twice: the second pass walks the
+     * same labels again and assigns them the same addresses, which is
+     * not a redefinition.  A second label in the same place with a
+     * different value is.
+     */
+    if ((sym->seg != SEG_UNDEF) && (sym->seg == seg) &&
+        (sym->value != value) && (pass == 0)) {
+        gripe2("symbol defined twice", name);
     }
 	sym->seg = seg;
 	sym->value = value;
