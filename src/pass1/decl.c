@@ -334,9 +334,19 @@ declaration()
 	 * The test is what follows rather than what is missing.  A
 	 * declarator starts with a name, a star or a parenthesis, and any
 	 * of those means the type was left out; anything else - struct,
-	 * union, unsigned, a type keyword, a typedef name - is left to
-	 * getbasetype(), which is the one place that should know what a
-	 * type looks like.
+	 * union, unsigned, a type keyword - is left to getbasetype(),
+	 * which is the one place that should know what a type looks like.
+	 *
+	 * Not a typedef name, which this used to claim.  getbasetype()
+	 * cannot resolve one and never could: parsebasic() has no case
+	 * for SYM and there is no name-to-type lookup in this pass at
+	 * all.  It does not need one - cpp dissolves every typedef before
+	 * the stream gets here, so a name arriving where a type belongs
+	 * is a declarator and nothing else.  That is what makes the test
+	 * above safe, and reading it the other way is what makes the
+	 * SYM case look dangerous when it is not.  A typedef that does
+	 * reach this pass is a pipeline fault and is reported as one -
+	 * see the SC_TYPEDEF gripe below.
 	 */
 	if (sclass && (cur.type == SYM || cur.type == STAR ||
 	    cur.type == LPAR))
