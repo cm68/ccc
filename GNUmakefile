@@ -65,8 +65,41 @@ install: all
 #
 # sudo, because $(PREFIX) is not ours.  SUDO= runs it without, for a
 # DESTDIR you already own.
+# A copy never deletes, so anything that leaves the tree stays behind
+# in $(PREFIX) for ever.  That is not hypothetical: lib/cpp outlived
+# the rename to pass0, crtcpm.o and libcpm.a outlived the split into
+# destcpm, and a stub sys/stat.h outlived being deleted - and the
+# driver goes looking in lib/include, so a header nobody ships any
+# more was still being found there.
+#
+# It cannot be fixed by emptying $(PREFIX) first.  These are shared
+# directories: /usr/local/bin has twenty other programs in it and
+# /usr/local/lib has python3.13, none of which are ours to remove.
+#
+# So the install writes down what it owns.  lib/ccc.manifest lists
+# every file in the tree, is shipped as part of it, and the next
+# sysinstall removes everything the last one listed before copying the
+# new tree over.  A file that has left the tree leaves $(PREFIX) with
+# it, and nothing that was never ours is touched.
+#
+# Two guards on the way in, because this deletes: a path out of the
+# manifest is dropped if it is absolute or contains "..", and the
+# removal is rm -f and never rm -r - so the worst a damaged manifest
+# can do is leave an empty directory behind.
+MANIFEST = lib/ccc.manifest
+
 sysinstall: install
+	@cd $(HOSTDIR) && find . -type f | sed 's|^\./||' | \
+	    grep -v '^$(MANIFEST)$$' | sort > $(MANIFEST).tmp && \
+	    { cat $(MANIFEST).tmp; echo $(MANIFEST); } > $(MANIFEST) && \
+	    rm -f $(MANIFEST).tmp
 	$(SUDO) $(MKDIR) $(DESTDIR)$(PREFIX)
+	@if [ -f $(DESTDIR)$(PREFIX)/$(MANIFEST) ]; then \
+	    echo "removing what the last install left"; \
+	    sed -e '/^\//d' -e '/\.\./d' $(DESTDIR)$(PREFIX)/$(MANIFEST) | \
+	    sed 's|^|$(DESTDIR)$(PREFIX)/|' | \
+	    $(SUDO) xargs -r $(RM); \
+	fi
 	$(SUDO) $(CP) -r $(HOSTDIR)/. $(DESTDIR)$(PREFIX)
 	@echo "installed: $(DESTDIR)$(PREFIX)/bin/ccc, libraries in $(PREFIX)/lib"
 
