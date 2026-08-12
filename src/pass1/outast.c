@@ -455,7 +455,7 @@ emitExpr(struct expr *e)
 		 */
 		if (op == ASSIGN && right && right->op == ASSIGN &&
 		    right->left && right->left->op == DEREF &&
-		    right->type && right->type->size == inttype->size &&
+		    right->type && right->type->size <= inttype->size &&
 		    !sideeffect(right->left) && !sideeffect(right->right)) {
 			emit1(COMMA);
 			emit1(typeSfx(type));

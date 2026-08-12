@@ -1395,6 +1395,16 @@ struct rule rules[] = {
 	R(ASSIGN,SYMREF,INA,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
 	R(ASSIGN,SYMREF,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
 	/*
+	 * A byte in E, stored to a global.  E is where a byte read back
+	 * through a pointer lands, so this is what "g = *p = 0" wants
+	 * once pass1 is allowed to rewrite a chained assignment at byte
+	 * width - without it that shape reduced to nothing while the
+	 * word one beside it worked.  INE has two dozen rules that
+	 * compute with it and, until now, none that put it anywhere.
+	 */
+	R(ASSIGN,SYMREF,INE,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	    "\tld a,e\n" F_LDLA1, R_A),
+	/*
 	 * A literal address: "*(int *)0x50".  This is how a driver or a
 	 * bootstrap talks to fixed hardware - v6's second level boot
 	 * hands the disk controller its command address exactly so - and
@@ -1938,6 +1948,15 @@ struct rule rules[] = {
 		"\tld hl,($LL)\n\tld (hl),a\n", R_A),
 	R(ASSIGN,DEREF,INHL,SYMREF,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDAL "\tld hl,($LL)\n\tld (hl),a\n", R_A),
+	/*
+	 * The same store with the value in BC, which is where a word
+	 * register variable lives.  "*Curschar = nchar" in vi's normal.c
+	 * is exactly this - a byte stored through a global char pointer
+	 * from an int local the allocator put in BC - and it had no rule
+	 * while the A and HL forms beside it did.
+	 */
+	R(ASSIGN,DEREF,INBC,SYMREF,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAC "\tld hl,($LL)\n\tld (hl),a\n", R_A),
 	R(ASSIGN,DEREF,INDE,SYMREF,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
 	R(ASSIGN,DEREF,INHL,SYMREF,0,2, ASSIGN, P_L, P_R, P_NONE, 0,

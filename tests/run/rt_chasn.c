@@ -23,9 +23,34 @@
 #include "rt.h"
 
 int	a, b;
+char *	gp;
 int	u, v, w;
 char	cbuf[4];
+char	gc;
 int	ibuf[4];
+
+/*
+ * A byte stored through a global pointer, from a word the allocator
+ * has put in BC.  Not a chained assignment at all, but it came out of
+ * the same report and the same file: vi's normal.c does
+ * "*Curschar = nchar" with nchar an int local, and that shape had no
+ * rule while the A and HL forms beside it did.  The int has to be
+ * worked with enough to earn a register, which is what the arithmetic
+ * below is for.
+ */
+int
+bcstore(k)
+int k;
+{
+	int n;
+
+	n = k;
+	if (n == 13)
+		n = 10;
+	n = n + 1;
+	*gp = n;
+	return n;
+}
 
 main()
 {
@@ -33,6 +58,7 @@ main()
 	int *	q;
 	int *	r;
 	char *	cp;
+	char *	cq;
 	int *	ip;
 
 	/* the reported form: both stores must happen */
@@ -102,24 +128,44 @@ main()
 	CHECK(17, w, 8);
 
 	/*
-	 * Only a word is rewritten - an int or a pointer.  The read the
-	 * rewrite puts back has to be one pass2 can build, and a byte
-	 * lands in E and a long in a register pair, neither of which it
-	 * can store from.  So "*ip = *cp = 300" is NOT here: it does not
-	 * compile, exactly as it did not before, and writing it would
-	 * make this file fail to build rather than fail a check.
-	 *
-	 * That boundary is also why nothing below tests the conversion
-	 * the inner target imposes - it takes two widths to see one, and
-	 * the rewrite only ever sees the single width it is allowed.
-	 * The reading-back is still what makes the conversion right when
-	 * those widths are unlocked; it just cannot be shown from here.
+	 * Byte width.  This was left out when the word case was fixed -
+	 * the read the rewrite puts back lands in E, and there was no
+	 * rule to store E anywhere, so allowing it would have traded one
+	 * unbuildable shape for another.  The rule exists now, so the
+	 * same source line no longer compiles or not depending on what
+	 * the pointers point at.
+	 */
+	cbuf[0] = 1;
+	cbuf[1] = 2;
+	cp = &cbuf[0];
+	cq = &cbuf[1];
+	*cp = *cq = 0;
+	CHECK(18, cbuf[0], 0);
+	CHECK(19, cbuf[1], 0);
+
+	/*
+	 * And the conversion the inner target imposes, which needs two
+	 * widths to see and so could not be shown until the byte case
+	 * worked.  The value of "y = z" is z converted to y's type: 300
+	 * stored into a char is 44, and 44 is what the int must end up
+	 * with.  Emitting the value twice instead of reading the target
+	 * back would put 300 in the int.
 	 */
 	cbuf[0] = 0;
+	u = 0;
 	cp = &cbuf[0];
 	ip = &u;
-	CHECK(18, cp == &cbuf[0], 1);
-	CHECK(19, ip == &u, 1);
+	*ip = *cp = 300;
+	CHECK(28, cbuf[0] & 0377, 44);
+	CHECK(29, u, 44);
+
+	/* a global as the outer target, a byte deref as the inner */
+	cbuf[0] = 9;
+	gc = 0;
+	cp = &cbuf[0];
+	gc = *cp = 7;
+	CHECK(30, gc, 7);
+	CHECK(31, cbuf[0], 7);
 
 	/*
 	 * A stepped pointer is left alone by the rewrite - reading the
@@ -148,6 +194,19 @@ main()
 	*p = *q = 12;
 	CHECK(26, u, 12);
 	CHECK(27, v, 12);
+
+	/* the byte store from BC */
+	gp = &cbuf[0];
+	cbuf[0] = 0;
+	CHECK(32, bcstore(13), 11);
+	CHECK(33, cbuf[0], 11);
+	CHECK(34, bcstore(64), 65);
+	CHECK(35, cbuf[0], 65);
+	/* only the low byte lands, and only in the one byte */
+	cbuf[1] = 77;
+	CHECK(36, bcstore(300), 301);
+	CHECK(37, cbuf[0] & 0377, 301 & 0377);
+	CHECK(38, cbuf[1], 77);
 
 	return 0;
 }
