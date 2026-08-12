@@ -1538,6 +1538,18 @@ ds()
     if (c != T_PLAIN && (value.sym != 0)) {
         gripe("ds requires absolute argument");
     }
+    /*
+     * A reservation is a count of bytes, so it cannot be negative.
+     * The word is unsigned, so one that is arrives here as an enormous
+     * positive number and is accepted without comment: c1 emitting
+     * ".ds -6" for an array with no dimension gave the object a bss of
+     * 65530, which every later size is then computed against.  Nothing
+     * downstream can tell that from a real 65530.
+     */
+    if (value.num.w > 0x7fff) {
+        gripe("ds count is negative");
+        return;
+    }
     fill(value.num.w);
 }
 

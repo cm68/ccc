@@ -187,6 +187,27 @@ emitGv(struct name *var)
 	else
 		fmtstr(fullname, "_%s::", nameOf(var->id));
 
+	/*
+	 * An array with no extent gets no storage.
+	 *
+	 *	struct biovec { ... } biosw[];
+	 *
+	 * is how a header of this vintage declares an array that some
+	 * other file defines, and there is nothing here to allocate:
+	 * the size is not known and will not be known until the
+	 * definition is seen.  It is a reference, so nothing is emitted
+	 * and the use of it becomes an external reference in the object
+	 * the ordinary way.
+	 *
+	 * It used to multiply the element size by the count, which for
+	 * an incomplete array is -1, and emit ".ds -6".  The count is
+	 * unsigned by the time the assembler has it, so that reserved
+	 * 65530 bytes of bss without a word said, and every size the
+	 * linker computes in that object is measured against it.
+	 */
+	if ((var->type->flags & TF_ARRAY) && var->type->count <= 0)
+		return;
+
 	/* Calculate total size */
 	if (var->type->flags & TF_ARRAY)
 		size = var->type->count * var->type->sub->size;
