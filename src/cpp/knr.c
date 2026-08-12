@@ -495,6 +495,33 @@ knr(struct token *t)
 				st = K_PTYPE;
 				continue;
 			}
+			/*
+			 * A declaration that is nothing but the name:
+			 *
+			 *	f(a) a; { }	f(a, b) int a; b; { }
+			 *
+			 * K&R implicit int, and the only thing missing was
+			 * permission to see it - K_PTYPE already reads the
+			 * name, the commas, the stars and the [] decay, and
+			 * emit_ansi already spells a parameter with no type
+			 * as int.  Falling through to abort_knr instead
+			 * meant the whole rewrite was abandoned, and worse
+			 * than abandoned in a mixed list: "f(a, b) int a;
+			 * b;" had already folded int a into the rewrite
+			 * when b aborted it, so what reached c0 was neither
+			 * the K&R text nor the ANSI text but half of each.
+			 *
+			 * Only for a name from this function's own
+			 * parameter list.  Any other SYM here is not a K&R
+			 * parameter declaration and still belongs to
+			 * abort_knr, which is what keeps the bail-out
+			 * meaning something.
+			 */
+			if (cur.type == SYM && find_kparm(cur.v.name)) {
+				cur_pname = cur.v.name;
+				st = K_PTYPE;
+				continue;
+			}
 			if (cur.type == RPAR && kp_preopen > 0) {
 				tarr_push(&tail_a, &cur);
 				kp_preopen--;

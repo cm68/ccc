@@ -355,7 +355,32 @@ prmDecl(void)
      * never heard about it.
      */
     psclass = parseSclass();
-    basetype = getbasetype();
+
+    /*
+     * K&R implicit int, after a storage class - the same rule decl()
+     * applies at file scope, at the one other place a storage class
+     * can arrive with no type behind it:
+     *
+     *	f(a) register a; { }		f(a, b) register a; char *b; { }
+     *
+     * cpp's K&R pass turns those into "int f(register a)", which is
+     * the ANSI spelling of the same thing and is what arrives here.
+     * Without this the parameter had no base type, the list was
+     * called malformed, and the parse gave up at the top of the
+     * function - so a file lost every diagnostic after its first such
+     * definition and reported thirty cascades instead.
+     *
+     * The test is what follows rather than what is missing, exactly
+     * as at file scope: a declarator starts with a name, a star or a
+     * parenthesis, and any of those means the type was left out.
+     * Anything else is getbasetype()'s business.
+     */
+    basetype = 0;
+    if (psclass && (cur.type == SYM || cur.type == STAR ||
+        cur.type == LPAR))
+        basetype = inttype;
+    if (!basetype)
+        basetype = getbasetype();
     if (!basetype) {
         gripe(ER_D_FA);
         return NULL;
