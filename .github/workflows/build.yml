@@ -42,6 +42,23 @@ jobs:
     - name: Run tests
       run: make test
 
+    # The other half of the test suite: sources that must NOT compile.
+    # A diagnostic that stops firing is a silent regression - the
+    # compiler goes on accepting what it used to refuse - and "make
+    # test" cannot see it, because every source in that list is one
+    # that succeeds.  No simulator involved: each of these is ccc
+    # invoked once and required to fail.
+    - name: Run tests expected to fail
+      run: make -C tests test-fail
+
+    # Every generated program must still reduce to code.  This is what
+    # catches a rule that stops matching: the compile succeeds, the
+    # output is short an expression, and pass2 marks the gap with
+    # XXXXXX rather than emitting anything.  Also simulator-free - it
+    # compiles and greps, and never runs what it built.
+    - name: Check every production still reduces
+      run: make -C tests/gen complete
+
     - name: Show build artifacts
       run: |
         ls -lh desthost/bin desthost/lib destmicronix/lib
