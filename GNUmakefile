@@ -94,6 +94,16 @@ sysinstall: install
 	    { cat $(MANIFEST).tmp; echo $(MANIFEST); } > $(MANIFEST) && \
 	    rm -f $(MANIFEST).tmp
 	$(SUDO) $(MKDIR) $(DESTDIR)$(PREFIX)
+	@# lib/include is wholly ours and is written out fresh by every
+	@# build, so it goes wholesale rather than a file at a time.  That
+	@# covers what the manifest cannot: a header installed before
+	@# there was a manifest to list it - which is exactly how the stub
+	@# sys/stat.h went on being found there after it was deleted.
+	@#
+	@# Only this one.  usr/include is NOT ours to empty: the real
+	@# Micronix sys/stat.h lives there and this tree does not ship it,
+	@# so it is not in the manifest and must not be swept up.
+	$(SUDO) rm -rf $(DESTDIR)$(PREFIX)/lib/include
 	@if [ -f $(DESTDIR)$(PREFIX)/$(MANIFEST) ]; then \
 	    echo "removing what the last install left"; \
 	    sed -e '/^\//d' -e '/\.\./d' $(DESTDIR)$(PREFIX)/$(MANIFEST) | \
