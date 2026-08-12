@@ -416,8 +416,31 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            /* All statics get static_id for S<id> naming */
-            if (!v->static_id)
+            /*
+             * All statics get static_id for S<id> naming, and it has
+             * to be minted HERE, from staticCtr.
+             *
+             * symDecl hands any name declared in a nested block an id
+             * of its own out of shadowCtr, so that two sibling blocks
+             * each declaring "b" do not arrive in the hoisted locals
+             * list as one name.  Those are spelled L<n>.  But a
+             * static is spelled S<n>, and shadowCtr restarts at zero
+             * for every function while staticCtr runs the length of
+             * the file - so a static declared inside a block took a
+             * per-function number into a file-wide namespace:
+             *
+             *	S1:	.ds 2		counter()'s  static int n
+             *	S1:	.ds 16		nested()'s   static char ibuf[16]
+             *
+             * One label, two variables, sharing storage and writing
+             * over each other.  Nothing said a word.
+             *
+             * Only at block scope: a file-scope static that already
+             * carries an id is a redeclaration merged onto the
+             * existing name, and it has to keep the number it was
+             * emitted against.
+             */
+            if (!v->static_id || v->level > 1)
                 v->static_id = ++staticCtr;
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;

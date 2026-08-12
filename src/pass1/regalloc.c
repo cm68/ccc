@@ -84,6 +84,28 @@ assignFrmOff(struct name *func)
 			n->frm_off = 0;
 			continue;
 		}
+		/*
+		 * A static local is addressed by its S<n> label and has its
+		 * storage in data - that is what makes it survive the call -
+		 * so a frame slot for it is reserved on every call and never
+		 * touched.  canAlloc has refused it a register for the same
+		 * reason since a read of one came back as the address; the
+		 * frame accounting never asked.
+		 *
+		 * Nothing was wrong at runtime, which is why it stood: the
+		 * cost is stack, and it scales with the declaration, which
+		 * is backwards.  The bigger the buffer the more reason there
+		 * was to make it static, and the more stack it cost - wsld's
+		 * copy_segment declared "static unsigned char cbuf[512]"
+		 * precisely to keep it off the frame, and reported
+		 * frame=522.  On a machine where text, data, heap and stack
+		 * share one 64K, that is half a kilobyte the heap cannot
+		 * have, and a frame size that lies about where it went.
+		 */
+		if (n->sclass & SC_STATIC) {
+			n->frm_off = 0;
+			continue;
+		}
 		if (n->type->flags & TF_ARRAY)
 			continue;
 		if (n->level < MAXBLKLVL &&
@@ -108,6 +130,10 @@ assignFrmOff(struct name *func)
 	for (n = locals; n; n = n->next) {
 		if (n->kind == kfunarg || n->reg)
 			continue;
+		if (n->sclass & SC_STATIC) {	/* in data, see above */
+			n->frm_off = 0;
+			continue;
+		}
 		if (!(n->type->flags & TF_ARRAY))
 			continue;
 		if (!arrays) {
