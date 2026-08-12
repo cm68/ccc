@@ -37,6 +37,8 @@ struct token {
  */
 #define SYNTH 0x8000		/* + n: the strn literal */
 extern char *nameOf(unsigned short id);
+extern char *staticName(char *buf, unsigned short id, unsigned short fid,
+    unsigned char sid);
 
 extern struct token cur, next;
 extern char strbuf[];

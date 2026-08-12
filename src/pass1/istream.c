@@ -10,6 +10,8 @@
 #include "p1name.h"
 #include "p1lex.h"
 
+extern unsigned short curFuncId;	/* outast.c */
+
 /*
  * Find struct member at given offset (members are linked in reverse order)
  *
@@ -271,7 +273,9 @@ streamInitVal(struct type *type)
             } else if (e->op == SYM) {
                 member = (struct name *)e->var;
                 if (member->sclass & SC_STATIC)
-                    fmtstr(buf, "S%d", member->static_id - 1);
+                    staticName(buf, member->id,
+                        member->level > 1 ? curFuncId : 0,
+                        member->level > 2 ? member->static_id : 0);
                 else
                     fmtstr(buf, "_%s", nameOf(member->id));
                 asmDwSym(buf);
@@ -297,8 +301,13 @@ streamInitVal(struct type *type)
                  */
                 member = (struct name *)e->left->var;
                 if (member->sclass & SC_STATIC)
-                    fmtstr(buf, "S%d+%d", member->static_id - 1,
-                        (int)e->right->v);
+                    {
+                        char nb[32];
+                        staticName(nb, member->id,
+                            member->level > 1 ? curFuncId : 0,
+                            member->level > 2 ? member->static_id : 0);
+                        fmtstr(buf, "%s+%d", nb, (int)e->right->v);
+                    }
                 else
                     fmtstr(buf, "_%s+%d", nameOf(member->id),
                         (int)e->right->v);

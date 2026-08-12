@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include "libutil.h"
 
+extern char *nameOf(unsigned short id);	/* lexread.c */
+
 #ifndef PSIZE
 #define PSIZE 80
 #endif
@@ -17,6 +19,51 @@
 /* Forward declaration - only used for DEBUG builds */
 int fdprintf(unsigned char fd, char *fmt, ...);
 #endif
+
+/*
+ * The name a static is emitted under.
+ *
+ * It used to be S<n> and nothing else - a counter, carrying none of
+ * what the programmer called the thing.  A symbol table full of S4
+ * and S17 tells a debugger, or anyone reading an object, nothing at
+ * all, and the statics are exactly what one wants to see: they are
+ * the file's private state.
+ *
+ * The source name, qualified by the scope it was written in.  A
+ * static at file scope is "_name"; one inside a function is
+ * "_func.name", because the function is what makes it unique - two
+ * functions in micronix's queue.c each declare "static struct cblock
+ * *new, *old", and ten of its forty kernel sources repeat a static
+ * name somewhere.  Two labels of one name in one assembly is a
+ * duplicate the assembler refuses long before any linker could
+ * uniquify it, and the lexical scope settles it without this pass
+ * having to remember every static name in the file - which matters,
+ * because it has to run on a Z80.
+ *
+ * The function is not always enough.  A static in a nested block is
+ * still inside one function, and two sibling blocks may each declare
+ * one of the same name - legal, and rt_statloc does it on purpose.
+ * Those get the counter as well, which is what sid is; a plain
+ * function-body static does not need it and does not carry it.
+ *
+ * The linker's job is the other half: these are local symbols, so
+ * nothing resolves against them, and two objects may each have a
+ * _f.n without either being wrong.
+ */
+char *
+staticName(char *buf, unsigned short id, unsigned short fid,
+    unsigned char sid)
+{
+	char *p;
+
+	if (fid)
+		p = fmtstr(buf, "_%s.%s", nameOf(fid), nameOf(id));
+	else
+		p = fmtstr(buf, "_%s", nameOf(id));
+	if (sid)
+		p = fmtstr(p, ".%d", sid - 1);
+	return p;
+}
 
 #ifndef CCC
 char patspace[PSIZE];

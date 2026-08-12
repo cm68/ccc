@@ -17,6 +17,13 @@ extern int frameSaveBase;                   /* regalloc.c */
 struct local *curFuncLocals = NULL;
 
 /*
+ * The function being emitted, for naming its statics.  A static in a
+ * function is qualified by the function it is in - that is what makes
+ * it unique inside the file, and it is what the source says about it.
+ */
+unsigned short curFuncId = 0;
+
+/*
  * Set while emitting the lvalue of an assignment, and consumed by the
  * first node emitted after that - see the DEREF case in emitExpr.
  */
@@ -191,9 +198,12 @@ emitExpr(struct expr *e)
 		if ((np->sclass & SC_EXTERN) ||
 		    (np->level == 1 && !(np->sclass & SC_STATIC)))
 			fmtstr(fullname, "_%s", nameOf(np->id));
+		else if (np->sclass & SC_STATIC)
+			staticName(fullname, np->id,
+			    np->level > 1 ? curFuncId : 0,
+			    np->level > 2 ? np->static_id : 0);
 		else if (np->static_id)
-			fmtstr(fullname,
-			    "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
+			fmtstr(fullname, "L%d", np->static_id - 1);
 		else
 			fmtstr(fullname, "%s", nameOf(np->id));
 		emit1(SYM);

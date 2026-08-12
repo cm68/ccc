@@ -9,6 +9,8 @@
 #include "p1name.h"
 #include "p1lex.h"
 
+extern unsigned short curFuncId;	/* outast.c */
+
 /*
  * Parse a variable initializer for static/global variables
  *
@@ -111,9 +113,13 @@ doInitlzr(struct name *v)
     setSeg(SEG_DATA);
 
     /* Build label: globals get ::, statics get : */
-    if (v->sclass & SC_STATIC)
-        fmtstr(fullname, "S%d:", v->static_id - 1);
-    else
+    if (v->sclass & SC_STATIC) {
+        char *p = staticName(fullname, v->id,
+            v->level > 1 ? curFuncId : 0,
+            v->level > 2 ? v->static_id : 0);
+        *p++ = ':';
+        *p = 0;
+    } else
         fmtstr(fullname, "_%s::", nameOf(v->id));
     asmLine(fullname);
 

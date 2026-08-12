@@ -94,26 +94,56 @@ nidname(unsigned short id, char *buf, int size)
 }
 
 /*
- * Replace @id - optionally behind the global underscore - with its
- * spelling, in place.  Anything else passes through untouched:
- * synthetics (S%d, L%d, str%d) and plain-mode names never contain
- * '@'.
+ * Replace every @id with its spelling, in place.  Anything else
+ * passes through untouched: synthetics (L%d, str%d) and plain-mode
+ * names never contain '@'.
+ *
+ * EVERY one.  This used to expand the first and stop, which was
+ * enough while a name held at most one - "_@4" for a global, "@6" for
+ * a local.  A static is "_@4.@6" now, the function it is in and then
+ * its own name, and expanding the first wrote the spelling straight
+ * over the rest: "_counter.n" came out as "_counter", the reference
+ * pointed at the function instead of at the static, and the code read
+ * and wrote the first two bytes of its own entry point.
+ *
+ * The rebuild goes through a buffer rather than in place, because a
+ * spelling is longer than the "@6" it replaces and would otherwise
+ * overwrite the text still to be read.  Static, not a frame local -
+ * see the note on nidopen above.
  */
 void
 nidxp(char *buf, int size)
 {
-	char *p = buf;
-	char *q;
+	static char xbuf[128];
+	char *s, *d, *end;
 	unsigned short id;
 
-	if (*p == '_')
-		p++;
-	if (*p != '@' || nidfd < 0)
+	if (nidfd < 0)
 		return;
-	id = 0;
-	for (q = p + 1; *q >= '0' && *q <= '9'; q++)
-		id = id * 10 + (*q - '0');
-	nidname(id, p, size - (p - buf));
+	for (s = buf; *s && *s != '@'; s++)
+		;
+	if (!*s)
+		return;			/* nothing to expand */
+
+	s = buf;
+	d = xbuf;
+	end = xbuf + sizeof(xbuf) - 1;
+	while (*s && d < end) {
+		if (*s == '@' && s[1] >= '0' && s[1] <= '9') {
+			id = 0;
+			for (s++; *s >= '0' && *s <= '9'; s++)
+				id = id * 10 + (*s - '0');
+			nidname(id, d, end - d);
+			while (*d)
+				d++;
+		} else {
+			*d++ = *s++;
+		}
+	}
+	*d = 0;
+	for (s = xbuf, d = buf; *s && size > 1; size--)
+		*d++ = *s++;
+	*d = 0;
 }
 
 void

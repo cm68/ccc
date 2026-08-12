@@ -14,6 +14,7 @@
 #include "p1outh.h"
 
 extern struct local *curFuncLocals;
+extern unsigned short curFuncId;
 extern int analyzeFunc(struct name *func);  /* regalloc.c */
 extern int frameSaveBase;                   /* regalloc.c */
 
@@ -55,7 +56,8 @@ emitLocals(struct local *locals)
 		if (local->kind == kfunarg)
 			continue;
 		if (local->sclass & SC_STATIC)
-			fmtstr(lbuf, "S%d", local->static_id - 1);
+			staticName(lbuf, local->id, curFuncId,
+			    local->level > 2 ? local->static_id : 0);
 		else if (local->static_id)
 			fmtstr(lbuf, "L%d", local->static_id - 1);
 		else
@@ -130,6 +132,7 @@ emitFuncPre(struct name *func)
 
 	frm_size = analyzeFunc(func);
 	curFuncLocals = func->u.locals;
+	curFuncId = func->id;
 
 	/* Count params and locals first */
 	param_count = local_count = 0;
@@ -143,7 +146,7 @@ emitFuncPre(struct name *func)
 
 	/* Emit function header */
 	if (func->sclass & SC_STATIC)
-		fmtstr(func_name, "S%d", func->static_id - 1);
+		staticName(func_name, func->id, 0, 0);
 	else
 		fmtstr(func_name, "_%s", nameOf(func->id));
 	emit1(AST_FUNC);
@@ -183,7 +186,13 @@ emitGv(struct name *var)
 
 	/* Build label: globals get ::, statics get : */
 	if (var->sclass & SC_STATIC)
-		fmtstr(fullname, "S%d:", var->static_id - 1);
+	{
+		char *p = staticName(fullname, var->id,
+		    var->level > 1 ? curFuncId : 0,
+		    var->level > 2 ? var->static_id : 0);
+		*p++ = ':';
+		*p = 0;
+	}
 	else
 		fmtstr(fullname, "_%s::", nameOf(var->id));
 
