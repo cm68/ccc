@@ -76,6 +76,7 @@ ER_E_IB		need ]
 ER_E_FN		need fn ptr
 ER_E_FA		bad fn args
 ER_E_UO		bad op
+ER_E_UD		undefined symbol
 ER_E_CF		no fold
 ER_E_PT		ptr compat
 ER_E_AG		struct value

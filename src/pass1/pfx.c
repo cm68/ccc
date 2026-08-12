@@ -98,7 +98,7 @@ pfxSym(void)
             fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type,
                      nameOf(symid));
 #endif
-            gripe(ER_E_UO);
+            gripe(ER_E_UD);
             return mkexprI(CONST, 0, inttype, 0, 0);
         }
     }
