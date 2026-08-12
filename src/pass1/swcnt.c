@@ -72,6 +72,7 @@ int atSwBodyStmt(void) {
     if (swDepth == 0) return 0;
     /* Switch body is one level deeper than where switch started */
 #ifdef DEBUG
+    if (VERBOSE(V_PHASE1))
     fdprintf(2, "atSwBodyStmt: stmtNest=%d swStmtDepth=%d result=%d\n",
              stmtNest, swStmtDepth[swDepth - 1],
              stmtNest == swStmtDepth[swDepth - 1] + 1);
@@ -135,6 +136,7 @@ void addCase(unsigned char stmt_cnt) {
     if (sw->count > 0) {
         cp[-1].stmts = stmt_cnt - sw->base_stmts;
 #ifdef DEBUG
+        if (VERBOSE(V_PHASE1))
         fdprintf(2, "addCase: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
                  idx, sw->count - 1, stmt_cnt, sw->base_stmts,
                  cp[-1].stmts);
@@ -145,6 +147,7 @@ void addCase(unsigned char stmt_cnt) {
     cp->is_default = 0;
     cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
+    if (VERBOSE(V_PHASE1))
     fdprintf(2, "addCase: add sw[%d].cases[%d] base=%d\n",
              idx, sw->count, sw->base_stmts);
 #endif

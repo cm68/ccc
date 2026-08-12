@@ -162,7 +162,8 @@ statement(void)
             case SWITCH: {
                 struct swtab *sw;
 #ifdef DEBUG
-                fdprintf(2, "P1 SWITCH: cur=%d line=%d\n", cur.type, lineno);
+                if (VERBOSE(V_PHASE1))
+                    fdprintf(2, "P1 SWITCH: cur=%d line=%d\n", cur.type, lineno);
 #endif
                 gettoken();
                 expect(LPAR, ER_S_NP);

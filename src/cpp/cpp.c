@@ -381,7 +381,15 @@ main(int argc, char **argv)
     }
 
 #ifdef DEBUG
-    { extern void poolstats(void); poolstats(); }
+    /*
+     * Behind a verbosity bit, not just DEBUG.  The host passes are
+     * built -DDEBUG, so this fired on every compile the tree does and
+     * on every compile anyone did with the installed driver - eighteen
+     * lines of pool census in front of the diagnostics that say what
+     * is actually wrong with the source.
+     */
+    if (VERBOSE(V_SYM))
+        { extern void poolstats(void); poolstats(); }
 #endif
     return exitCode;
 }

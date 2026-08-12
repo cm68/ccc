@@ -374,8 +374,9 @@ main(int argc, char **argv)
 
     /* Report allocation counts */
 #ifdef DEBUG
-    fdprintf(2, "names: %d/%d exprs: %d/%d\n",
-        nameAllocCnt, nameHighWater, exprAllocCnt, exprHighWater);
+    if (VERBOSE(V_TRACE))
+        fdprintf(2, "names: %d/%d exprs: %d/%d\n",
+            nameAllocCnt, nameHighWater, exprAllocCnt, exprHighWater);
 #endif
 
     return exitCode;  /* Return 0 if no errors, 1 if errors occurred */

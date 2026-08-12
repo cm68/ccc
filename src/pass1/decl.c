@@ -70,7 +70,7 @@ parsefunc(struct name *f)
 	}
 
 #ifdef DEBUG
-	if (phase == 2)
+	if (phase == 2 && VERBOSE(V_PHASE2))
 		fdprintf(2, "func %s: exprs=%d\n", nameOf(f->id), exprCurCnt);
 #endif
 
@@ -115,12 +115,14 @@ parsefunc(struct name *f)
 		/* Phase 1: Skip statement parsing, but capture locals.
 		 * Locals have ref_count populated during parseExpr. */
 #ifdef DEBUG
-		fdprintf(2, "parsefunc phase1: %s entering statement()\n",
-		         nameOf(f->id));
+		if (VERBOSE(V_PHASE1))
+			fdprintf(2, "parsefunc phase1: %s entering statement()\n",
+			         nameOf(f->id));
 #endif
 		statement();  /* Skips through function body */
 #ifdef DEBUG
-		fdprintf(2, "parsefunc phase1: %s done\n", nameOf(f->id));
+		if (VERBOSE(V_PHASE1))
+			fdprintf(2, "parsefunc phase1: %s done\n", nameOf(f->id));
 #endif
 		f->kind = kfdef;
 		f->u.locals = capLocals();  /* Capture before popScope */
