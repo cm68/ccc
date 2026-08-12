@@ -339,6 +339,41 @@ char *name;
 }
 
 /*
+ * A symbol that belongs to one object and is not offered to the link.
+ *
+ * Bit 3 of the type byte is the global flag, and until now nothing
+ * here looked at it: every symbol table entry went into the global
+ * table, so a local symbol in two objects collided exactly as two
+ * globals would.  That is what the segment sentinels asz emits ran
+ * into - .edata and .ebss are in every object by construction.
+ *
+ * It still gets a symbol struct and still goes in obj->symtab[],
+ * because relocations name symbols by index and a local one can be
+ * the target of a relocation like any other.  It just never joins
+ * the chain the rest of the link searches.
+ */
+struct symbol *
+sym_local(name, value, seg, type, obj)
+char *name;
+unsigned short value;
+unsigned char seg;
+unsigned char type;
+struct object *obj;
+{
+    struct symbol *s;
+
+    s = (struct symbol *)xalloc(sizeof(struct symbol));
+    strncpy(s->name, name, 15);
+    s->name[15] = '\0';
+    s->value = value;
+    s->seg = seg;
+    s->type = type;
+    s->obj = obj;
+    s->next = 0;
+    return s;
+}
+
+/*
  * add or update symbol in global table
  */
 struct symbol *
@@ -458,7 +493,9 @@ char *name;
         seg = decode_seg(type);
 
         /* add to global symbol table, get back pointer */
-        gsym = sym_define(symname, val, seg, type, obj);
+        gsym = (type & 0x08)
+                ? sym_define(symname, val, seg, type, obj)
+                : sym_local(symname, val, seg, type, obj);
         obj->symtab[i] = gsym;
 
         if (verbose > 1) {
@@ -664,7 +701,9 @@ char *membername;
         symname[obj->symlen] = '\0';
         seg = decode_seg(type);
 
-        gsym = sym_define(symname, val, seg, type, obj);
+        gsym = (type & 0x08)
+                ? sym_define(symname, val, seg, type, obj)
+                : sym_local(symname, val, seg, type, obj);
         obj->symtab[i] = gsym;
 
         if (verbose > 1) {

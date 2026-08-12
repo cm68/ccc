@@ -286,6 +286,7 @@ unsigned short text_size;
 unsigned short mem_size;
 unsigned short data_size;
 unsigned short bss_size;
+int nlocalsym;		/* local data/bss symbols written for sizing */
 
 char pass;
 
@@ -2171,7 +2172,21 @@ assemble()
 
 			outbyte(MAGIC);		/* magic */
 			outbyte(m_flag ? CONF_9 : CONF_15);		/* config byte */
-			outword(next * ((m_flag ? 9 : 15) + 3)); /* symbol table size */
+			/*
+			 * The symbol table carries three kinds of entry:
+			 * the indexed symbols counted in "next", the local
+			 * data/bss symbols, and the two segment sentinels.
+			 * Only the first are named by relocations, and the
+			 * other two are appended after them so that every
+			 * relocation index stays what it was.
+			 */
+			nlocalsym = 0;
+			for (sym = symbols; sym; sym = sym->next)
+				if (sym->index == 0xffff &&
+				    (sym->seg == SEG_DATA || sym->seg == SEG_BSS))
+					nlocalsym++;
+			outword((next + nlocalsym + 2) *
+				((m_flag ? 9 : 15) + 3));
 			outword(text_size);	/* text */
 			outword(data_size);	/* data */
 			outword(bss_size);	/* bss */
@@ -2251,6 +2266,85 @@ assemble()
 		outtmp(type);
 		for (next = 0; next < (m_flag ? 9 : 15); next++) {
 			outtmp(sym->name[next]);
+		}
+	}
+
+	/*
+	 * The local data and bss symbols, for sizing and nothing else.
+	 *
+	 * A static is allocated in bss like any other object but has no
+	 * entry in the symbol table, so the bytes it occupies belong to
+	 * no name.  That is invisible until the linker has to work out
+	 * how big the symbol BEFORE it is: an unreferenced static
+	 * silently becomes part of its neighbour, and if that neighbour
+	 * is an uninitialised global shared by forty objects, the size
+	 * the linker merges on is too big.  A referenced one is pinned
+	 * by its own segment-relative relocation; an unreferenced one
+	 * has nothing to pin it, and that is the case this covers.
+	 *
+	 * They are written after the indexed symbols and keep index
+	 * 0xffff, so no relocation names them and their references stay
+	 * segment-relative exactly as before.  Nothing about the link
+	 * changes; the linker reads them to bound a size and otherwise
+	 * ignores them.  LOCAL, so they never collide.
+	 */
+	for (sym = symbols; sym; sym = sym->next) {
+		if (sym->index != 0xffff)
+			continue;
+		if (sym->seg != SEG_DATA && sym->seg != SEG_BSS)
+			continue;
+		outtmp(sym->value & 0xff);
+		outtmp(sym->value >> 8);
+		outtmp(sym->seg == SEG_DATA ? 0x06 : 0x07);
+		for (next = 0; next < (m_flag ? 9 : 15); next++)
+			outtmp(sym->name[next]);
+	}
+
+	/*
+	 * SENTINEL: where data and bss actually end, in this object.
+	 *
+	 * Nothing in the symbol table says how big a symbol is - the
+	 * entry is a value, a type and a name - so the size of the LAST
+	 * symbol in a segment cannot be worked out from the symbols
+	 * alone.  Every other one is the distance to the next; the last
+	 * one runs to the end of the segment, and the end of the segment
+	 * is what was missing.
+	 *
+	 * The linker needs those sizes to merge the same uninitialised
+	 * global defined by a header in forty objects, which is how C of
+	 * this vintage is written - and to tell that case apart from two
+	 * objects that disagree about what the thing is, which is a bug
+	 * and has to be said out loud rather than silently resolved.
+	 *
+	 * Emitted here rather than written in the source: no .s has to
+	 * know, and one that does not cooperate cannot get it wrong.
+	 *
+	 * LOCAL - no 0x08.  A global sentinel in every object would
+	 * collide in every link, which is the exact problem it exists to
+	 * let the linker solve.  The names start with a dot so that no C
+	 * identifier can ever collide with them either.
+	 */
+	{
+		static char *sentinel[2] = { ".edata", ".ebss" };
+		unsigned short sval[2];
+		unsigned char sseg[2];
+		int i, j;
+
+		sval[0] = text_size + data_size;
+		sseg[0] = 0x06;			/* data, local */
+		sval[1] = text_size + data_size + bss_size;
+		sseg[1] = 0x07;			/* bss, local */
+
+		for (i = 0; i < 2; i++) {
+			char *p = sentinel[i];
+
+			outtmp(sval[i] & 0xff);
+			outtmp(sval[i] >> 8);
+			outtmp(sseg[i]);
+			/* name, NUL padded to the field width - stop AT the
+			 * NUL rather than indexing past it */
+			for (j = 0; j < (m_flag ? 9 : 15); j++)
+				outtmp(*p ? *p++ : 0);
 		}
 	}
 
