@@ -61,6 +61,7 @@ unsigned short total_bss;
 struct symbol {
     char name[16];          /* max 15 chars + null */
     unsigned short value;   /* final resolved address */
+    unsigned short size;    /* bss: how big, from the object that owns it */
     unsigned char type;     /* original type byte */
     unsigned char seg;      /* decoded segment */
     struct object *obj;     /* defining object (NULL for extern) */
@@ -73,6 +74,17 @@ int num_globals;
 /*
  * object file info
  */
+/*
+ * A range of an object's bss that merging took away, because an
+ * earlier object already defines the symbol that occupied it.
+ * Everything above it moves down by len.
+ */
+struct bssexc {
+    unsigned short off;             /* bss-relative, as it was */
+    unsigned short len;
+    struct bssexc *next;
+};
+
 struct object {
     char *name;
     char *path;                     /* the file to reopen for pass 2 */
@@ -97,6 +109,21 @@ struct object {
     long dataRelocOff;            /* file offset of data relocs */
     /* local symbol table for relocation lookups */
     struct symbol **symtab;         /* array indexed by symbol index */
+    /*
+     * The value each symbol had IN THIS OBJECT.  A merged bss symbol
+     * belongs to whichever object defined it first and its struct
+     * holds that object's offset, so a later object cannot ask the
+     * symbol where its own copy was.  This can.
+     */
+    unsigned short *symval;
+    /*
+     * And the segment THIS object gave it.  symtab[] points at the
+     * shared symbol, whose segment is whatever the defining object
+     * said - so an object that merely refers to a bss global looks,
+     * through symtab[], exactly like one that defines it.
+     */
+    unsigned char *symseg;
+    struct bssexc *exc;             /* what merging removed, in order */
     /* Hi-Tech specific fields */
     char is_hitech;                 /* 1 if Hi-Tech format */
     unsigned char *ht_text;         /* collected text segment data */
@@ -390,6 +417,16 @@ struct object *obj;
     if (s) {
         /* already exists */
         if (s->seg != SEG_EXT && seg != SEG_EXT) {
+            /*
+             * Two definitions of one uninitialised global is how C of
+             * this vintage is written: a header says "struct user u;"
+             * and every file that includes it defines it.  They are
+             * the same object - the first wins the address and
+             * bss_merge() takes the duplicate space back, having
+             * first checked they agree about the size.
+             */
+            if (s->seg == SEG_BSS && seg == SEG_BSS)
+                return s;
             fprintf(stderr, "wsld: duplicate symbol: %s\n", name);
             fprintf(stderr, "  defined in %s and %s\n",
                     s->obj ? s->obj->name : "?", obj ? obj->name : "?");
@@ -480,6 +517,8 @@ char *name;
 
     /* allocate local symbol table for relocation lookups */
     obj->symtab = (struct symbol **)xalloc(obj->num_syms * sizeof(struct symbol *));
+    obj->symval = (unsigned short *)xalloc(obj->num_syms * sizeof(unsigned short));
+    obj->symseg = (unsigned char *)xalloc(obj->num_syms);
 
     /* skip to symbol table: header(16) + text + data */
     fseek(fp, (long)(16 + obj->text_size + obj->data_size), SEEK_SET);
@@ -497,6 +536,8 @@ char *name;
                 ? sym_define(symname, val, seg, type, obj)
                 : sym_local(symname, val, seg, type, obj);
         obj->symtab[i] = gsym;
+        obj->symval[i] = val;
+        obj->symseg[i] = seg;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
@@ -689,6 +730,8 @@ char *membername;
 
     /* allocate local symbol table for relocation lookups */
     obj->symtab = (struct symbol **)xalloc(obj->num_syms * sizeof(struct symbol *));
+    obj->symval = (unsigned short *)xalloc(obj->num_syms * sizeof(unsigned short));
+    obj->symseg = (unsigned char *)xalloc(obj->num_syms);
 
     /* seek to symbol table */
     fseek(fp, (long)(base + 16 + obj->text_size + obj->data_size), SEEK_SET);
@@ -705,6 +748,8 @@ char *membername;
                 ? sym_define(symname, val, seg, type, obj)
                 : sym_local(symname, val, seg, type, obj);
         obj->symtab[i] = gsym;
+        obj->symval[i] = val;
+        obj->symseg[i] = seg;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
@@ -1447,11 +1492,159 @@ char *name;
 /*
  * Pass 1: assign segment addresses to each object
  */
+
+/*
+ * How much of this object's bss was taken away below a given offset.
+ * The offset is as it was in the object; the ranges are in order.
+ */
+unsigned short
+bss_shift(obj, off)
+struct object *obj;
+unsigned short off;
+{
+    struct bssexc *e;
+    unsigned short n = 0;
+
+    for (e = obj->exc; e; e = e->next)
+        if (off >= e->off + e->len)
+            n += e->len;
+    return n;
+}
+
+/*
+ * MERGE THE UNINITIALISED GLOBALS.
+ *
+ * A header of this vintage writes "struct user u;" and every file
+ * that includes it defines it, so forty objects each carry their own
+ * u.  They are one object, and the C of the day expected the linker
+ * to say so: the first definition wins the address and the rest are
+ * that same storage under that same name.
+ *
+ * Merging the addresses alone is not enough - the image would still
+ * carry thirty-nine copies of everything the headers declare.  The
+ * bytes come back too: each later object has the range cut out of its
+ * bss and everything above it moves down, which is what exc records
+ * and bss_shift answers questions about.  Two objects of 1K, sharing
+ * 500 bytes of one name, come to 1500 and not 2000.
+ *
+ * Sizes have to agree.  Two objects that disagree about how big u is
+ * were compiled against different headers, and merging them would lay
+ * one file's idea of the layout over another's.  That is said out
+ * loud rather than resolved.
+ *
+ * A symbol's size is the distance to whatever comes next, which is
+ * why asz names every byte of bss: .ebss closes the last one, and the
+ * local symbol of a static stops an unreferenced one from being
+ * folded into the global before it.
+ */
+void
+bss_merge()
+{
+    struct object *obj;
+    struct symbol *s;
+    unsigned short *off, *siz;
+    struct symbol **sym;
+    int i, j, n;
+    unsigned short base, shift;
+    struct bssexc *e, **tail;
+    int phase;
+
+    /*
+     * Two passes over the objects.  The first records, for every bss
+     * symbol, how big the object that DEFINES it says it is; the
+     * second merges the duplicates and checks them against that.
+     *
+     * They cannot be one pass.  The object that defines a symbol is
+     * not necessarily the first one the link reaches - norm.o defines
+     * szq and cfold.o only refers to it, but cfold.o is read first -
+     * so a single pass compares a duplicate against a size nobody has
+     * filled in yet, and calls a 2888-byte array a disagreement with
+     * zero.
+     */
+    for (phase = 0; phase < 2; phase++)
+    for (obj = objects; obj; obj = obj->next) {
+        if (obj->num_syms == 0)
+            continue;
+        base = obj->text_size + obj->data_size;   /* asz biases by this */
+
+        off = (unsigned short *)xalloc(obj->num_syms * sizeof(*off));
+        siz = (unsigned short *)xalloc(obj->num_syms * sizeof(*siz));
+        sym = (struct symbol **)xalloc(obj->num_syms * sizeof(*sym));
+
+        n = 0;
+        for (i = 0; i < obj->num_syms; i++) {
+            s = obj->symtab[i];
+            if (!s || obj->symseg[i] != SEG_BSS)
+                continue;
+            off[n] = obj->symval[i] - base;
+            sym[n] = s;
+            n++;
+        }
+        for (i = 1; i < n; i++)                   /* by offset */
+            for (j = i; j > 0 && off[j] < off[j - 1]; j--) {
+                unsigned short t = off[j]; off[j] = off[j-1]; off[j-1] = t;
+                s = sym[j]; sym[j] = sym[j-1]; sym[j-1] = s;
+            }
+        for (i = 0; i < n; i++)
+            siz[i] = (i + 1 < n) ? off[i + 1] - off[i]
+                                 : obj->bss_size - off[i];
+
+        tail = &obj->exc;
+        shift = 0;
+        for (i = 0; i < n; i++) {
+            s = sym[i];
+            if (!(s->type & 0x08) || s->obj == obj) {
+                /* ours: it says how big the thing is, and on the
+                 * second pass it moves down by what went before it */
+                if (phase == 0) {
+                    if (s->type & 0x08)
+                        s->size = siz[i];
+                } else {
+                    s->value -= shift;
+                }
+                continue;
+            }
+            if (phase == 0)
+                continue;
+            /*
+             * No storage of its own here, so there is nothing to take
+             * back and nothing to disagree about - two symbols at one
+             * offset, which is what a zero-length delta means.  The
+             * address still merges; that happened in sym_define.
+             */
+            if (siz[i] == 0)
+                continue;
+            if (s->size != siz[i]) {
+                fprintf(stderr,
+                    "wsld: %s is %u bytes in %s but %u in %s\n",
+                    s->name, s->size, s->obj ? s->obj->name : "?",
+                    siz[i], obj->name);
+                exit(1);
+            }
+            e = (struct bssexc *)xalloc(sizeof(*e));
+            e->off = off[i];
+            e->len = siz[i];
+            e->next = 0;
+            *tail = e;
+            tail = &e->next;
+            shift += siz[i];
+        }
+        if (phase == 1) {
+            if (shift && verbose)
+                printf("%s: %u bytes of bss merged away\n",
+                       obj->name, shift);
+            obj->bss_size -= shift;
+        }
+    }
+}
+
 void
 pass1_layout()
 {
     struct object *obj;
     struct symbol *s;
+
+    bss_merge();
 
     /* assign segment offsets to each object */
     for (obj = objects; obj; obj = obj->next) {
@@ -1759,6 +1952,7 @@ int is_text;
     unsigned short val, add;
     struct symbol *s;
     int need_reloc;     /* for -r: does this reloc need to be preserved? */
+    int bssrel;         /* addend is a bss offset, so merging moves it */
     unsigned char outseg;
     int hilo;           /* 0=word, 1=lo, 2=hi */
     int size;           /* relocation size: 2 for word, 1 for lo/hi */
@@ -1778,6 +1972,7 @@ int is_text;
             /* control byte - determine relocation type */
             add = 0;
             need_reloc = 0;
+            bssrel = 0;
             s = NULL;
             outseg = 0;
             hilo = 0;
@@ -1805,6 +2000,7 @@ int is_text;
                     break;
                 case 0x4c:  /* bss segment */
                     add = bss_base + total_text + total_data + obj->bss_off;
+                      bssrel = 1;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_BSS;
@@ -1874,6 +2070,20 @@ int is_text;
                 }
             }
 
+            /*
+             * A byte half of a bss address cannot be shifted: the
+             * offset is split across two relocations and neither
+             * half is the number that needs moving.  Nothing emits
+             * one - the compiler addresses bss with word
+             * relocations - so this is a refusal, not a gap.
+             */
+            if (bssrel && hilo) {
+                fprintf(stderr,
+                    "wsld: %s: byte relocation on a bss offset\n",
+                    obj->name);
+                exit(1);
+            }
+
             /* determine relocation size */
             size = (hilo == 0) ? 2 : 1;
 
@@ -1883,6 +2093,8 @@ int is_text;
                     /* word relocation */
                     if (pos + 1 < seg_size) {
                         val = bget(pos) | (bget(pos + 1) << 8);
+                        if (bssrel)
+                            val -= bss_shift(obj, (unsigned short)val);
                         val += add;
                         bput(pos, val & 0xff);
                         bput(pos + 1, val >> 8);
