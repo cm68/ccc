@@ -1039,6 +1039,56 @@ decl(struct token *t)
 				struct token *ref = spec_a.count > 0 ?
 				    &spec_a.buf[0] : &cur;
 
+				/*
+				 * The declarators before this one are a
+				 * declaration in their own right, and have to
+				 * be emitted before it.
+				 *
+				 * They used to be dropped on the floor.  A
+				 * function declarator emits its own name here
+				 * and then leaves the walk - the rest of the
+				 * line flows through unchanged, which is why
+				 * the names AFTER it survived - and nothing
+				 * emitted what had been collected in names[]
+				 * ahead of it.  So
+				 *
+				 *	char *file, *s_getmsg(), msg[80];
+				 *
+				 * reached pass1 as if "file" had never been
+				 * written, and its use eight lines later was
+				 * reported as an unknown name being called.
+				 * Declaring the function that returns a
+				 * pointer in among the variables that will
+				 * hold its result is an ordinary K&R habit -
+				 * there is nowhere else to put it before
+				 * prototypes - so old sources are full of it.
+				 *
+				 * name_cnt is dropped first so the function's
+				 * own name is not emitted twice: it is the
+				 * last one collected, and it is written out
+				 * below with its parenthesis.
+				 *
+				 * Only for a function.  An array declarator
+				 * stays inside the walk - "the type is kept"
+				 * below - so the names before it are still
+				 * pending and finish_decl emits them with the
+				 * ones after, which is right and is left
+				 * alone.
+				 */
+				name_cnt--;
+				if (cur.type == LPAR && name_cnt > 0) {
+					int keep;
+
+					sizedecl();
+					keep = specs_static();
+					emit_decl();
+					if (keep)
+						drop_assigns();
+					else
+						emit_assigns();
+					name_cnt = 0;
+				}
+
 				outarr(&spec_a);
 				for (i = np->star_count; i > 0; i--)
 					outat(STAR, ref);
@@ -1048,7 +1098,6 @@ decl(struct token *t)
 				tmp.filename = ref->filename;
 				out(&tmp);
 				out(&cur);
-				name_cnt--;
 				if (cur.type == LPAR) {
 					tarr_reset(&spec_a);
 					return 0;

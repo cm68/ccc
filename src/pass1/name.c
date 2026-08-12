@@ -104,7 +104,27 @@ popScope()
              * Phase 1 only.  Phase 2 re-walks the same declarations and
              * would collect them a second time.
              */
+            /*
+             * The same two exclusions capLocals makes, and for the
+             * same reason it makes them.  A function DECLARED in a
+             * block - "char *file, *s_getmsg(), msg[80];", which is
+             * how K&R names a routine returning other than int - is
+             * an ordinary name carrying a function type, and it was
+             * captured here as a local: the frame grew a slot for it
+             * and the call became an indirect jump through the slot,
+             * "push iy / pop hl / add hl,de / call tramp", so it
+             * called whatever the frame happened to hold.  An extern
+             * names storage that exists wherever it is written, so it
+             * is never a frame slot either.
+             *
+             * capLocals has refused both since the doprnt bug that
+             * found them - it declares _pnum this way - but it only
+             * sees the level it is called at.  This walk sees every
+             * level below, and had no such refusal, so the same
+             * declaration one block deeper still became a slot.
+             */
             if (phase == 1 && lexlevel >= 2 && !n->is_tag &&
+                !notaslot(n) &&
                 (n->kind == kvar || n->kind == klocal)) {
                 struct local *copy = mklocal(n);
 

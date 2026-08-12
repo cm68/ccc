@@ -423,6 +423,22 @@ declaration()
             v->sclass = SC_EXTERN;
         } else if (sclass & SC_REGISTER) {
             v->sclass = SC_REGISTER;
+        } else if (v->type->flags & TF_FUNC) {
+            /*
+             * A function declared and not defined has external
+             * linkage, whatever scope it was written in - C says so,
+             * and there is nowhere else it could live.
+             *
+             * Falling into the clear below instead left a block-scope
+             * one looking like an ordinary local: emitted as a bare
+             * name rather than _name, it addressed a frame slot, and
+             * the call became "push iy / pop hl / add hl,de / call
+             * tramp" - an indirect jump through whatever the frame
+             * happened to hold.  "char *file, *s_getmsg(), msg[80];"
+             * is how K&R names a routine returning other than int,
+             * and the call to it went nowhere.
+             */
+            v->sclass |= SC_EXTERN;
         } else {
             /* Clear extern flag if this is a definition (not extern decl) */
             v->sclass &= ~SC_EXTERN;

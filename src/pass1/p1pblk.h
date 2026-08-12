@@ -15,6 +15,7 @@ struct name;
 void parseBlockEx(int emitHdr);
 void parseBlock(void);
 struct local *mklocal(struct name *n);
+int notaslot(struct name *n);
 struct local *capLocals(void);
 char *getAsmText(void);
 void freeLocals(struct local *local);
