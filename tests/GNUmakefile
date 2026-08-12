@@ -202,6 +202,10 @@ INIT_FAIL_TESTS = \
 LIMIT_FAIL_TESTS = \
 	switch_big.c
 
+# Declaration contradictions that must be diagnosed, not left silent
+DECL_FAIL_TESTS = \
+	static_latedef.c
+
 # Statement tests (expected to fail - testing error detection)
 STMT_FAIL_TESTS =
 
@@ -212,6 +216,7 @@ FAIL_TESTS = \
 	$(CPP_FAIL_TESTS) \
 	$(INIT_FAIL_TESTS) \
 	$(LIMIT_FAIL_TESTS) \
+	$(DECL_FAIL_TESTS) \
 	$(STMT_FAIL_TESTS)
 
 # Syscall tests

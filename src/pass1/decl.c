@@ -380,6 +380,30 @@ declaration()
                          phase, nameOf(v->id), cur.type, BEGIN);
 #endif
             if (cur.type == BEGIN) {
+                /*
+                 * A static definition of a name already declared
+                 * extern, which a call above it will have done
+                 * implicitly - K&R says an undeclared name called as
+                 * a function is extern int, and pfx.c obliges.
+                 *
+                 * The two halves of the file then disagree about what
+                 * the name means, and the calls are not revisited:
+                 * phase 1 and phase 2 run per function, so everything
+                 * above here has been emitted already, calling _g,
+                 * while everything below calls the local label.  One
+                 * name, one file, two functions.
+                 *
+                 * It is only a link error when nothing else in the
+                 * program defines that global - and the names that
+                 * get made static are the ordinary ones, expand,
+                 * compare, lookup, getline.  Let another file define
+                 * one of those and it links, quietly, wrong.  So say
+                 * so here, where the file has not been written yet;
+                 * the source wants the forward declaration that K&R
+                 * requires, and then both halves agree.
+                 */
+                if ((sclass & SC_STATIC) && (v->sclass & SC_EXTERN))
+                    gripe(ER_D_RD);
                 /* Assign storage class BEFORE parsing function body
                  * so it's available when emitting the AST */
                 if (sclass & SC_STATIC) {

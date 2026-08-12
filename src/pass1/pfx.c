@@ -73,6 +73,19 @@ pfxSym(void)
             np->sclass = SC_EXTERN;
 
             np = addName(np);
+            /*
+             * At file scope, which is what the level above asks for
+             * and what addName overwrote with the level we happen to
+             * be standing in.  An implicit declaration is of an
+             * external name; it does not belong to the block that
+             * first mentioned it, and being left there meant it died
+             * at the end of that function.
+             *
+             * addName only reaches namesAdd when the name is new, and
+             * it is: this arm runs because findName found nothing at
+             * any level.  So this is the entry just made.
+             */
+            np->level = 1;
 
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
