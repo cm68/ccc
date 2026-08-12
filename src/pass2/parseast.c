@@ -155,6 +155,8 @@ static struct swctx {
 	int id;			/* label number for this switch */
 	int ncase;
 	int hasdef;
+	int wide;		/* a case value outside 0..255: dispatch on HL */
+	int isbyte;		/* the control reduced to A */
 	unsigned char *val;	/* this nesting level's slice of swvals */
 } swstk[MAXSWNEST];
 /*
@@ -162,10 +164,60 @@ static struct swctx {
  * dispatch masks to eight bits anyway - and the long version of
  * this pool, once it actually existed, was 8K of bss that left the
  * self-hosted c1 under a thousand bytes of heap.
+ *
+ * A wide switch stores two bytes a case in the same pool, low then
+ * high, and widens what it already had at the moment its first wide
+ * case arrives - see swwiden.  Only the switch on top of the stack is
+ * ever being added to, and a nested one gives its slice back when it
+ * closes, so the top switch's values are always the last thing in the
+ * pool and there is room above them to spread into.  A narrow switch
+ * is untouched by any of this and still costs one byte a case.
  */
 static unsigned char swvals[SWPOOL];
 static int swtop;
 static int swused;		/* bump pointer into swvals */
+
+/*
+ * Spread the values already stored for this switch from one byte a
+ * case to two, low then high, when its first wide case arrives.
+ *
+ * Backwards, so nothing is overwritten before it has been moved, and
+ * in place because there is always room: this switch is the one on
+ * top of the stack, so its slice is the last thing in the pool.
+ * Everything stored so far fitted a byte, which is why it was stored
+ * as one, so every high byte is zero.
+ */
+/*
+ * The value of case i, however this switch happens to store it.  One
+ * spelling so the duplicate check is one loop rather than one per
+ * width.
+ */
+static unsigned int
+swcval(struct swctx *sw, int i)
+{
+	if (sw->wide)
+		return (unsigned int)(sw->val[2 * i] |
+		    (sw->val[2 * i + 1] << 8));
+	return (unsigned int)sw->val[i];
+}
+
+static void
+swwiden(struct swctx *sw)
+{
+	int i;
+
+	if (swused + sw->ncase > SWPOOL) {
+		outf("\t.error more than %d case values in switches open at once\n",
+		    SWPOOL);
+		return;
+	}
+	for (i = sw->ncase - 1; i >= 0; i--) {
+		sw->val[2 * i] = sw->val[i];
+		sw->val[2 * i + 1] = 0;
+	}
+	swused += sw->ncase;
+	sw->wide = 1;
+}
 
 /*
  * _Kn_f_m: case m of switch n in function f.  _Dn_f: the dispatch,
@@ -209,6 +261,50 @@ swlabel(char k, int id, int n)
  * large stays on the chain.  MAXSWCASE bounds it at 256 and a switch
  * that big is theoretical; correctness is worth more than the bytes.
  */
+/*
+ * The dispatch for a switch with a case value outside 0..255.
+ *
+ * The control stays in HL and the comparison is sixteen bits.  One
+ * shape, not the byte path's three: a pair table at 4 + 4n, which
+ * beats a chain of sixteen bit compares - 13 bytes a case, since
+ * there is no cp for a pair and sbc hl,de has to be undone - from the
+ * very first case.  There is nothing for the chain to win, so there
+ * is no chain.
+ *
+ * The dense index shape has no wide form either.  It would want the
+ * value biased by lo before swidx sees it, 13 bytes to save
+ * 4n - 2*span, and that only pays for a switch both wide and tightly
+ * packed - which is not what wide switches look like.  The one that
+ * prompted this dispatches S_IFDIR, S_IFBLK and S_IFCHR: three values
+ * spanning 16384.
+ *
+ * Values go out as two .db and not one .dw because outf has only %d
+ * and an int is sixteen bits on the target: the pattern for "case -1"
+ * would print as 65535 from the host build of c1 and -1 from the
+ * self-hosted one, and the two would stop producing identical
+ * assembly.  A byte at a time is the same number to both.
+ */
+static void
+swwide(struct swctx *sw)
+{
+	int i, n;
+
+	n = sw->ncase;
+	/* the count is one byte in the table, as it is for swtab */
+	if (n > 255) {
+		out("\t.error more than 255 cases in a wide switch\n");
+		return;
+	}
+	outf("\tcall swtabw\n\t.db %d\n", n);
+	for (i = 0; i < n; i++) {
+		outf("\t.db %d\n\t.db %d\n",
+		    (int)sw->val[2 * i], (int)sw->val[2 * i + 1]);
+		out("\t.dw ");
+		swlabel('K', sw->id, i);
+		outc('\n');
+	}
+}
+
 void
 swdispatch(struct swctx *sw)
 {
@@ -217,6 +313,11 @@ swdispatch(struct swctx *sw)
 	n = sw->ncase;
 	if (n == 0)
 		return;
+
+	if (sw->wide) {
+		swwide(sw);
+		return;
+	}
 
 	lo = hi = (int)(sw->val[0] & 0xff);
 	for (i = 1; i < n; i++) {
@@ -696,6 +797,8 @@ parseStmt(void)
 		sw->id = labelcnt++;
 		sw->ncase = 0;
 		sw->hasdef = 0;
+		sw->wide = 0;
+		sw->isbyte = 0;
 		sw->val = swvals + swused;
 
 		/* work out the control value, then jump over the bodies to
@@ -724,15 +827,18 @@ parseStmt(void)
 			}
 			freeexpr(e);
 		}
-		if (isbyte) {
-			/* already in A, and a byte can never fail the high
-			 * byte test that a word needs */
-			;
-		} else {
-			out("\tld a,h\n\tor a\n\tjp nz,");
-			swlabel('N', sw->id, -1);
-			out("\n\tld a,l\n");
-		}
+		/*
+		 * The narrowing to A used to be emitted here, before a
+		 * single case had been read - which is the whole reason a
+		 * wide case had nowhere to attach.  It is the same
+		 * instructions in the same order either way, because the
+		 * only thing between here and _D is a jump over the bodies
+		 * and nothing executes in between: the value computed here
+		 * is still in HL when the dispatch reads it.  Emitting it
+		 * down there instead means the choice is made when the
+		 * cases are known.
+		 */
+		sw->isbyte = isbyte;
 		out("\tjp ");
 		swlabel('D', sw->id, -1);
 		outc('\n');
@@ -748,6 +854,24 @@ parseStmt(void)
 
 		swlabel('D', sw->id, -1);
 		out(":\n");
+		/*
+		 * Now the cases are known, so the control can be put in
+		 * whatever the dispatch about to be chosen wants.
+		 */
+		if (sw->wide) {
+			/*
+			 * A byte control with a wide case.  The tree only
+			 * leaves a value in A when a byte holds all of it -
+			 * anything narrower than its use is widened before
+			 * it gets here - so the high half is zero.
+			 */
+			if (sw->isbyte)
+				out("\tld l,a\n\tld h,0\n");
+		} else if (!sw->isbyte) {
+			out("\tld a,h\n\tor a\n\tjp nz,");
+			swlabel('N', sw->id, -1);
+			out("\n\tld a,l\n");
+		}
 		swdispatch(sw);
 		/* no case matched, and a word control that did not fit a
 		 * byte arrives here too.  Both helpers fall out of their
@@ -780,7 +904,11 @@ parseStmt(void)
 		 * rather than emitting code for it */
 		e = readexpr();
 		if (sw && e) {
-			if (swused >= SWPOOL) {
+			/*
+			 * Two, not one: a wide case takes a pair, and the
+			 * switch may turn wide on this very value.
+			 */
+			if (swused + 1 >= SWPOOL) {
 				outf("\t.error more than %d case values in switches open at once\n",
 				    SWPOOL);
 			} else {
@@ -798,7 +926,8 @@ parseStmt(void)
 				 * above the low byte, which would silently
 				 * share an arm rather than being diagnosed.
 				 */
-				unsigned char v = (unsigned char)e->u.val;
+				unsigned int v =
+				    (unsigned int)(e->u.val & 0xffffL);
 				int i;
 
 				/*
@@ -827,7 +956,7 @@ parseStmt(void)
 				 *
 				 * outf does %s, %c and int - there is no %ld.
 				 */
-				if (e->u.val < 0 || e->u.val > 255) {
+				if (e->u.val < -32768L || e->u.val > 65535L) {
 					/*
 					 * Counted as well as written out: the
 					 * count fails the compile here, with
@@ -835,23 +964,41 @@ parseStmt(void)
 					 * .error catches anyone assembling a
 					 * .s kept from a -s run, which never
 					 * reaches the assembler otherwise.
+					 *
+					 * Sixteen bits is the limit now rather
+					 * than eight.  The value is not
+					 * printed: outf has only %d and an int
+					 * is sixteen bits on the target, so a
+					 * long case value has no spelling both
+					 * builds of c1 agree on.
 					 */
 					nbadcase++;
-					outf("\t.error case %d does not fit a byte - switch on a narrower value\n",
-					    (int)e->u.val);
+					out("\t.error case value does not fit sixteen bits\n");
 				}
+				/*
+				 * The first value outside a byte turns the
+				 * whole switch wide, including the cases
+				 * already seen.
+				 */
+				if (!sw->wide && v > 255)
+					swwiden(sw);
 				for (i = 0; i < sw->ncase; i++) {
-					if (sw->val[i] == v) {
-						outf("\t.error duplicate case %d\n",
-						    (int)v);
+					if (swcval(sw, i) == v) {
+						out("\t.error duplicate case value\n");
 						break;
 					}
 				}
-				sw->val[sw->ncase] = v;
+				if (sw->wide) {
+					sw->val[2 * sw->ncase] = v;
+					sw->val[2 * sw->ncase + 1] = v >> 8;
+					swused += 2;
+				} else {
+					sw->val[sw->ncase] = v;
+					swused++;
+				}
 				swlabel('K', sw->id, sw->ncase);
 				out(":\n");
 				sw->ncase++;
-				swused++;
 			}
 		}
 		if (e)
