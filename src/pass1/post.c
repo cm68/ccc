@@ -147,9 +147,29 @@ pfxIndex(struct expr *e)
     else
         tp = e ? e->type : (struct type *)0;
 
+    /*
+     * The line above allows for having no type at all, so this must
+     * too - reading flags out of it was the null dereference that
+     * guard was written to prevent.
+     */
+    if (!tp)
+        tp = inttype;
+
     /* Get element size from type */
     tf = tp->flags;
     sub = tp->sub;
+
+    /*
+     * Subscripting something that is neither an array nor a pointer
+     * has no element type to give the result, and the DEREF built
+     * below went back with none.  Nothing minded until the value was
+     * used, and then it was the compiler that dereferenced a null:
+     * "int x; return x[2];" took c0 down without saying anything at
+     * all.  Say it here, where the line number is still right, and
+     * carry on as int so the rest of the expression still parses.
+     */
+    if (!(tf & (TF_POINTER | TF_ARRAY)))
+        gripe(ER_E_IT);
     elem_size = 2;  // default to short/int size
     if ((tf & (TF_POINTER | TF_ARRAY)) && sub)
         elem_size = sub->size;
@@ -195,6 +215,8 @@ pfxIndex(struct expr *e)
     e = mkexpr(DEREF, e3);
     if ((tp->flags & (TF_POINTER | TF_ARRAY)) && tp->sub)
         e->type = tp->sub;
+    else if (!e->type)
+        e->type = inttype;
     return e;
 }
 

@@ -288,7 +288,14 @@ skipExpr(unsigned char pri)
              * means the object's own storage.
              */
             np = findName(cur.v.id, 0);
-            if (np->level > 1) {
+            /*
+             * An undeclared name has none, and this is phase 1 - it
+             * runs before the phase that says so, so dereferencing
+             * the answer here turned "&undeclared" into a segfault
+             * with no diagnostic from anything.  Nothing to pin if
+             * there is no object; leave it to phase 2 to report.
+             */
+            if (np && np->level > 1) {
                 if (np->sclass & SC_REGISTER)
                     gripe(ER_E_RA);
                 else
