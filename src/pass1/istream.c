@@ -74,6 +74,58 @@ leadWidth(struct type *t)
 }
 
 /*
+ * One aggregate's worth of values out of a list that left the inner
+ * braces out.
+ *
+ *	struct s x[2] = { 1,2, 3,4 };
+ *
+ * is the members of x[0] and then those of x[1], and C has always
+ * allowed it to be written that way.
+ *
+ * Without this the whole struct type was handed to the scalar path
+ * once per value, and an aggregate meeting a scalar there means the
+ * Whitesmiths "fill the object" idiom - so each value was written at
+ * the width of the entire struct and padded out to it.  An array of
+ * two-member structs came out twice its size, with a member's worth
+ * of zeroes after every value, while the code reading it indexed by
+ * sizeof and found the wrong member.  A single-member struct is the
+ * one shape where the two widths agree, so those looked right.
+ *
+ * The shell's operator table is eight of these.  isop() matched none
+ * of them, getword() then stopped on a metacharacter it would not
+ * consume, and the parser turned over forever on the first line
+ * holding a pipe or a redirect.
+ */
+static void
+streamElided(struct type *t)
+{
+    struct name *m;
+    unsigned short off;
+    int emitted;
+
+    off = 0;
+    emitted = 0;
+    m = findMemberOff(t->elem, 0);
+    while (m && cur.type != END) {
+        streamInitVal(m->type);
+        emitted += (int)m->type->size;
+        off += m->type->size;
+        m = findMemberOff(t->elem, off);
+        if (!m || cur.type != COMMA)
+            break;
+        gettoken();
+    }
+    /*
+     * Short of members named, the rest of the object is still there -
+     * the same reason the braced form pads below.
+     */
+    while (emitted < (int)t->size) {
+        asmDb(0);
+        emitted++;
+    }
+}
+
+/*
  * Stream an initializer value directly to assembly output
  * Used for static/global initializers to avoid building expression trees
  * Returns count of top-level elements (for array size inference)
@@ -115,7 +167,16 @@ streamInitVal(struct type *type)
         }
         gettoken();  /* consume { */
         while (cur.type != END) {
-            streamInitVal(elem_type);
+            /*
+             * An aggregate element whose braces were left out takes
+             * one value per member, not one value for the whole of
+             * it.  With braces it comes back here and walks itself.
+             */
+            if (elem_type && (elem_type->flags & TF_AGGREGATE) &&
+                cur.type != BEGIN)
+                streamElided(elem_type);
+            else
+                streamInitVal(elem_type);
             count++;
             /* Advance to next struct member by offset */
             if (is_struct && member) {
