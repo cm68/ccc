@@ -7,9 +7,23 @@ is written here.
     A long lives in HL':HL.          HL' is the HIGH word, HL the LOW.
     The second one lives in DE':DE.  DE' is the HIGH word, DE the LOW.
     A function returning a long returns it in HL':HL.
-    In memory the LOW word is at the LOWER address, as before.
-    A long argument is pushed high word first, so it lands on the
+    In memory the HIGH word is at the LOWER address.
+    A long argument is pushed low word first, so it lands on the
     stack the same way round as in memory.
+
+That fourth line used to say the LOW word was at the lower address,
+and everything obeyed it, and it was wrong. Micronix keeps a long the
+other way up: the seconds of a stat time are in the word at the higher
+address. Every long that crossed between a ccc-built program and the
+kernel, an on-disk structure, or a Whitesmiths-built program arrived
+with its halves swapped - `ls -l` printed 2015 for a 1987 file, and a
+one-second difference read as nineteen hours, because promoting the
+low word to the high multiplies it by 65536. See NUXI.
+
+The bytes *inside* each half were never in dispute, and neither is the
+register convention below: only the pairing of the halves moved. The
+push rule is not an independent choice - it is written to match the
+memory layout, so it moved with it.
 
 The low halves are in the main bank because that is what makes the
 arithmetic cheap. One `exx` brings BOTH high words into place at once,

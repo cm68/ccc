@@ -147,19 +147,34 @@ readLE2(void)
  * expensive on this machine and rare in the source, so a function
  * that produces one delivers it to memory and returns nothing.
  *
- * The byte order is not an assumption being smuggled in: the format
- * is little-endian by definition - the function is named for it -
- * the Z80 is little-endian, and so is every host this is built on.
- * emit4 on cpp's side writes the same four bytes in the same order
- * by hand.
+ * The byte order is not an assumption being smuggled in, but it is
+ * no longer little-endian: the stream carries a long laid out the way
+ * this machine lays one down, high word first, so the four bytes go
+ * where they fall and cpp's emit4 puts them there by hand on any host
+ * that disagrees.  It was little-endian by definition once, and the
+ * two were the same thing until the layout moved - see QLONG.md and
+ * NUXI.  The name is kept because the stream is still little-endian
+ * within each word, which is the part that never moved.
  */
 void
 readLE4(void)
 {
+#ifdef CCC
 	next.v.b[0] = readByte();
 	next.v.b[1] = readByte();
 	next.v.b[2] = readByte();
 	next.v.b[3] = readByte();
+#else
+	unsigned char b[4];
+
+	b[0] = readByte();
+	b[1] = readByte();
+	b[2] = readByte();
+	b[3] = readByte();
+	next.v.numeric = (long)(((unsigned long)b[1] << 24) |
+	    ((unsigned long)b[0] << 16) | ((unsigned long)b[3] << 8) |
+	    (unsigned long)b[2]);
+#endif
 }
 
 /*

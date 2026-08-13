@@ -214,13 +214,24 @@ void emit2(unsigned short w)
 	write(astFd, buf, 2);
 }
 
+/*
+ * A long goes into the AST laid out the way the machine lays one down
+ * - high word first, each word little-endian within itself - so the
+ * Z80 build stores it and pass2 loads it and neither shifts anything.
+ * See QLONG.md and NUXI; read4 on the other side is this backwards.
+ */
 void emit4(unsigned long l)
 {
 	unsigned char buf[4];
-	buf[0] = l & 0xff;
-	buf[1] = (l >> 8) & 0xff;
-	buf[2] = (l >> 16) & 0xff;
-	buf[3] = (l >> 24) & 0xff;
+
+#ifdef CCC
+	*(unsigned long *)buf = l;
+#else
+	buf[0] = (l >> 16) & 0xff;
+	buf[1] = (l >> 24) & 0xff;
+	buf[2] = l & 0xff;
+	buf[3] = (l >> 8) & 0xff;
+#endif
 	write(astFd, buf, 4);
 }
 

@@ -247,7 +247,7 @@ char *fragtab[] = {
 /* the same for the right operand, which is where address-of puts it */
 #define T_IDX_R_ADDR	"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
 /* four bytes of a constant written through the address in HL */
-#define T_ST_IHL_N	F_LDHLRL F_INCHL F_LDHLRH F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
+#define T_ST_IHL_N	F_LDHLR2 F_INCHL F_LDHLR3 F_INCHL F_LDHLRL F_INCHL F_LDHLRH
 /* address on the stack, value in HL -> address in HL, value in DE */
 #define T_SWAP_ADDR	F_POPDE F_EXDEHL
 /* store DE through HL, then bring the value back to HL */
@@ -379,11 +379,12 @@ static char RT69[] = "\tld $T,$L\n";
 static char RT71[] = "\tld $t,($L)\n" F_LDUL;
 /*
  * Storing a long, which lives in HL':HL with the low word in HL and
- * the low word at the lower address.  The value is still in the
- * registers when these finish, which is what lets the value forms
- * share them.
+ * the HIGH word at the lower address - see QLONG.md and NUXI.  So the
+ * exx comes first: the high word goes down, then the low word above
+ * it, and the pair is left the way round it arrived, which is what
+ * lets the value forms share these.
  */
-static char RT85[] = "\tld ($L),hl\n" F_EXX "\tld ($L++),hl\n" F_EXX;
+static char RT85[] = F_EXX "\tld ($L),hl\n" F_EXX "\tld ($L++),hl\n";
 /*
  * A long stored to a frame slot or through a struct pointer.  The
  * displacement rides inline after the call - see libsrc/libc/qldst.s -
@@ -1454,13 +1455,13 @@ struct rule rules[] = {
 	 * that would have made it an INHL.
 	 */
 	R(ASSIGN,DEREF,INHL,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, R_HL),
+	    F_EXX "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n", R_HL),
 	R(ASSIGN,DEREF,INHL,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, 0),
+	    F_EXX "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n", 0),
 	R(ASSIGN,DEREF,CODE,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, R_HL),
+	    F_EXX "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n", R_HL),
 	R(ASSIGN,DEREF,CODE,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n" F_EXX, 0),
+	    F_EXX "\tld ($LLa),hl\n" F_EXX "\tld ($LLa++),hl\n", 0),
 	/*
 	 * A long constant.  There is no ld (nn),n on this machine - the
 	 * word and byte forms above get away with ld (nn),hl and
@@ -1469,11 +1470,11 @@ struct rule rules[] = {
 	 * form does for a global.
 	 */
 	R(ASSIGN,DEREF,P_NUM,P_NUM,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld hl,$Rw\n\tld ($LLa),hl\n"
-	    "\tld hl,$RW\n\tld ($LLa++),hl\n", R_HL),
+	    "\tld hl,$RW\n\tld ($LLa),hl\n"
+	    "\tld hl,$Rw\n\tld ($LLa++),hl\n", R_HL),
 	R(ASSIGN,DEREF,P_NUM,P_NUM,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-	    "\tld hl,$LLa\n" F_LDHLRL F_INCHL F_LDHLRH
-	    F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
+	    "\tld hl,$LLa\n" F_LDHLR2 F_INCHL F_LDHLR3
+	    F_INCHL F_LDHLRL F_INCHL F_LDHLRH
 	    "\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 
 	R(ASSIGN,SYMREF,INHL,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
@@ -1803,21 +1804,21 @@ struct rule rules[] = {
 	R(ASSIGN,SYMREF,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
 	/* the value form: store, then put the constant back in HL:DE */
 	R(ASSIGN,INDEX,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
-		"\tld ($L++),$R2\n\tld ($L+++),$R3\n"
+		"\tld ($L),$R2\n\tld ($L+),$R3\n"
+		"\tld ($L++),$Rl\n\tld ($L+++),$Rh\n"
 		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	R(ASSIGN,INDEX,P_NUM,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
-		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
+		"\tld ($L),$R2\n\tld ($L+),$R3\n"
+		"\tld ($L++),$Rl\n\tld ($L+++),$Rh\n", 0),
 	/* no ld (nn),n, so point HL at the global and walk it */
 	/* the value form first, so it wins when the value is wanted */
 	R(ASSIGN,SYMREF,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-		F_LDHLL F_LDHLRL F_INCHL F_LDHLRH
-		F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
+		F_LDHLL F_LDHLR2 F_INCHL F_LDHLR3
+		F_INCHL F_LDHLRL F_INCHL F_LDHLRH
 		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	R(ASSIGN,SYMREF,P_NUM,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-		F_LDHLL F_LDHLRL F_INCHL F_LDHLRH
-		F_INCHL F_LDHLR2 F_INCHL F_LDHLR3, 0),
+		F_LDHLL F_LDHLR2 F_INCHL F_LDHLR3
+		F_INCHL F_LDHLRL F_INCHL F_LDHLRH, 0),
 	/*
 	 * A constant through a pointer that lives in memory, with the
 	 * value kept.  The plain forms of these are older; the value
@@ -1830,8 +1831,8 @@ struct rule rules[] = {
 		"\tld hl,($LL)\n\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n"
 		"\tld hl,$R\n", R_HL),
 	R(ASSIGN,DEREF,P_NUM,SYMREF,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tld hl,($LL)\n\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n"
-		F_INCHL "\tld (hl),$R2\n" F_INCHL "\tld (hl),$R3\n"
+		"\tld hl,($LL)\n\tld (hl),$R2\n" F_INCHL "\tld (hl),$R3\n"
+		F_INCHL "\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n"
 		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	/* a long already in HL:DE is the return value as it stands */
 	R(ASSIGN,INHL,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
@@ -1849,7 +1850,7 @@ struct rule rules[] = {
 	 * reads the same in either bank, IY not being one of the three.
 	 */
 	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
+		F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
 	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IXIY,
 		"\tcall qld$Lr\n\t.db $Lo\n", R_HL),
 	/* through a pointer already in HL */
@@ -1870,9 +1871,9 @@ struct rule rules[] = {
 	R(PREINC,SYMREF,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
 	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
 	R(PREINC,SYMREF,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLAINC F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
+		F_LDHLL F_CALLLAINC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
 	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLADEC F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
+		F_LDHLL F_CALLLADEC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
 	/*
 	 * The same for a frame slot, where the address has to be worked
 	 * out: (iy+d) reaches a byte at a time, and the helper wants the
@@ -2605,7 +2606,7 @@ struct rule rules[] = {
 	    "\tld a,($La)\n", R_A),
 	/* and the long, both words */
 	R(DEREF,P_NUM,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-	    "\tld hl,($La)\n" F_EXX "\tld hl,($La++)\n" F_EXX, R_HL),
+	    F_EXX "\tld hl,($La)\n" F_EXX "\tld hl,($La++)\n", R_HL),
 
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
@@ -2633,8 +2634,8 @@ struct rule rules[] = {
 	 * into HL past the pointer.
 	 */
 	R(DEREF,REGVAR,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IX,
-		"\tld l,(ix+0)\n\tld h,(ix+1)\n" F_EXX
-		"\tld l,(ix+2)\n\tld h,(ix+3)\n" F_EXX, R_HL),
+		F_EXX "\tld l,(ix+0)\n\tld h,(ix+1)\n" F_EXX
+		"\tld l,(ix+2)\n\tld h,(ix+3)\n", R_HL),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R(DEREF,SYMREF,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),

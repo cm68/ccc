@@ -82,11 +82,24 @@ void
 emit4(unsigned char tag, unsigned long val)
 {
     unsigned char buf[5];
+
     buf[0] = tag;
-    buf[1] = val & 0xff;
-    buf[2] = (val >> 8) & 0xff;
-    buf[3] = (val >> 16) & 0xff;
-    buf[4] = (val >> 24) & 0xff;
+    /*
+     * A long goes into the stream laid out the way the machine lays
+     * one down - high word first, each word little-endian within
+     * itself - so the Z80 build stores it and the reader loads it and
+     * neither shifts anything.  The stream used to be little-endian
+     * by definition and both ends copied the bytes straight, which
+     * was the same thing until the layout moved.  See QLONG.md, NUXI.
+     */
+#ifdef CCC
+    *(unsigned long *)&buf[1] = val;
+#else
+    buf[1] = (val >> 16) & 0xff;
+    buf[2] = (val >> 24) & 0xff;
+    buf[3] = val & 0xff;
+    buf[4] = (val >> 8) & 0xff;
+#endif
     outbufWrite(buf, 5);
 }
 

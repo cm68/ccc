@@ -162,10 +162,21 @@ candemote(struct expr *e, int size)
 		return 1;
 	if (e->op == DEREF) {
 		/*
-		 * A narrower read takes the low bytes, which come first.
-		 * Not for a register variable though - it is emitted as the
+		 * A narrower read takes the low bytes at the object's own
+		 * address.  Inside a word they are the ones there, so a
+		 * short read a byte wide is still free.
+		 *
+		 * A long is not: it keeps its HIGH word at the lower address
+		 * (QLONG.md, NUXI), so the low half is two bytes along and a
+		 * narrow read of one would take the wrong end.  "val & 0xff"
+		 * on a long parameter used to come out as ld a,(iy+d) and
+		 * now has to load the long and mask it.
+		 *
+		 * Not for a register variable either - it is emitted as the
 		 * whole register, with no addressable low part.
 		 */
+		if (e->type && e->type->size > 2)
+			return 0;
 		return !(e->left->op == SYM && isRegvar(e->left));
 	}
 	if (!truncok(e->op))

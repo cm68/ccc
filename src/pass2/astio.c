@@ -394,16 +394,41 @@ read2(void)
  * local just to push it again; longs are expensive here and rare in
  * the source, so the value goes to memory once and stays there.
  *
- * No shifting either: the file is little-endian by definition -
- * write4 on the other side puts the low byte first - and so is the
- * machine, so the bytes are read to where they belong.
+ * The file is little-endian by definition - write4 on the other side
+ * puts the low byte first - and this used to read the four bytes
+ * straight into val4 because the machine laid a long down the same
+ * way.  It does not any more: the HIGH word is at the lower address
+ * now (QLONG.md, NUXI), so reading the file into the value would land
+ * the halves the wrong way round.  The bytes are assembled instead,
+ * which says what the file means without depending on either layout.
  */
 unsigned long val4;
 
 void
 read4(void)
 {
+#ifdef CCC
+	/*
+	 * The four bytes are a long the way this machine lays one down,
+	 * so they are read into the value and that is the whole of it.
+	 */
 	read(infd, (char *)&val4, 4);
+#else
+	/*
+	 * The host lays a long down the other way and is not short of
+	 * cycles, so it does the work: this is emit4 backwards.  Widened
+	 * before each shift, not after - these are unsigned char, so the
+	 * shift would be done at int width, and an int is 16 bits on the
+	 * machine this same source has to compile for, where any byte
+	 * with its top bit set would shift into the sign and then
+	 * sign-extend on the way into the long.
+	 */
+	unsigned char buf[4];
+
+	read(infd, (char *)buf, 4);
+	val4 = ((unsigned long)buf[1] << 24) | ((unsigned long)buf[0] << 16) |
+	       ((unsigned long)buf[3] << 8) | (unsigned long)buf[2];
+#endif
 #ifdef DEBUG
 	if (VERBOSE(V_IO))
 		fprintf(stderr, "read4: %lu (0x%08lx)\n", val4, val4);

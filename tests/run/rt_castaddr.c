@@ -95,9 +95,21 @@ main()
 	*lp = 0x55667788L;
 	CHECK(7, *(long *)0x70 == 0x55667788L, 1);
 
-	/* the halves land in the right order, low word first */
+	/*
+	 * The halves land in the right order: the HIGH word at the lower
+	 * address, which is how Micronix keeps a long and what ccc now
+	 * emits.  These two used to read the other way round - see NUXI.
+	 * The host is little-endian and genuinely puts its low word
+	 * first, so this is one of the few checks that has to know which
+	 * build it is.
+	 */
+#ifdef RT_CCC
+	CHECK(8, *(int *)0x70 & 0xffff, 0x5566);
+	CHECK(9, *(int *)0x72 & 0xffff, 0x7788);
+#else
 	CHECK(8, *(int *)0x70 & 0xffff, 0x7788);
 	CHECK(9, *(int *)0x72 & 0xffff, 0x5566);
+#endif
 
 	/*
 	 * Storing a VALUE THE TREE HAS TO WORK OUT, which every store

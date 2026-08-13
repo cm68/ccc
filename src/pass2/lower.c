@@ -749,11 +749,11 @@ pusharg(Expr *a)
 	}
 	/*
 	 * A long lives in HL':HL, and an argument goes on the stack the
-	 * way it sits in memory: high word first, so the low word ends up
+	 * way it sits in memory: low word first, so the HIGH word ends up
 	 * at the lower address.  Two pushes rather than one pair, because
 	 * the halves are in different banks.
 	 */
-	out("\texx\n\tpush hl\n\texx\n\tpush hl\n");
+	out("\tpush hl\n\texx\n\tpush hl\n\texx\n");
 	return 4;
 }
 
@@ -840,8 +840,9 @@ longtode(void)
 }
 
 /*
- * Park a long on the stack, high word first so it sits the way a long
- * does in memory, and get it back into DE':DE.
+ * Park a long on the stack, low word first so it sits the way a long
+ * does in memory - high word at the lower address - and get it back
+ * into DE':DE.
  *
  * This is the expensive path and it is meant to be the rare one: the
  * two halves are in different banks, so each needs its own push, where
@@ -851,13 +852,13 @@ longtode(void)
 void
 pushlong(void)
 {
-	out("\texx\n\tpush hl\n\texx\n\tpush hl\n");
+	out("\tpush hl\n\texx\n\tpush hl\n\texx\n");
 }
 
 void
 poplongd(void)
 {
-	out("\tpop de\n\texx\n\tpop de\n\texx\n");
+	out("\texx\n\tpop de\n\texx\n\tpop de\n");
 }
 
 /*

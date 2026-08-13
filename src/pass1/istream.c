@@ -256,16 +256,16 @@ streamInitVal(struct type *type)
                     asmDb((int)val);
                 else if (leadsz == 4) {
                     /*
-                     * Four bytes, low word first, which is how everything
-                     * that reads one expects to find it: "ld de,(x)" then
-                     * "ld hl,(x+2)".  A word was emitted for anything that
-                     * was not a byte, so an initialised long global was
-                     * half a long - the next variable sat where its high
-                     * word belonged, and reading it back gave that
-                     * variable in the top half.
+                     * Four bytes, HIGH word first, which is how
+                     * everything that reads one expects to find it -
+                     * see QLONG.md and NUXI.  A word was emitted for
+                     * anything that was not a byte, so an initialised
+                     * long global was half a long - the next variable
+                     * sat where its other word belonged, and reading it
+                     * back gave that variable in the top half.
                      */
-                    asmDw((int)(val & 0xffffL));
                     asmDw((int)((val >> 16) & 0xffffL));
+                    asmDw((int)(val & 0xffffL));
                 } else {
                     asmDw((int)val);
                     emitted = 2;
