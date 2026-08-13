@@ -280,6 +280,28 @@ usage(char *complaint)
  *   - Creates and writes to output files
  *   - Sets 5-second alarm (Unix only)
  */
+
+#ifdef CCC
+/*
+ * pass1 does all io on raw file descriptors; without this stub, exit()
+ * drags in the stdio flush machinery.  cpp has carried the same one
+ * since it was measured there; this is what it is worth here, where
+ * nothing ever opened a stream either:
+ *
+ *	cleanup.o	 35 text  102 data  512 bss	_iob, _sibuf
+ *	fclose.o	112 text
+ *	fflush.o	127 text
+ *	buf.o		 79 text	      2 bss
+ *
+ * 969 bytes, and the 512 of it is stdin's buffer.  Not in libccc,
+ * which peep links too: peep does use stdio and wants the real one.
+ */
+void
+_cleanup(void)
+{
+}
+#endif
+
 int
 main(int argc, char **argv)
 {

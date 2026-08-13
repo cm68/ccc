@@ -54,6 +54,18 @@ usage(char *complaint)
 	exit(1);
 }
 
+#ifdef CCC
+/*
+ * pass2 does all io on raw file descriptors too - see the note in
+ * pass1.c for what the stdio flush machinery costs when exit() drags
+ * it in.
+ */
+void
+_cleanup(void)
+{
+}
+#endif
+
 int
 main(int argc, char **argv)
 {
