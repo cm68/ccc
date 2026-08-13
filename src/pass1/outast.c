@@ -350,7 +350,37 @@ emitExpr(struct expr *e)
 		 */
 		if (lval && left->op == DEREF && dchainreg(left->left))
 			inLvalue = 1;	/* the child DEREF keeps itself */
-		/* Optimize: *++p -> (++p, *p) using comma operator */
+		/*
+		 * Optimize: *++p -> (++p, *p) using comma operator
+		 *
+		 * The second half has to be the value at p, and that is two
+		 * fetches from a variable in memory: read the pointer, then
+		 * read what it points at.  One DEREF over the name is only
+		 * the first of them - it is how a plain "p" is spelled - so
+		 * what came out was "(++p, p)" and the address went on in
+		 * place of the value.  Nothing reported it: the tree is
+		 * well formed, every node reduces, and pass2 emitted exactly
+		 * what it was handed.  v6 ls walks argv with *++argv and got
+		 * &argv, printed the bytes of a pointer as a filename, and
+		 * then spun in qsort over a list it never filled.
+		 *
+		 * A register variable is the exception, and the reason is
+		 * the one at the top of this case: it has no address, the
+		 * value is the register, so "*p" is a single DEREF over it
+		 * and this was right for that case all along.
+		 *
+		 * An lvalue wants the same two fetches, which is not what
+		 * you would guess.  "*++p = c" never arrives here - the
+		 * assignment parser unwraps it into ASSIGN(PREINC ...) -
+		 * but "**++g = c" does, with the outer store unwrapped and
+		 * "*++g" left as the address to store through.  That
+		 * address is one fetch past the pointer's value, the same
+		 * as the rvalue case, so lval is not asked.
+		 *
+		 * The suffix underneath is always 's': what a step is
+		 * applied to is a pointer or an array, and typeSfx calls
+		 * everything address-valued 's' whatever it points at.
+		 */
 		if ((left->op == INCR || left->op == DECR) &&
 		    !(left->flags & E_POSTFIX)) {
 			emit1(COMMA);
@@ -358,6 +388,10 @@ emitExpr(struct expr *e)
 			emitExpr(left);
 			emit1(DEREF);
 			emit1(typeSfx(type));
+			if (!isRegvar(left->left)) {
+				emit1(DEREF);
+				emit1('s');
+			}
 			emitExpr(left->left);
 			break;
 		}
