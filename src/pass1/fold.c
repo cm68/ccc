@@ -187,6 +187,26 @@ foldNode(struct expr *e)
         }
     }
 
+    /*
+     * A string literal is not a constant of the kind this folds.
+     *
+     * It carries E_CONST because it is a constant address, but the
+     * address is a label emitted later - strN - and kept in e->var;
+     * e->v is zero and always was.  So folding arithmetic on one read
+     * a number that was never the address, and the label went with it:
+     *
+     *	"MWDL"[1]	ld a,(1)	an absolute address of one
+     *	"MWDL"[0]	ld a,(str1)	right, and only because adding
+     *					zero returns the operand above
+     *
+     * Indexing at a variable, or through a pointer, never came here
+     * and was always right, which is what kept this rare.  The boot
+     * loader comparing a disk label against DL_MAGIC is where it was
+     * found.
+     */
+    if (left->op == STRING || right->op == STRING)
+        return e;
+
     /* Both operands must be constants for full folding */
     if (!(left->flags & E_CONST) || !(right->flags & E_CONST))
         return e;
