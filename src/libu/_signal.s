@@ -1,3 +1,21 @@
+; signal trampolines
+;
+; __signal is the system call; _jtab is fifteen six-byte trampolines,
+; one per signal, each loading its handler out of _stab and falling
+; into the common save-and-call tail.  signal.c owns _stab and hands
+; the kernel the address of a trampoline rather than of the handler.
+;
+; These declarations were missing.  Without them the file still
+; assembles, but every symbol in it is local - so the object defines
+; nothing, __signal and _jtab resolve to nobody, and signal() cannot
+; be linked at all.  Every other file here declares what it exports.
+;
+	.global __signal
+	.global _jtab
+
+	.extern _errno
+	.extern _stab
+
 .text:
 __signal:
 		pop		de
