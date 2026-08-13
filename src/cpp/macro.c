@@ -682,7 +682,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
 
     macbuf_init();
     if (ndefval(s, &ndv)) {
-        fmtstr(macbuffer, "%ld ", ndv);
+        fmtstr(fmtlong(macbuffer, ndv), " ");
         insertmacro(s, macbuffer);	/* insertmacro interns the name */
         return 1;
     }

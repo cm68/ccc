@@ -1,0 +1,90 @@
+.he "fmtlong (3)                  8/13/26                  fmtlong (3)"
+.fo "                               -#-"
+.in 5
+.rm 65
+.bd
+SUBROUTINE(S)
+.in +5
+.br
+.bd
+fmtlong
+- format a long into a string
+.sp 2
+.in -5
+.bd
+C
+.in +5
+.br
+.bd 2
+char *fmtlong(buf, v)
+.br
+char *buf;
+.br
+long v;
+.sp 2
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Fmtlong
+writes
+.bd
+v
+into
+.bd
+buf
+in decimal, with a leading minus if it is negative, and terminates
+the result with a null.  It returns a pointer to that null - to the
+end of what it wrote, not to the beginning - which is the contract
+.bd
+fmtstr (3)
+keeps, so the two can be strung together to build one string without
+walking it again:
+
+.sp
+.in +5
+p = fmtlong(buf, value);
+.br
+p = fmtstr(p, " %s\n", name);
+.in -5
+.sp
+
+This is a separate subroutine, and a separate member of the archive,
+because it is the only thing in
+.bd
+libccc.a
+that divides a long.  Held inside
+.bd
+fmtstr
+as a
+.bd
+%ld
+conversion it put that division - and the conversion itself - into
+every program that formatted anything, which on this machine was
+several hundred bytes each in c0, c1 and peep for a conversion only
+cpp ever asked for.
+.sp 2
+.in -5
+.bd
+ERRORS
+.in +5
+.br
+Nothing is bounded.  Twelve bytes are enough for any long this
+machine can hold, sign and null included, and the caller is
+responsible for them.
+
+The most negative long has no positive counterpart, so negating it
+leaves it negative and it is not converted correctly.  That is the
+same limitation the
+.bd
+%ld
+conversion had, carried over unchanged rather than fixed here.
+.sp 2
+.in -5
+.bd
+ALSO READ
+.in +5
+.br
+fmtstr (3), permalloc (3)

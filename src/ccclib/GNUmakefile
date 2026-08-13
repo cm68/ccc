@@ -24,8 +24,8 @@ HOSTAR = ar
 HOSTARFLAGS = rcs
 endif
 
-SOURCES = libutil.c
-MANPAGES = man3/fmtstr.3 man3/permalloc.3
+SOURCES = libutil.c fmtlong.c
+MANPAGES = man3/fmtstr.3 man3/fmtlong.3 man3/permalloc.3
 OBJECTS = $(SOURCES:.c=.o)
 
 # host builds get permalloc from its single source in libc;
@@ -72,9 +72,13 @@ $(Z80DIR)/libutil.o: libutil.c $(HEADERS) $(CCDEP)
 	@mkdir -p $(Z80DIR)
 	cd $(Z80DIR) && $(CCC) -O -I.. -I../../include -c ../libutil.c
 
-$(Z80DIR)/$(ARCHIVE): $(Z80DIR)/libutil.o
+$(Z80DIR)/fmtlong.o: fmtlong.c $(HEADERS) $(CCDEP)
+	@mkdir -p $(Z80DIR)
+	cd $(Z80DIR) && $(CCC) -O -I.. -I../../include -c ../fmtlong.c
+
+$(Z80DIR)/$(ARCHIVE): $(Z80DIR)/libutil.o $(Z80DIR)/fmtlong.o
 	rm -f $@
-	$(LIB) -cr $@ $(Z80DIR)/libutil.o
+	$(LIB) -cr $@ $(Z80DIR)/libutil.o $(Z80DIR)/fmtlong.o
 
 z80: $(Z80DIR)/$(ARCHIVE)
 

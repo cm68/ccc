@@ -137,7 +137,7 @@ epull(struct token *out)
 					lex_get(&t);
 					val = enum_expr(&t);
 				}
-				fmtstr(p, "%ld", val);
+				fmtlong(p, val);
 				addDefine(def);
 				val++;
 				if (t.type == COMMA)

@@ -5,8 +5,14 @@
 #include "libutil.h"
 
 /*
- * Minimal formatter - handles %s, %d, %ld, %x, %c, %% (no width/padding)
+ * Minimal formatter - handles %s, %d, %c, %% (no width/padding)
  * Returns pointer to end of written string
+ *
+ * %x went when nothing in the tree had ever asked for one, and %ld
+ * went to fmtlong.c so that it is linked by the one program that
+ * wants it.  Between them they were 476 of this function's 1017
+ * bytes, in all four passes, and long division for the %ld path that
+ * only cpp ever took.
  */
 char *
 fmtstr(char *buf, char *fmt, ...)
@@ -14,7 +20,6 @@ fmtstr(char *buf, char *fmt, ...)
 	va_list ap;
 	char *p = buf;
 	char *s;
-	long ln;
 	unsigned int n;
 	int neg, i;
 
@@ -25,16 +30,6 @@ fmtstr(char *buf, char *fmt, ...)
 			continue;
 		}
 		fmt++;
-		if (*fmt == 'l') {
-			/* %ld: the only conversion that needs long arithmetic */
-			fmt += 2;  /* skip 'l' and 'd' */
-			ln = va_arg(ap, long);
-			neg = ln < 0;
-			if (neg) ln = -ln;
-			s = p;
-			do { *p++ = '0' + (int)(ln % 10); ln /= 10; } while (ln);
-			goto revout;
-		}
 		switch (*fmt++) {
 		case 's':
 			s = va_arg(ap, char *);
@@ -46,21 +41,7 @@ fmtstr(char *buf, char *fmt, ...)
 			n = neg ? -(unsigned int)i : (unsigned int)i;
 			s = p;
 			do { *p++ = '0' + (n % 10); n /= 10; } while (n);
-		revout:
 			if (neg) *p++ = '-';
-			/* reverse */
-			for (i = 0; i < (int)(p - s) / 2; i++) {
-				char t = s[i]; s[i] = p[-1-i]; p[-1-i] = t;
-			}
-			break;
-		case 'x':
-			n = va_arg(ap, unsigned);
-			s = p;
-			do {
-				i = n & 0xf;
-				*p++ = i < 10 ? '0' + i : 'a' + i - 10;
-				n >>= 4;
-			} while (n);
 			/* reverse */
 			for (i = 0; i < (int)(p - s) / 2; i++) {
 				char t = s[i]; s[i] = p[-1-i]; p[-1-i] = t;

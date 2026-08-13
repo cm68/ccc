@@ -496,7 +496,7 @@ isnumber()
 				   || c == 'e')) {
 
 		/* Build float string: integer part + optional . + frac + optional exp */
-		p = fmtstr(strbuf, "%ld", next.v.numeric);
+		p = fmtlong(strbuf, next.v.numeric);
 		if (curchar == '.') {
 			*p++ = '.';
 			advance();

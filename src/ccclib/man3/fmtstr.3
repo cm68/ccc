@@ -55,12 +55,6 @@ for a string,
 %d
 for an int,
 .bd
-%ld
-for a long,
-.bd
-%x
-for an unsigned in lower case hexadecimal,
-.bd
 %c
 for a character, and
 .bd
@@ -68,13 +62,23 @@ for a character, and
 for a percent sign.  There is no field width, no precision and no
 padding.
 
+There is no conversion for a long.  A long goes through
+.bd
+fmtlong (3),
+which keeps the same contract and is a separate member of the
+archive, so the long division it needs is linked by the programs
+that print one and by no others.  There was a
+.bd
+%x
+until nothing in the tree turned out to ask for one.
+
 This is deliberately not
 .bd
 printf.
 The compiler passes want a formatter that costs a few hundred bytes
 and reaches no further than the string it is given; a program that
 uses this one does not drag in stdio, the buffers or the cleanup at
-exit.  It is the only entry point in
+exit.  It is the main entry point in
 .bd
 libccc.a,
 which is the code cpp, c0, c1 and peep have in common.
@@ -93,22 +97,18 @@ count argument and no truncation.
 
 A conversion it does not know is dropped, and so is its argument:
 the argument is not consumed, so every conversion after it takes the
-wrong value.  Only the six above are understood.
-
+wrong value.  Only the four above are understood, and
 .bd
-%l
-is assumed to be
+%ld
+is now one of the ones that is not - it writes nothing, leaves the
+long on the list, and every conversion after it reads the wrong
+argument.  Use
 .bd
-%ld.
-The letter after the l is skipped without being looked at, so
-.bd
-%lx
-prints in decimal rather than hexadecimal, and consumes a long
-either way.
+fmtlong (3).
 .sp 2
 .in -5
 .bd
 ALSO READ
 .in +5
 .br
-permalloc (3), printf (3)
+fmtlong (3), permalloc (3), printf (3)
