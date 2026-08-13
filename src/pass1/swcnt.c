@@ -93,6 +93,7 @@ void finishCase(unsigned char stmt_cnt) {
         if (sw->count > 0) {
             sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
 #ifdef DEBUG
+            if (VERBOSE(V_PHASE1))
             fdprintf(2, "finishCase: sw[%d].cases[%d].stmts = %d - %d = %d\n",
                      idx, sw->count - 1, stmt_cnt, sw->base_stmts,
                      sw->cases[sw->count - 1].stmts);
@@ -188,6 +189,7 @@ void addDefault(unsigned char stmt_cnt) {
     if (sw->count > 0) {
         cp[-1].stmts = stmt_cnt - sw->base_stmts;
 #ifdef DEBUG
+        if (VERBOSE(V_PHASE1))
         fdprintf(2, "addDefault: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
                  idx, sw->count - 1, stmt_cnt, sw->base_stmts,
                  cp[-1].stmts);
@@ -198,6 +200,7 @@ void addDefault(unsigned char stmt_cnt) {
     cp->is_default = 1;
     cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
+    if (VERBOSE(V_PHASE1))
     fdprintf(2, "addDefault: add sw[%d].cases[%d] base=%d\n",
              idx, sw->count, sw->base_stmts);
 #endif
@@ -334,8 +337,9 @@ pushCount(char c)
 	if (countTop < MAX_COUNTS) {
 		countBuf[countTop] = (unsigned char)c;
 #ifdef DEBUG
-		fdprintf(2, "pushCount[%d] = %d @%p (verify=%d)\n", countTop, c,
-		         &countBuf[countTop], countBuf[countTop]);
+		if (VERBOSE(V_PHASE1))
+			fdprintf(2, "pushCount[%d] = %d %p (verify=%d)\n", countTop, c,
+			         &countBuf[countTop], countBuf[countTop]);
 #endif
 		countTop++;
 	}
@@ -372,7 +376,8 @@ popCount(void)
 	if (countIdx < countTop) {
 		char c = countBuf[countIdx++];
 #ifdef DEBUG
-		fdprintf(2, "popCount[%d] = %d @%p (top=%d)\n", countIdx - 1, c, &countBuf[countIdx-1], countTop);
+		if (VERBOSE(V_PHASE2))
+			fdprintf(2, "popCount[%d] = %d %p (top=%d)\n", countIdx - 1, c, &countBuf[countIdx-1], countTop);
 #endif
 		return c;
 	}
