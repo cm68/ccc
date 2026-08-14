@@ -2,13 +2,13 @@
 #
 # The Whitesmith's object toolchain:
 #   asz    - Z80 assembler
-#   wsld   - linker
+#   ld   - linker
 #   wsnm   - object/archive dump
 #   wslib  - archive librarian
 #   wssize - display object sizes
 #
 # plus the two that belong to the compiler:
-#   ccc    - the driver: runs cpp, c0, c1, peep, asz and wsld
+#   ccc    - the driver: runs cpp, c0, c1, peep, asz and ld
 #   astpp  - AST pretty-printer, for reading what pass1 emitted
 #
 # All of them run on the build host and install into desthost/bin.
@@ -33,7 +33,7 @@ WARNS = -Wall -Werror -pedantic \
 CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
 endif
 
-ALL = asz wsld wsnm wslib wssize ccc astpp
+ALL = asz ld wsnm wslib wssize ccc astpp
 
 all: $(ALL)
 
@@ -42,7 +42,7 @@ asz.o: asm.h
 asm.o: asm.h wsobj.h
 asmz80.o: asm.h
 wsobj.o: wsobj.h
-wsld.o: wsobj.h
+ld.o: wsobj.h
 wsnm.o: wsobj.h
 wslib.o: wsobj.h
 wssize.o: wsobj.h
@@ -51,8 +51,8 @@ wssize.o: wsobj.h
 asz: asz.o asm.o asmz80.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ asz.o asm.o asmz80.o wsobj.o
 
-wsld: wsld.o wsobj.o
-	$(CC) $(CFLAGS) -o $@ wsld.o wsobj.o
+ld: ld.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ ld.o wsobj.o
 
 wsnm: wsnm.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ wsnm.o wsobj.o
@@ -116,7 +116,7 @@ clobber: clean
 # AST printer are things the driver runs, so they go in lib beside the
 # passes.  wslib, wsnm and wssize are ordinary tools a person uses on
 # an object file and stay on the path.
-LIBTOOLS = asz wsld astpp
+LIBTOOLS = asz ld astpp
 BINTOOLS = ccc wslib wsnm wssize
 
 install: all man-install
@@ -156,7 +156,7 @@ endef
 
 $(MXBUILD)/asz:    $(addprefix $(MXBUILD)/,asz.o asm.o asmz80.o wsobj.o)
 	$(mxlink)
-$(MXBUILD)/wsld:   $(addprefix $(MXBUILD)/,wsld.o wsobj.o)
+$(MXBUILD)/ld:   $(addprefix $(MXBUILD)/,ld.o wsobj.o)
 	$(mxlink)
 $(MXBUILD)/wsnm:   $(addprefix $(MXBUILD)/,wsnm.o wsobj.o)
 	$(mxlink)
@@ -177,7 +177,7 @@ $(MXBUILD)/ccc:    $(MXBUILD)/ccc.o
 # it needs cpp's lexeme.h and was written mixing declarations and
 # code - and nothing on the target runs it.
 MXBINTOOLS = ccc wslib wsnm wssize
-MXLIBTOOLS = asz wsld
+MXLIBTOOLS = asz ld
 
 MXALL = $(addprefix $(MXBUILD)/,$(MXBINTOOLS) $(MXLIBTOOLS))
 
@@ -194,7 +194,7 @@ mx-install: mx-ccc
 
 CCCFLAGS = -DCCC -i../include
 
-SRCS = asm.c asmz80.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
+SRCS = asm.c asmz80.c asz.c ld.c wslib.c wsnm.c wsobj.c wssize.c
 
 stage1: 
 	mkdir -p stage1
@@ -212,14 +212,14 @@ sizecheck: stage1
 	awk '($$1 != "text") {printf "%-12s %5d %5d %5d = %5d\n", substr($$6, 8), $$1, $$2, $$3, $$1+$$2+$$3}'
 
 # Link stage1 tools with libccc.a
-WSLD = ./wsld
+WSLD = ./ld
 LIBCCC = ../ccclib/libccc.a
 
 stage1/asz: stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
 	$(WSLD) -r -o $@ stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
 
-stage1/wsld: stage1/wsld.o stage1/wsobj.o $(LIBCCC)
-	$(WSLD) -r -o $@ stage1/wsld.o stage1/wsobj.o $(LIBCCC)
+stage1/ld: stage1/ld.o stage1/wsobj.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/ld.o stage1/wsobj.o $(LIBCCC)
 
 stage1/wsnm: stage1/wsnm.o stage1/wsobj.o $(LIBCCC)
 	$(WSLD) -r -o $@ stage1/wsnm.o stage1/wsobj.o $(LIBCCC)
@@ -230,9 +230,9 @@ stage1/wslib: stage1/wslib.o $(LIBCCC)
 stage1/wssize: stage1/wssize.o $(LIBCCC)
 	$(WSLD) -r -o $@ stage1/wssize.o $(LIBCCC)
 
-link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
+link: stage1/asz stage1/ld stage1/wsnm stage1/wslib stage1/wssize
 	@echo "=== Linked stage1 tools ==="
-	@ls -la stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
+	@ls -la stage1/asz stage1/ld stage1/wsnm stage1/wslib stage1/wssize
 
 regression:
 	../../tests/regress.sh --filter src/tools/ $(REGRESS_FLAGS)
@@ -244,7 +244,7 @@ regression:
 # They live in man1/ rather than here, and have to: ".1" is pass1's
 # AST suffix and is swept by CRUFT, so a page beside the source would
 # be removed by the next "make clean".
-MANPAGES = man1/ccc.1 man1/wsld.1 man1/wslib.1 man1/wsnm.1 man1/wssize.1
+MANPAGES = man1/ccc.1 man1/ld.1 man1/wslib.1 man1/wsnm.1 man1/wssize.1
 
 man-install:
 	@mkdir -p $(MXDIR)/usr/man/man1

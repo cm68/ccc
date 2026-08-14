@@ -3,7 +3,7 @@
 Tools for assembling, linking, and managing Z80 relocatable object files, plus
 the `ccc` compiler driver.
 
-`make` here builds `asz wsld wsnm wslib wssize ccc`.
+`make` here builds `asz ld wsnm wslib wssize ccc`.
 
 ## Tools
 
@@ -26,13 +26,13 @@ asz [-vmn98l] [-o outfile] [infile]
 
 See [ASZ.md](ASZ.md) for assembler syntax and instruction set.
 
-### wsld - Linker
+### ld - Linker
 
 Links object files and libraries into executables. Accepts both `.o` object
 files and `.a` library archives.
 
 ```
-wsld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...
+ld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...
 ```
 
 | Option | Description |
@@ -85,7 +85,7 @@ wslib [-crvHxat] archive [file...]
 | `-H` | Create a HiTech format library (default: Whitesmith) |
 
 See [HITECHLIB.md](HITECHLIB.md) for the HiTech archive format and
-[HITECHOBJ.md](HITECHOBJ.md) for the HiTech object format that `wsld` and
+[HITECHOBJ.md](HITECHOBJ.md) for the HiTech object format that `ld` and
 `wsnm` also read.
 
 ### wssize - Size Utility
@@ -101,7 +101,7 @@ targets pipe their objects through it.
 
 ### ccc - Compiler Driver
 
-Also built here. Runs cpp, c0, c1, optionally `peep`, then `asz` and `wsld`.
+Also built here. Runs cpp, c0, c1, optionally `peep`, then `asz` and `ld`.
 See [../ccc/README.md](../ccc/README.md) for its options and the pipeline.
 
 ## File Formats

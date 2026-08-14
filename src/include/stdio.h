@@ -1,7 +1,7 @@
 #define	BUFSIZ		512
 /*
  * Six left three for the program, because stdin, stdout and stderr
- * hold the first three for the whole life of it.  wsld wants more
+ * hold the first three for the whole life of it.  ld wants more
  * than that on its own: it keeps every input open at once - crt0.o,
  * the objects, libc.a, libu.a - and the output as well, and it fell
  * over on libu.a with "cannot open" for a file that was there and

@@ -24,7 +24,7 @@
  * host build only ever used it by hand.
  *
  * Build any of the three tools with -DDO_HITECH to get it back.  Note
- * that wsld and wslib spelled this HITECH, which nothing defined, so
+ * that ld and wslib spelled this HITECH, which nothing defined, so
  * their half had been silently compiled out for some time; the name
  * is DO_HITECH everywhere now and means the same thing in all three.
  *

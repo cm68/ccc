@@ -170,7 +170,7 @@ micronix: all
 # So this target's failures are not findings.  The one you will hit
 # first is
 #
-#	wsld: cannot open desthost/lib/crtcpm.o
+#	ld: cannot open desthost/lib/crtcpm.o
 #
 # which no rule builds - src/libcpm/crtcpm.s is the only crtcpm in the
 # tree - and which the install note at the top of this file already

@@ -93,7 +93,7 @@ jobs:
           ccc toolchain for ${{ github.ref_name }}
 
           The built compiler (cpp, c0, c1, peep), the Whitesmith's
-          tools (asz, wsld, wslib, wsnm, wssize), the ccc driver and
+          tools (asz, ld, wslib, wsnm, wssize), the ccc driver and
           the Z80 runtime archives.
         fail_on_unmatched_files: true
       env:

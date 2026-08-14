@@ -1,5 +1,5 @@
 /*
- * wsld - Whitesmith's object file linker
+ * ld - Whitesmith's object file linker
  *
  * Two-pass linker:
  * Pass 1: assign addresses, resolve symbols
@@ -215,7 +215,7 @@ struct lnksym {
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...\n");
+    fprintf(stderr, "usage: ld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...\n");
     fprintf(stderr, "  -V            list object files linked\n");
     fprintf(stderr, "  -r            emit relocatable output (for subsequent links)\n");
     fprintf(stderr, "  -s            strip symbol table from output\n");
@@ -262,7 +262,7 @@ unsigned n;
 
     p = malloc(n);
     if (!p) {
-        fprintf(stderr, "wsld: out of memory\n");
+        fprintf(stderr, "ld: out of memory\n");
         exit(1);
     }
     return p;
@@ -294,7 +294,7 @@ void
 error(msg)
 char *msg;
 {
-    fprintf(stderr, "wsld: %s\n", msg);
+    fprintf(stderr, "ld: %s\n", msg);
     exit(1);
 }
 
@@ -303,7 +303,7 @@ error2(msg, arg)
 char *msg;
 char *arg;
 {
-    fprintf(stderr, "wsld: %s: %s\n", msg, arg);
+    fprintf(stderr, "ld: %s: %s\n", msg, arg);
     exit(1);
 }
 
@@ -437,7 +437,7 @@ struct object *obj;
              */
             if (s->seg == SEG_BSS && seg == SEG_BSS)
                 return s;
-            fprintf(stderr, "wsld: duplicate symbol: %s\n", name);
+            fprintf(stderr, "ld: duplicate symbol: %s\n", name);
             fprintf(stderr, "  defined in %s and %s\n",
                     s->obj ? s->obj->name : "?", obj ? obj->name : "?");
             exit(1);
@@ -694,7 +694,7 @@ char *membername;
 
     magic = read_byte(fp);
     if (magic != MAGIC) {
-        fprintf(stderr, "wsld: %s(%s): bad magic\n", arname, membername);
+        fprintf(stderr, "ld: %s(%s): bad magic\n", arname, membername);
         return;
     }
 
@@ -804,8 +804,10 @@ struct infile *f;
     unsigned short magic16;
     long off;
     char membername[15];
+    unsigned char hdr[12];
     unsigned short len;
     int count = 0;
+    int v7;
     long base;
 
     /*
@@ -845,12 +847,26 @@ struct infile *f;
     if (fread(buf, 1, 2, fp) != 2)
         error2("read error", name);
 
+    /*
+     * Two archive formats, told apart by the magic and differing only
+     * in the member header.  ar(1) writes the v7 one and is becoming
+     * the librarian here; the whitesmiths one is what wslib wrote and
+     * what every library on disk still is.
+     *
+     * They start the same way - fourteen bytes of name - so only the
+     * rest of the header, the way the end is found, and the padding
+     * are per-format.
+     */
     magic16 = buf[0] | (buf[1] << 8);
-    if (magic16 != AR_MAGIC)
+    if (magic16 == AR_MAGIC)
+        v7 = 0;
+    else if (magic16 == V7_MAGIC)
+        v7 = 1;
+    else
         error2("bad archive magic", name);
 
     if (verbose) {
-        printf("scanning archive %s\n", name);
+        printf("scanning %s archive %s\n", v7 ? "v7" : "ws", name);
     }
 
     off = 2;  /* skip magic */
@@ -861,16 +877,31 @@ struct infile *f;
             break;
         membername[14] = '\0';
 
-        /* null name marks end */
-        if (membername[0] == '\0')
-            break;
+        if (v7) {
+            /*
+             * date, uid, gid, mode, size - and the size is a long, so
+             * it is read as four bytes and not as two.  There is no
+             * end marker: the last member is the one that runs out of
+             * file.
+             */
+            if (fread(hdr, 1, 12, fp) != 12)
+                break;
+            len = (unsigned short)((long)(hdr[V7_SIZEOFF] & 0xff)
+                | ((long)(hdr[V7_SIZEOFF + 1] & 0xff) << 8)
+                | ((long)(hdr[V7_SIZEOFF + 2] & 0xff) << 16)
+                | ((long)(hdr[V7_SIZEOFF + 3] & 0xff) << 24));
+            base = off + V7_HDRSIZ;
+        } else {
+            /* a null name is how a whitesmiths archive ends */
+            if (membername[0] == '\0')
+                break;
 
-        /* read length */
-        if (fread(buf, 1, 2, fp) != 2)
-            break;
-        len = buf[0] | (buf[1] << 8);
+            if (fread(buf, 1, 2, fp) != 2)
+                break;
+            len = buf[0] | (buf[1] << 8);
 
-        base = off + 16;  /* object starts after name and length */
+            base = off + 16;  /* object starts after name and length */
+        }
 
         /* check if this member satisfies any undefined symbol */
         if (ar_needed(fp, base)) {
@@ -882,6 +913,8 @@ struct infile *f;
         }
 
         off = base + len;
+        if (v7 && (len & 1))
+            off++;              /* v7 pads a member out to even */
     }
 
     /* the handle stays on the infile record; pass 2 still needs it */
@@ -1098,7 +1131,7 @@ char *name;
 
                     /* overflow check for 32->16 bit */
                     if (val > 0xFFFF && verbose) {
-                        fprintf(stderr, "wsld: warning: %s value truncated\n",
+                        fprintf(stderr, "ld: warning: %s value truncated\n",
                                 symname);
                     }
 
@@ -1626,7 +1659,7 @@ bss_merge()
                 continue;
             if (s->size != siz[i]) {
                 fprintf(stderr,
-                    "wsld: %s is %u bytes in %s but %u in %s\n",
+                    "ld: %s is %u bytes in %s but %u in %s\n",
                     s->name, s->size, s->obj ? s->obj->name : "?",
                     siz[i], obj->name);
                 exit(1);
@@ -1694,7 +1727,7 @@ pass1_layout()
     int undef_count = 0;
     for (s = symbols; s; s = s->next) {
         if (s->seg == SEG_EXT) {
-            fprintf(stderr, "wsld: undefined symbol: %s\n", s->name);
+            fprintf(stderr, "ld: undefined symbol: %s\n", s->name);
             undef_count++;
             continue;
         }
@@ -2089,7 +2122,7 @@ int is_text;
              */
             if (bssrel && hilo) {
                 fprintf(stderr,
-                    "wsld: %s: byte relocation on a bss offset\n",
+                    "ld: %s: byte relocation on a bss offset\n",
                     obj->name);
                 exit(1);
             }
@@ -2196,7 +2229,7 @@ unsigned short seg_base;
             /* symbol reference: lookup target name */
             s = sym_lookup(r->target);
             if (s == NULL) {
-                fprintf(stderr, "wsld: undefined symbol: %s\n", r->target);
+                fprintf(stderr, "ld: undefined symbol: %s\n", r->target);
                 target_val = 0;
             } else {
                 target_val = s->value;
@@ -2408,7 +2441,7 @@ pass2_output()
      * and is appended when the text is done, which costs one temporary
      * file and lets the link hold one input at a time.
      */
-    sprintf(tmpname, "/tmp/wsld%d", getpid());
+    sprintf(tmpname, "/tmp/ld%d", getpid());
     datafp = fopen(tmpname, "w+b");
     if (datafp == NULL)
         error2("cannot create", tmpname);
@@ -2447,7 +2480,7 @@ pass2_output()
         for (s = symbols; s; s = s->next) {
             /* warn if symbol name will be truncated */
             if (strlen(s->name) > symlen) {
-                fprintf(stderr, "wsld: symbol truncated: %s\n", s->name);
+                fprintf(stderr, "ld: symbol truncated: %s\n", s->name);
             }
             /* symbol entry: value, type, name */
             write_word(s->value);
@@ -2640,8 +2673,8 @@ char *name;
     fclose(fp);
 
     magic16 = buf[0] | (buf[1] << 8);
-    if (magic16 == AR_MAGIC)
-        return 1;
+    if (magic16 == AR_MAGIC || magic16 == V7_MAGIC)
+        return 1;               /* read_archive tells the two apart */
 
 #ifdef DO_HITECH
     /* check Hi-Tech library */

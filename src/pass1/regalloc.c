@@ -95,7 +95,7 @@ assignFrmOff(struct name *func)
 		 * Nothing was wrong at runtime, which is why it stood: the
 		 * cost is stack, and it scales with the declaration, which
 		 * is backwards.  The bigger the buffer the more reason there
-		 * was to make it static, and the more stack it cost - wsld's
+		 * was to make it static, and the more stack it cost - ld's
 		 * copy_segment declared "static unsigned char cbuf[512]"
 		 * precisely to keep it off the frame, and reported
 		 * frame=522.  On a machine where text, data, heap and stack

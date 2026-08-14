@@ -138,7 +138,7 @@ INSTALL = cp -u
 # clean checkout unbuildable.
 CCC     = $(HOSTDIR)/bin/ccc
 AS      = $(HOSTLIB)/asz
-LD      = $(HOSTLIB)/wsld
+LD      = $(HOSTLIB)/ld
 LIB     = $(HOSTDIR)/bin/wslib
 SIZE    = $(HOSTDIR)/bin/wssize
 

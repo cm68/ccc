@@ -556,7 +556,7 @@ main(int argc, char **argv)
     sprintf(cc1_path, "%s/c0", libdir);
     sprintf(cc2_path, "%s/c1", libdir);
     sprintf(asm_path, "%s/asz", libdir);
-    sprintf(ld_path, "%s/wsld", libdir);
+    sprintf(ld_path, "%s/ld", libdir);
     sprintf(astpp_path, "%s/astpp", libdir);
     sprintf(peep_path, "%s/peep", libdir);
 
@@ -1208,7 +1208,7 @@ main(int argc, char **argv)
 
             /*
              * A .com file is the bytes CP/M loads at 0x100 and
-             * nothing else.  wsld writes a 16-byte Whitesmith's
+             * nothing else.  ld writes a 16-byte Whitesmith's
              * header in front of them, so cut it off; the Makefiles
              * that built these images by hand all ended in a
              * "tail -c +17" for the same reason.

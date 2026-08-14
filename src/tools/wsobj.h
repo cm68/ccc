@@ -14,7 +14,19 @@
  * archive magic number (first 2 bytes, little-endian)
  * 0177565 octal
  */
-#define AR_MAGIC    0xFF75
+#define AR_MAGIC    0xFF75      /* whitesmiths: name, 2-byte length */
+#define V7_MAGIC    0xFF65      /* v7, which is what ar(1) writes */
+
+/*
+ * A v7 member header is 26 bytes and the name is the first 14 of
+ * them, so both formats start the same way and only the rest differs:
+ *
+ *	date 4  uid 1  gid 1  mode 2  size 4
+ *
+ * The size is the four bytes at the end of it.
+ */
+#define V7_HDRSIZ   26
+#define V7_SIZEOFF  8           /* within the 12 bytes after the name */
 
 /*
  * configuration byte flags (second byte of object file)

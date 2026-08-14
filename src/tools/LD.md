@@ -1,4 +1,4 @@
-# wsld: how an object is loaded and linked
+# ld: how an object is loaded and linked
 
 Two words that get used loosely, and this linker keeps them apart:
 

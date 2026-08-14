@@ -10,7 +10,7 @@ sized in bytes.
 Four programs, driven by `ccc`:
 
 ```
-  .c ──cpp──> .x + .n ──c0──> .1 + .2 ──c1──> .s ──[peep]──> .s ──asz──> .o ──wsld──> a.out
+  .c ──cpp──> .x + .n ──c0──> .1 + .2 ──c1──> .s ──[peep]──> .s ──asz──> .o ──ld──> a.out
 ```
 
 | Stage | Program | Reads | Writes |
@@ -20,7 +20,7 @@ Four programs, driven by `ccc`:
 | Generate code | `c1` (pass2) | `.1` `.2` `.n` | `.s` assembly |
 | Peephole (with `-O`) | `peep` | `.s` | `.s` |
 | Assemble | `asz` | `.s` | `.o` |
-| Link | `wsld` | `.o` `.a` | executable |
+| Link | `ld` | `.o` `.a` | executable |
 
 The `.2` file is assembly, not AST: globals, string data, and static
 initializers, which pass1 can write directly. The `.n` sidecar carries the
@@ -72,7 +72,7 @@ own compiler. `PROGRESS.md` at the top level tracks where that stands.
 
 **Whitesmith's object tools** (in `../tools/`)
 - **asz** — Z80 assembler producing relocatable objects
-- **wsld** — linker for objects and libraries
+- **ld** — linker for objects and libraries
 - **wsnm** — symbol table and disassembly
 - **wslib** / **wssize** — library manager, size reporter
 - See [../tools/README.md](../tools/README.md), [../tools/ASZ.md](../tools/ASZ.md),
@@ -165,7 +165,7 @@ ccc/                      # the repository root
 │   ├── peep/             # peephole optimizer
 │   ├── lib/              # libccc: utilities shared by the passes
 │   └── astpp.c           # AST pretty printer
-├── tools/                # asz, wsld, wsnm, wslib, wssize, and the ccc driver
+├── tools/                # asz, ld, wsnm, wslib, wssize, and the ccc driver
 ├── libsrc/               # runtime library source
 │   ├── include/          # system headers for the target
 │   ├── libc/             # C library
@@ -174,7 +174,7 @@ ccc/                      # the repository root
 ├── tests/                # test suites - see tests/README.md
 ├── attic/                # obsolete code, kept for reference
 └── root/                 # installed toolchain (after make install)
-    ├── bin/              # cpp, xdump, c0, c1, peep, astpp, ccc, asz, wsld, ...
+    ├── bin/              # cpp, xdump, c0, c1, peep, astpp, ccc, asz, ld, ...
     ├── lib/              # crt0.o, crtcpm.o, and per-compiler areas ccc/ and zc3/
     ├── usr/include/      # installed headers
     └── sim               # the Z80 simulator

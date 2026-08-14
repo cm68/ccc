@@ -58,7 +58,7 @@ register FILE *	f;
 	 * returned word, so every buffer whose first byte was 0x80 or
 	 * over read as end of file - and a Whitesmiths object file
 	 * begins with the magic 0x99, so no object could be read past
-	 * its first byte.  wsld reported "read error" on files it had
+	 * its first byte.  ld reported "read error" on files it had
 	 * just opened successfully.
 	 *
 	 * Only the byte _filbuf itself returns was affected; the ones

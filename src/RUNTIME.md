@@ -35,7 +35,7 @@ links both. Reading one compiler's objects and calling them the other's is an
 easy mistake to make and a hard one to see, which is why the areas are separate
 directories rather than one shared one.
 
-`wsld -L$(ROOTDIR)/lib/ccc` or `-L$(ROOTDIR)/lib/zc3` picks the area.
+`ld -L$(ROOTDIR)/lib/ccc` or `-L$(ROOTDIR)/lib/zc3` picks the area.
 
 `make` here builds only the **ccc** area now — the zc3 area dates from when
 Hi-Tech C was bootstrapping this compiler's runtime, and that is finished. It

@@ -277,7 +277,7 @@ bytecmp(c, d) register char c; char d;
 }
 
 /*
- * tools/wsld.c: a pointer register variable stored to a global.  IX
+ * tools/ld.c: a pointer register variable stored to a global.  IX
  * has no register node of its own, so a value in it stays a CODE node
  * and the rule asking for a REGVAR stopped matching once it had been
  * reduced.

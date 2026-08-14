@@ -6,7 +6,7 @@
  * stack frame, reserved on every call and never touched.  Every
  * static did it, scalars as well as arrays; the array is only where
  * it shows, because two bytes lost to a static int is invisible and
- * five hundred to a buffer is not.  wsld's copy_segment declared
+ * five hundred to a buffer is not.  ld's copy_segment declared
  * "static unsigned char cbuf[512]" precisely to keep it off the frame
  * and reported frame=522.
  *

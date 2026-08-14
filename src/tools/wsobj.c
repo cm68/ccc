@@ -1,7 +1,7 @@
 /*
  * wsobj.c - Whitesmith's object file format common functions
  *
- * Shared between assembler (asz) and linker (wsld)
+ * Shared between assembler (asz) and linker (ld)
  */
 
 #include <stdio.h>
