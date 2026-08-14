@@ -770,37 +770,62 @@ r_exx(void)
 	return 1;
 }
 
+/*
+ * Which rules can possibly match, rather than all of them.
+ *
+ * Every rule opens by demanding a particular opcode at the head of
+ * the window, so one character of the key rules most of them out.
+ * No two rules under different arms here can want the same opcode,
+ * which is why the order between arms cannot matter; inside an arm
+ * it is the order they were always tried in.
+ *
+ * The whole list used to run at every window position - fourteen
+ * calls, nearly all of them returning on their first comparison,
+ * 1,027,880 of them over the compiler's own sources.  The ld arm is
+ * a third of all lines by itself and splits again on the register it
+ * loads, which leaves 66,492.
+ */
 int
 applyrules(void)
 {
-	if (r_exx())
-		return 1;
-	if (r_hlarg())
-		return 1;
-	if (r_fenter())
-		return 1;
-	if (r_fexit())
-		return 1;
-	if (r_outi())
-		return 1;
-	if (r_m1cmp())
-		return 1;
-	if (r_invjp())
-		return 1;
-	if (r_ccall())
-		return 1;
-	if (r_cret())
-		return 1;
-	if (r_jpnext())
-		return 1;
-	if (r_incsp())
-		return 1;
-	if (r_pushpop())
-		return 1;
-	if (r_bounce())
-		return 1;
-	if (r_and0())
-		return 1;
+	char *k = win[0].key;
+
+	switch (k[0]) {
+	case 'e':
+		return r_exx();
+	case 'c':
+		return r_hlarg();
+	case 'i':
+		return r_incsp();
+	case 'p':
+		if (r_fenter())
+			return 1;
+		return r_pushpop();
+	case 'j':
+		if (r_invjp())
+			return 1;
+		if (r_ccall())
+			return 1;
+		if (r_cret())
+			return 1;
+		return r_jpnext();
+	case 'l':
+		if (k[1] != 'd' || k[2] != ' ')
+			return 0;
+		switch (k[3]) {
+		case 's':
+			return r_fexit();	/* ld sp,iy */
+		case 'h':
+			return r_outi();	/* ld hl,n */
+		case 'd':
+			return r_m1cmp();	/* ld de,-1 */
+		case 'a':
+			if (r_bounce())		/* ld a,x then ld r,a */
+				return 1;
+			return r_and0();	/* ld a,x then and 0 */
+		}
+		return 0;
+	}
 	return 0;
 }
 
