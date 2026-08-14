@@ -6,6 +6,18 @@ wslib
 size
 ccc
 astpp
+#
+# The host copies of the three that share a name with a program on the
+# build machine.  They are built here as mx* - "ld" in this directory
+# would be ambiguous with the system's, and the mx says which machine
+# it runs on - and the plain names above are what the Micronix build
+# makes under $(MXBUILD).  All six were tracked until they were not;
+# wsld, wsnm and wssize were the same files under the names they had
+# before the rename, and nothing builds those any more.
+#
+mxld
+mxnm
+mxsize
 *.o
 *.a
 stage1/
