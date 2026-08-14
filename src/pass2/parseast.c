@@ -78,6 +78,9 @@ int nbadcase;
 static char funcname[20];
 static short framesize;		/* bytes of local stack frame */
 static short nparams;		/* how many parameters, for the frame test */
+static char arg1w;		/* width of the first parameter: it arrives
+				 * in HL (HL':HL when long), and the helper
+				 * variant that spills it is chosen by this */
 static char noframe;		/* this function needs no frame at all */
 static short savebase;		/* scalar area size: save slots below it */
 static unsigned char regsused;	/* bitmask of callee-save regs */
@@ -454,7 +457,17 @@ emitprolog(void)
 
 	{
 		short off, rest;
-		char *h;
+		char *h, *sfx;
+
+		/*
+		 * The first argument arrives in HL - HL':HL when it is
+		 * long - and the w/q helper variants spill it back into
+		 * its old stack slot as part of frame setup, so the frame
+		 * they build is laid out exactly as the stack convention's
+		 * was.  A function with no parameters has nothing to
+		 * place and keeps the plain helpers.
+		 */
+		sfx = nparams == 0 ? "" : (ISLONG(arg1w) ? "q" : "w");
 
 		/*
 		 * Frame pointer, then the scalar area, then the callee
@@ -480,9 +493,9 @@ emitprolog(void)
 		      ((regsused & REGBIT(R_IX)) ? "fentx" : "fentn");
 
 		if (!savesbc() && !(regsused & REGBIT(R_IX)) && savebase == 0)
-			out("\tcall\tfenter\n");
+			outf("\tcall\tfenter%s\n", sfx);
 		else
-			outf("\tcall\t%s\n\t.dw\t%d\n", h, -savebase);
+			outf("\tcall\t%s%s\n\t.dw\t%d\n", h, sfx, -savebase);
 
 		off = -savebase;
 		if (savesbc()) {
@@ -577,6 +590,14 @@ emitepilog(void)
 	 * pops.  Five bytes against twenty-one, and the unwind is the
 	 * same code, so there is no jp fexit after it.
 	 */
+	/*
+	 * The w/q variants match the prologue's: the spilled first
+	 * argument sits above the return address in a slot the caller
+	 * does not know exists, so the exit helper is what discards it.
+	 */
+	{
+	char *sfx = nparams == 0 ? "" : (ISLONG(arg1w) ? "q" : "w");
+
 	if (savesbc() || (regsused & REGBIT(R_IX))) {
 		char *h;
 		short off;
@@ -591,7 +612,7 @@ emitepilog(void)
 			h = "fexbx";
 			off = ixoff;	/* pushed last, so the lower */
 		}
-		outf("\tcall\t%s\n\t.dw\t%d\n", h, off);
+		outf("\tcall\t%s%s\n\t.dw\t%d\n", h, sfx, off);
 		return;
 	}
 
@@ -602,7 +623,8 @@ emitepilog(void)
 	 * peephole that used to make the substitution only runs under
 	 * -O.
 	 */
-	out("\tjp\tfexit\n");
+	outf("\tjp\tfexit%s\n", sfx);
+	}
 }
 
 void
@@ -1115,6 +1137,7 @@ parse(void)
 			savebase = read1();	/* scalar area size */
 			regsused = 0;
 			nstage = 0;
+			arg1w = 0;
 #ifdef DEBUG
 			if (VERBOSE(V_PARSE))
 				fprintf(stderr, "parse: params=%d locals=%d frame=%d\n",
@@ -1138,6 +1161,10 @@ parse(void)
 				out("; param "); out(buf); outc(':'); outc(t);
 				out(" r="); outd(reg); out(" o="); outd(off); outc('\n');
 #endif
+				/* the first parameter arrives in HL; its
+				 * width picks the spilling helper variant */
+				if (n == nparams)
+					arg1w = t;
 				if (reg) {
 					struct stgent *tp = &stage[nstage++];
 					regsused |= REGBIT(reg);

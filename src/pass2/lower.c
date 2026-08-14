@@ -720,19 +720,17 @@ docompound(Expr *e)
 }
 
 /*
- * Push one call argument, returning the stack bytes it consumed.
- * Wrapping the value in ASSIGN(INHL, value) reuses the whole =(H,...)
- * rule set to land it in HL, the same trick RETURN uses.  Scalars are
- * widened to a word first: C promotes char arguments to int.
+ * Land one value in HL - HL':HL when it is long.  Wrapping it in
+ * ASSIGN(INHL, value) reuses the whole =(H,...) rule set, the same
+ * trick RETURN uses.  Scalars are widened to a word first: C promotes
+ * char arguments to int.  Returns the width it landed.
  */
-int
-pusharg(Expr *a)
+char
+landarg(Expr *a)
 {
 	Expr *hl, *asn;
 	char w;
 
-	if (!a)
-		return 0;
 	w = a->width;
 	if (w != 'l' && w != 'L')
 		w = 's';
@@ -742,8 +740,20 @@ pusharg(Expr *a)
 	asn = mkbinary(ASSIGN, w, hl, a);
 	setdest(asn, DEST_VALUE);
 	freeexpr(rewrite(asn));
+	return w;
+}
 
-	if (w == 's') {
+/*
+ * Push one call argument, returning the stack bytes it consumed.
+ * Only arguments after the first come here: the first rides to the
+ * callee in HL.
+ */
+int
+pusharg(Expr *a)
+{
+	if (!a)
+		return 0;
+	if (landarg(a) == 's') {
 		out("\tpush hl\n");
 		return 2;
 	}
@@ -1206,6 +1216,7 @@ Expr *
 docall(Expr *e)
 {
 	Expr *a, *next, *fn;
+	Expr *first = 0;
 	int nbytes = 0;
 	int i;
 	int direct;
@@ -1250,16 +1261,29 @@ docall(Expr *e)
 	 * bytes at far fewer places.
 	 */
 
+	/*
+	 * The first argument does not go on the stack: it is evaluated
+	 * last - the chain is built last-to-first, so it already comes
+	 * around last - and rides to the callee in HL, or HL':HL when it
+	 * is long.  The callee's own prologue helper spills it into the
+	 * slot the caller used to push it into, so from the callee's
+	 * side nothing has moved.
+	 */
 	for (a = e->right; a && a->op == ARGNODE; a = next) {
 		Expr *v = a->left;
 		next = a->right;
 		a->left = a->right = 0;
 		freeexpr(a);
-		nbytes += pusharg(v);
+		if (next && next->op == ARGNODE)
+			nbytes += pusharg(v);
+		else
+			first = v;
 	}
 	e->right = 0;
 
 	if (direct) {
+		if (first)
+			landarg(first);
 		outf("\tcall %s\n", fn->u.symref.name);
 	} else {
 		/*
@@ -1270,19 +1294,21 @@ docall(Expr *e)
 		 * the jump hands over, and the function's own ret comes
 		 * back here.  One byte of library and an ordinary call at
 		 * every site.
+		 *
+		 * With arguments, HL is spoken for.  The address is worked
+		 * out first and parked on the stack while the first
+		 * argument is evaluated, then comes back in DE - dead at
+		 * every call - and the trampoline for that is push de /
+		 * ret.
 		 */
-		Expr *hl, *asn;
-
 		e->left = 0;
-		/* land the address in HL the way everything else does -
-		 * wrapping it in an assignment to HL reuses the whole
-		 * =(H,...) rule set, which knows every place it might be */
-		hl = mkcode('s', R_HL);
-		hl->op = INHL;
-		asn = mkbinary(ASSIGN, 's', hl, fn);
-		setdest(asn, DEST_VALUE);
-		freeexpr(rewrite(asn));
-		out("\tcall tramp\n");
+		landarg(fn);
+		if (first) {
+			out("\tpush hl\n");
+			landarg(first);
+			out("\tpop de\n\tcall trampde\n");
+		} else
+			out("\tcall tramp\n");
 	}
 
 	/*
