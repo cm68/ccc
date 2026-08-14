@@ -516,10 +516,30 @@ emitprolog(void)
 		      ((regsused & REGBIT(R_IX)) ? "fentbx" : "fentb") :
 		      ((regsused & REGBIT(R_IX)) ? "fentx" : "fentn");
 
+		/*
+		 * The scalar-area word is written in a field, not tight.
+		 *
+		 * peep rewrites an entry it has decided needs no frame by
+		 * overwriting the lines in place, so what it puts there has
+		 * to fit inside what was written.  An entry saving both BC
+		 * and IX needs two pushes and has two lines to put them in,
+		 * but "\t.dw\t0\n" is seven bytes and "\tpush\tix\n" is
+		 * nine, so the second push had nowhere to go and the most
+		 * common entry in the compiler - 140 of them - could never
+		 * lose its frame however plainly it did not need one.
+		 *
+		 * The field costs nothing.  Trailing blanks are whitespace
+		 * to the assembler and normalise strips them before any
+		 * rule sees the line, so this is two characters of room in
+		 * the text and not one byte in the object.  They are
+		 * written out rather than asked for with a width: outf is
+		 * the tree's own and takes no flags, and "%-3d" put the
+		 * number down followed by a literal d.
+		 */
 		if (!savesbc() && !(regsused & REGBIT(R_IX)) && savebase == 0)
 			outf("\tcall\tfenter%s\n", sfx);
 		else
-			outf("\tcall\t%s%s\n\t.dw\t%d\n", h, sfx, -savebase);
+			outf("\tcall\t%s%s\n\t.dw\t%d  \n", h, sfx, -savebase);
 
 		off = -savebase;
 		if (savesbc()) {

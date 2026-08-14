@@ -355,10 +355,20 @@ has2(char *s, char a, char b)
  * between the entry call and its .dw even though c1 wrote them with
  * one outf.  Each of the two entry lines is therefore patched as its
  * own region, at the position recorded when that line was written:
- * the pushes go over the call, a blank line goes over the word, and
- * whatever landed between them is not touched.  The bx entries would
- * need two pushes in the space of one call line, which do not fit;
- * they were worth two bytes and keep their frames.
+ * the pushes go over the call, the word's line takes the second push
+ * or a blank, and whatever landed between them is not touched.
+ *
+ * Only the entry is written over.  By the time the exit is reached the
+ * output is still at the end, so pop is emitted rather than patched
+ * and its length is nobody's business - which is why the bx exit can
+ * spend three lines where the entry has to spend two.
+ *
+ * The entry has two lines and the bx forms need two pushes, one each.
+ * That only became possible when pass2 started writing the scalar
+ * word in a field: "\t.dw\t0\n" is seven bytes and "\tpush\tix\n" is
+ * nine, so before the field the second push had nowhere to go, and
+ * the compiler's most common entry kept a frame it did not need.  The
+ * arming below checks the room rather than assuming it.
  */
 static struct nf {
 	char *entry;		/* the entry call's key */
@@ -367,22 +377,27 @@ static struct nf {
 	char extl;		/* its line count: 1, or 2 with a .dw */
 	char *exitdw;		/* the exit .dw key that must match */
 	char *push;		/* what replaces the entry call, or 0 */
-	char *pop;		/* what replaces the exit */
+	char *push2;		/* what replaces its .dw, or 0 for blank */
+	char *pop;		/* what is emitted in place of the exit */
 	char nsaved;		/* text bytes the rewrite buys */
 } nftab[] = {
 	{ "call fenterw", 1, "jp fexitw", 1, 0,
-	  0, "\tret\n", 5 },
+	  0, 0, "\tret\n", 5 },
 	{ "call fenter", 1, "jp fexit", 1, 0,
-	  0, "\tret\n", 5 },
+	  0, 0, "\tret\n", 5 },
 	{ "call fentbw", 2, "call fexbw", 2, ".dw -2",
-	  "\tpush\tbc\n", "\tpop\tbc\n\tret\n", 7 },
+	  "\tpush\tbc\n", 0, "\tpop\tbc\n\tret\n", 7 },
 	{ "call fentb", 2, "call fexb", 2, ".dw -2",
-	  "\tpush\tbc\n", "\tpop\tbc\n\tret\n", 7 },
+	  "\tpush\tbc\n", 0, "\tpop\tbc\n\tret\n", 7 },
 	{ "call fentxw", 2, "call fexxw", 2, ".dw -2",
-	  "\tpush\tix\n", "\tpop\tix\n\tret\n", 5 },
+	  "\tpush\tix\n", 0, "\tpop\tix\n\tret\n", 5 },
 	{ "call fentx", 2, "call fexx", 2, ".dw -2",
-	  "\tpush\tix\n", "\tpop\tix\n\tret\n", 5 },
-	{ 0, 0, 0, 0, 0, 0, 0, 0 }
+	  "\tpush\tix\n", 0, "\tpop\tix\n\tret\n", 5 },
+	{ "call fentbxw", 2, "call fexbxw", 2, ".dw -4",
+	  "\tpush\tbc\n", "\tpush\tix\n", "\tpop\tix\n\tpop\tbc\n\tret\n", 3 },
+	{ "call fentbx", 2, "call fexbx", 2, ".dw -4",
+	  "\tpush\tbc\n", "\tpush\tix\n", "\tpop\tix\n\tpop\tbc\n\tret\n", 3 },
+	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 
 #define NFPAT	64		/* a line longer than this is left alone */
@@ -436,7 +451,7 @@ nfpatch(void)
 {
 	nfover(nfpos1, nflen1, nfent->push);
 	if (nfent->entl == 2)
-		nfover(nfpos2, nflen2, 0);
+		nfover(nfpos2, nflen2, nfent->push2);
 	n_noframe++;
 	saved += nfent->nsaved;
 	nfarm = 0;
@@ -466,12 +481,14 @@ nfemit(char *text, char *key)
 
 	if (nfarm == 1) {
 		if (strcmp(key, ".dw 0") == 0 &&
-		    strlen(text) <= NFPAT) {
+		    strlen(text) <= NFPAT &&
+		    (!nfent->push2 ||
+		     strlen(nfent->push2) <= strlen(text))) {
 			nfpos2 = outcnt;
 			nflen2 = strlen(text);
 			nfarm = 2;
 		} else
-			nfarm = 0;	/* a real scalar area */
+			nfarm = 0;	/* a real scalar area, or no room */
 		outs(text);
 		return;
 	}
