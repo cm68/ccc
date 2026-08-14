@@ -89,6 +89,12 @@ CPMDIR  ?= $(TOP)/destcpm
 # the passes install to lib and not bin.  It is v7's arrangement, and
 # it is what lets /usr/local/bin/ccc work without being rebuilt.
 HOSTLIB = $(HOSTDIR)/lib
+#
+# Programs run by other programs.  The passes, the assembler and the
+# linker go here and not in lib, which is for things to link against.
+#
+HOSTLIBEXEC = $(HOSTDIR)/libexec
+MXLIBEXEC = $(MXDIR)/libexec
 
 # ---------------------------------------------------------------
 # Where "make install" puts a real toolchain.

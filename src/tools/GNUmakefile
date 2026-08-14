@@ -133,9 +133,9 @@ LIBTOOLS = asz mxld astpp
 BINTOOLS = ccc wslib mxnm mxsize
 
 install: all man-install
-	@mkdir -p $(HOSTDIR)/bin $(HOSTDIR)/lib
+	@mkdir -p $(HOSTDIR)/bin $(HOSTLIBEXEC)
 	$(INSTALL) $(BINTOOLS) $(HOSTDIR)/bin
-	$(INSTALL) $(LIBTOOLS) $(HOSTDIR)/lib
+	$(INSTALL) $(LIBTOOLS) $(HOSTLIBEXEC)
 
 # ---- cross: the same tools, built to run on Micronix --------------
 #
@@ -203,7 +203,7 @@ mx-ccc: $(MXALL)
 mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib
 	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXBINTOOLS)) $(MXDIR)/bin
-	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXLIBTOOLS)) $(MXDIR)/lib
+	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXLIBTOOLS)) $(MXLIBEXEC)
 
 CCCFLAGS = -DCCC -i../include
 

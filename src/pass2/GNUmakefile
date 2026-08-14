@@ -108,7 +108,8 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: c1 man-install
-	$(INSTALL) c1 $(HOSTDIR)/lib
+	@mkdir -p $(HOSTLIBEXEC)
+	$(INSTALL) c1 $(HOSTLIBEXEC)
 
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: c1

@@ -116,7 +116,8 @@ clobber: clean
 # in this directory keeps the old name; only what the driver looks for
 # has to agree.
 install: cpp xdump man-install
-	$(INSTALL) cpp $(HOSTDIR)/lib/pass0
+	@mkdir -p $(HOSTLIBEXEC)
+	$(INSTALL) cpp $(HOSTLIBEXEC)/pass0
 	$(INSTALL) xdump $(HOSTDIR)/bin
 
 # Stage1: run cpp, c0, and c1 on each source file

@@ -58,6 +58,7 @@ char *progname;
  */
 #define LIBDIRMAX 512
 char libdir[LIBDIRMAX];
+char libexecdir[LIBDIRMAX];
 
 /*
  * The target this installation is for, when -m does not say.  A
@@ -83,6 +84,10 @@ char libdir[LIBDIRMAX];
  * where we were found.  This is the one thing that is compiled in,
  * and it is only a fallback.
  */
+#ifndef DEFLIBEXEC
+#define DEFLIBEXEC "/libexec"
+#endif
+
 #ifndef DEFLIB
 #define DEFLIB "/lib"
 #endif
@@ -542,20 +547,29 @@ main(int argc, char **argv)
                 n = LIBDIRMAX - 16;
             strncpy(libdir, progname, n);
             libdir[n] = '\0';
+            strcpy(libexecdir, libdir);
             strcat(libdir, "/../lib");
+            strcat(libexecdir, "/../libexec");
         } else {
             strcpy(libdir, DEFLIB);
+            strcpy(libexecdir, DEFLIBEXEC);
         }
     }
 
     /*
-     * The passes, the assembler and the linker all live there.  They
-     * are not user commands and do not belong on a search path.
+     * The passes, the assembler and the linker live in LIBEXEC, which
+     * is what that directory has always been for: programs run by
+     * other programs.  They are not user commands and do not belong
+     * on a search path.
+     *
+     * lib is for libraries - libc.a, crt0.o and the headers, further
+     * down - and keeping the two apart means a person reading /lib
+     * sees things to link against and nothing else.
      */
-    sprintf(cpp_path, "%s/pass0", libdir);
-    sprintf(cc1_path, "%s/c0", libdir);
-    sprintf(cc2_path, "%s/c1", libdir);
-    sprintf(asm_path, "%s/asz", libdir);
+    sprintf(cpp_path, "%s/pass0", libexecdir);
+    sprintf(cc1_path, "%s/c0", libexecdir);
+    sprintf(cc2_path, "%s/c1", libexecdir);
+    sprintf(asm_path, "%s/asz", libexecdir);
     /*
      * The linker beside us.  On micronix it is ld, the system's own;
      * on the host it is mxld, because "ld" there is the host's linker
@@ -563,12 +577,12 @@ main(int argc, char **argv)
      * machine it runs on rather than what it reads.
      */
 #ifdef CCC
-    sprintf(ld_path, "%s/ld", libdir);
+    sprintf(ld_path, "%s/ld", libexecdir);
 #else
-    sprintf(ld_path, "%s/mxld", libdir);
+    sprintf(ld_path, "%s/mxld", libexecdir);
 #endif
-    sprintf(astpp_path, "%s/astpp", libdir);
-    sprintf(peep_path, "%s/peep", libdir);
+    sprintf(astpp_path, "%s/astpp", libexecdir);
+    sprintf(peep_path, "%s/peep", libexecdir);
 
     /*
      * The runtime is per target and cannot be resolved until -m has

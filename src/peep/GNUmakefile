@@ -58,7 +58,8 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 install: peep man-install
-	$(INSTALL) peep $(HOSTDIR)/lib
+	@mkdir -p $(HOSTLIBEXEC)
+	$(INSTALL) peep $(HOSTLIBEXEC)
 
 # Stage1: build each source through the compiler being developed
 stage1: peep
