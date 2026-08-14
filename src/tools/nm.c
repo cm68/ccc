@@ -703,6 +703,31 @@ long a;
 }
 
 /*
+ * "iy+4", "ix-3" - an index register and its displacement.
+ *
+ * Written "%+d" once, which asks printf for an explicit plus on a
+ * positive number.  The guest's printf had no such flag: it took the
+ * "+" for the conversion character, consumed no argument, and left
+ * the "d" to print as a letter, so every operand came out "(iy+d)"
+ * and every argument after it in the call was off by one.  The flag
+ * is worth having and is in lib/libc now, but a disassembler need not
+ * depend on it - and one conversion at each of ten call sites reads
+ * better than three.
+ */
+char *
+fmt_idx(reg, d)
+char *reg;
+int d;
+{
+    static char b[16];
+    int v;
+
+    v = (char)d;
+    sprintf(b, "%s%c%d", reg, v < 0 ? '-' : '+', v < 0 ? -v : v);
+    return b;
+}
+
+/*
  * disassemble one instruction, return length
  * for -g mode, operand_pc is the PC for relocation lookup
  */
@@ -842,13 +867,13 @@ char *buf;
             sprintf(buf, "dec %s", ir);
         } else if (op2 == 0x34) {
             d = dbyte(addr+2); len=3;
-            sprintf(buf, "inc (%s%+d)", ir, (char)d);
+            sprintf(buf, "inc (%s)", fmt_idx(ir, d));
         } else if (op2 == 0x35) {
             d = dbyte(addr+2); len=3;
-            sprintf(buf, "dec (%s%+d)", ir, (char)d);
+            sprintf(buf, "dec (%s)", fmt_idx(ir, d));
         } else if (op2 == 0x36) {
             d = dbyte(addr+2); n = dbyte(addr+3); len=4;
-            sprintf(buf, "ld (%s%+d),0%02xh", ir, (char)d, n);
+            sprintf(buf, "ld (%s),0%02xh", fmt_idx(ir, d), n);
         } else if (op2 == 0xe1) {
             sprintf(buf, "pop %s", ir);
         } else if (op2 == 0xe3) {
@@ -862,15 +887,15 @@ char *buf;
         } else if ((op2 & 0xc0) == 0x40 && (op2 & 7) == 6) {
             /* ld r,(ix+d) */
             d = dbyte(addr+2); len=3;
-            sprintf(buf, "ld %s,(%s%+d)", r8[(op2>>3)&7], ir, (char)d);
+            sprintf(buf, "ld %s,(%s)", r8[(op2>>3)&7], fmt_idx(ir, d));
         } else if ((op2 & 0xc0) == 0x40 && ((op2>>3) & 7) == 6) {
             /* ld (ix+d),r */
             d = dbyte(addr+2); len=3;
-            sprintf(buf, "ld (%s%+d),%s", ir, (char)d, r8[op2&7]);
+            sprintf(buf, "ld (%s),%s", fmt_idx(ir, d), r8[op2&7]);
         } else if ((op2 & 0xc0) == 0x80 && (op2 & 7) == 6) {
             /* alu (ix+d) */
             d = dbyte(addr+2); len=3;
-            sprintf(buf, "%s(%s%+d)", alu[(op2>>3)&7], ir, (char)d);
+            sprintf(buf, "%s(%s)", alu[(op2>>3)&7], fmt_idx(ir, d));
         } else if (op2 == 0xcb) {
             /* DD/FD CB d op */
             int b;
@@ -880,13 +905,13 @@ char *buf;
             len = 4;
             b = (op2 >> 3) & 7;
             if (op2 < 0x40) {
-                sprintf(buf, "%s (%s%+d)", rot[b], ir, (char)d);
+                sprintf(buf, "%s (%s)", rot[b], fmt_idx(ir, d));
             } else if (op2 < 0x80) {
-                sprintf(buf, "bit %d,(%s%+d)", b, ir, (char)d);
+                sprintf(buf, "bit %d,(%s)", b, fmt_idx(ir, d));
             } else if (op2 < 0xc0) {
-                sprintf(buf, "res %d,(%s%+d)", b, ir, (char)d);
+                sprintf(buf, "res %d,(%s)", b, fmt_idx(ir, d));
             } else {
-                sprintf(buf, "set %d,(%s%+d)", b, ir, (char)d);
+                sprintf(buf, "set %d,(%s)", b, fmt_idx(ir, d));
             }
         } else {
             sprintf(buf, "db 0%02xh,0%02xh", op, op2);
