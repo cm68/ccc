@@ -6,7 +6,7 @@
  * the tree, so pass2 met an address add with one long operand, had no
  * rule for it, and emitted nothing at all: the read came from address
  * zero and the store went nowhere, with only a comment to say so.
- * wsnm walks a library file with a long offset and is where it showed.
+ * nm walks a library file with a long offset and is where it showed.
  */
 #include "rt.h"
 
@@ -30,7 +30,7 @@ main()
 	off = 2;
 	CHECK(1, bp[off], 33);
 
-	/* the postfix step, which is the shape wsnm writes */
+	/* the postfix step, which is the shape nm writes */
 	off = 1;
 	c = bp[off++];
 	CHECK(2, c, 22);

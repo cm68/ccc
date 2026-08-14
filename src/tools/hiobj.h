@@ -17,7 +17,7 @@
  * open one that predates all that, which is worth keeping as source
  * and not worth carrying in the binaries.
  *
- * It costs more than it looks.  It is a fifth of wsnm.c, and c0 runs
+ * It costs more than it looks.  It is a fifth of nm.c, and c0 runs
  * out of memory inside processHitech long before the end of that
  * file - the one source in the tree that will not compile under CP/M
  * at any TPA.  So the self-hosted build could never have it, and the

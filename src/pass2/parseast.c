@@ -252,7 +252,7 @@ swlabel(char k, int id, int n)
  *
  * The two live at opposite ends and both are needed: every switch with
  * more than about twenty cases here is sparse (the largest, 125 cases
- * in wsnm.c, spans the whole byte at 48%) and would want a 517 byte
+ * in nm.c, spans the whole byte at 48%) and would want a 517 byte
  * index against a 379 byte pair table, while the dense ones are nearly
  * all small - and for those swidx is not just smaller but constant
  * time instead of a scan.

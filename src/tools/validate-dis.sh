@@ -19,7 +19,7 @@ mkdir -p "$tmpdir"
 trap "rm -rf '$tmpdir'" EXIT
 
 # Step 1: Disassemble original
-./wsnm -d "$orig" > "$tmpdir/$base.dis" 2>&1
+./nm -d "$orig" > "$tmpdir/$base.dis" 2>&1
 if [ ! -s "$tmpdir/$base.dis" ]; then
     echo "FAIL: Could not disassemble $orig" >&2
     exit 1
@@ -49,8 +49,8 @@ get_text() {
     od -A n -t u2 -j 5 -N 2 "$1" | tr -d ' '
 }
 
-# Extract text bytes using wsnm
-orig_text=$(./wsnm -d "$orig" 2>/dev/null | awk '
+# Extract text bytes using nm
+orig_text=$(./nm -d "$orig" 2>/dev/null | awk '
     /^Disassembly:/ { in_dis=1; next }
     /^Data segment:/ { in_dis=0 }
     in_dis && /^  [0-9a-f][0-9a-f][0-9a-f][0-9a-f]  / {
@@ -61,7 +61,7 @@ orig_text=$(./wsnm -d "$orig" 2>/dev/null | awk '
     }
 ')
 
-new_text=$(./wsnm -d "$tmpdir/$base.o" 2>/dev/null | awk '
+new_text=$(./nm -d "$tmpdir/$base.o" 2>/dev/null | awk '
     /^Disassembly:/ { in_dis=1; next }
     /^Data segment:/ { in_dis=0 }
     in_dis && /^  [0-9a-f][0-9a-f][0-9a-f][0-9a-f]  / {

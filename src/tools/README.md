@@ -3,7 +3,7 @@
 Tools for assembling, linking, and managing Z80 relocatable object files, plus
 the `ccc` compiler driver.
 
-`make` here builds `asz ld wsnm wslib wssize ccc`.
+`make` here builds `asz ld nm wslib wssize ccc`.
 
 ## Tools
 
@@ -48,13 +48,13 @@ ld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=
 | `-Tdata=addr` | Set data segment base |
 | `-Tbss=addr` | Set bss segment base |
 
-### wsnm - Symbol Table / Disassembler
+### nm - Symbol Table / Disassembler
 
 Displays object file contents. Accepts both `.o` object files and `.a`
 library archives.
 
 ```
-wsnm [-bdgrv] file [...]
+nm [-bdgrv] file [...]
 ```
 
 | Option | Description |
@@ -86,7 +86,7 @@ wslib [-crvHxat] archive [file...]
 
 See [HITECHLIB.md](HITECHLIB.md) for the HiTech archive format and
 [HITECHOBJ.md](HITECHOBJ.md) for the HiTech object format that `ld` and
-`wsnm` also read.
+`nm` also read.
 
 ### wssize - Size Utility
 

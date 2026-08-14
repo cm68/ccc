@@ -416,7 +416,7 @@ cmpLS(l, s) long l; register short s;
 
 /*
  * pass2/rules.c: stepping a long through a pointer - "(*lp)++", as in
- * tools/wsnm.c's read_reloc.  The step rules had the global and the
+ * tools/nm.c's read_reloc.  The step rules had the global and the
  * frame slot at long width and the pointer only at short, so this
  * emitted nothing.  A prefix wanted for its value has to read the long
  * back afterwards: lainc hands back what was there before and consumes

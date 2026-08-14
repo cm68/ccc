@@ -9,7 +9,7 @@
  * one too - so the fix was to double where 256 still fits and to
  * stop at 255, not to widen the field.
  *
- * The largest switch in the tree is 125 cases (wsnm.c), so this sat
+ * The largest switch in the tree is 125 cases (nm.c), so this sat
  * one case-batch away from being reached.
  */
 #include "rt.h"

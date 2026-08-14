@@ -372,7 +372,7 @@ regression baselines or valgrind.
 * **No marker is left** over the tree's own sources, from 173.  Count
   them with `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
   The last one to go was `(ADD:short (HL:short) (HL:long))` in
-  `tools/wsnm.c`, a byte array subscripted by a long where the pointer
+  `tools/nm.c`, a byte array subscripted by a long where the pointer
   and the long both wanted HL.  It was register pressure rather than a
   missing form, and it stopped appearing once return values were
   converted to the declared return type - the long had been arriving

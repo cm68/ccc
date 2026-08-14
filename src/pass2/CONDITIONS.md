@@ -199,7 +199,7 @@ enough to beat the pair table — `2*span < 3n-1`, a little over two thirds — 
 of dispatch down to 2705.
 
 Both are needed and they live at opposite ends: every switch here with more
-than about twenty cases is sparse (the largest, 125 cases in `wsnm.c`, spans
+than about twenty cases is sparse (the largest, 125 cases in `nm.c`, spans
 the whole byte at 48%) and would want a 517-byte index against a 379-byte pair
 table, while the dense ones are nearly all small — and for those `swidx` is not
 just smaller but constant time instead of a scan.

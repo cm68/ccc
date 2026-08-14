@@ -110,7 +110,7 @@ The library format enables efficient linking:
 ## Tools
 
 - **libr** - Original HiTech library manager (libr.c)
-- **wsnm** - Can dump HiTech library contents with `-v` flag
+- **nm** - Can dump HiTech library contents with `-v` flag
 - **wslib** - Can list (`-t`) and extract (`-x`) from HiTech libraries
 
 ## Notes

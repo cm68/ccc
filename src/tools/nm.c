@@ -1,5 +1,5 @@
 /*
- * wsnm - Whitesmith's object file dump utility
+ * nm - Whitesmith's object file dump utility
  *
  * Displays symbol table, relocations, and hex dump of segments
  * disassembles, too.
@@ -1046,7 +1046,7 @@ void
 error(msg)
 char *msg;
 {
-    fprintf(stderr, "wsnm: %s\n", msg);
+    fprintf(stderr, "nm: %s\n", msg);
     exit(1);
 }
 
@@ -1055,7 +1055,7 @@ error2(msg, arg)
 char *msg;
 char *arg;
 {
-    fprintf(stderr, "wsnm: %s: %s\n", msg, arg);
+    fprintf(stderr, "nm: %s: %s\n", msg, arg);
     exit(1);
 }
 
@@ -1491,7 +1491,7 @@ char *name;
 
         gfile = fopen(gname, "w");
         if (!gfile) {
-            fprintf(stderr, "wsnm: cannot create %s\n", gname);
+            fprintf(stderr, "nm: cannot create %s\n", gname);
             return;
         }
 
@@ -1503,7 +1503,7 @@ char *name;
     nurels = uobj.nrelocs;
 
     /* header */
-    fprintf(gfile, "; Generated from %s by wsnm -g\n", name);
+    fprintf(gfile, "; Generated from %s by nm -g\n", name);
 
     /* emit externs */
     for (i = 0; i < uobj.nsyms; i++) {
@@ -1984,7 +1984,7 @@ long objsize;
     /* parse header */
     magic = get_byte(base);
     if (magic != MAGIC) {
-        fprintf(stderr, "wsnm: %s: bad magic 0x%02x\n", name, magic);
+        fprintf(stderr, "nm: %s: bad magic 0x%02x\n", name, magic);
         return;
     }
 
@@ -2236,7 +2236,7 @@ int nsyms;
  * Guarded to match its caller, which is already inside
  * DO_HITECH.  Without this the definition survives when the
  * macro is off and calls ht_load_uobj, which does not - so
- * wsnm would not link for a target that has no Hi-Tech
+ * nm would not link for a target that has no Hi-Tech
  * support.  Micronix is the first such target.
  */
 /*
@@ -2851,11 +2851,19 @@ char *filename;
     filesize = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
 
-    /* read entire file */
-    filebuf = (unsigned char *)malloc(filesize);
+    /*
+     * Read it whole.  The casts matter: filesize is a long because a
+     * host file can be, and malloc and fread take a size_t - which is
+     * two bytes on the z80 and four here.  There is no prototype for
+     * either in the guest's stdio, so K&R rules pass the long as four
+     * bytes, the callee reads two, and everything after it on the
+     * stack is off by two.  That is what "nm: read error" was: not a
+     * read that failed, a count that arrived as rubbish.
+     */
+    filebuf = (unsigned char *)malloc((unsigned)filesize);
     if (!filebuf)
         error("out of memory");
-    if (fread(filebuf, 1, filesize, fp) != filesize)
+    if (fread(filebuf, 1, (unsigned)filesize, fp) != (unsigned)filesize)
         error("read error");
     fclose(fp);
 
@@ -2898,7 +2906,7 @@ char *filename;
 void
 usage()
 {
-    fprintf(stderr, "usage: wsnm [-bdgrv] file.o [...]\n");
+    fprintf(stderr, "usage: nm [-bdgrv] file.o [...]\n");
     fprintf(stderr, "  -b    hex dump text/data segments\n");
     fprintf(stderr, "  -d    disassemble text segment\n");
     fprintf(stderr, "  -g    generate assemblable .s files\n");
