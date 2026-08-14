@@ -18,12 +18,27 @@ extern char no_relax;
 
 #define SYMLEN 15
 
+/*
+ * A SYMBOL COSTS WHAT ITS NAME COSTS.  The name used to be a fixed
+ * char[SYMLEN+1] in the middle of the structure, so every symbol paid
+ * for sixteen bytes whether it needed them or not - and the average
+ * name in what this assembles is six characters.  It is a tail now:
+ * last member, one byte declared, and the rest of it allocated behind
+ * the structure by whoever makes the symbol.
+ *
+ * name[1] and not name[0] or name[], deliberately.  sizeof then
+ * carries the terminator, so permalloc(sizeof(struct symbol) + len)
+ * is exactly right for a name of len characters on both compilers -
+ * ccc gives a flexible member one byte and gcc gives it none, and
+ * "char name[0]" is a GNU extension that -pedantic -Werror rejects
+ * outright.  One byte declared is the arithmetic everything agrees on.
+ */
 struct symbol {
     unsigned char seg;              /* SEG_* */
     unsigned short index;           /* object file ordinal */
     unsigned short value;           /* segment relative */
-    char name[SYMLEN+1];			/* zero padded */
     struct symbol *next;
+    char name[1];                   /* variable length tail */
 };
 
 struct jump {

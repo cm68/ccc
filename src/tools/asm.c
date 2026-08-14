@@ -270,7 +270,67 @@ char used_dollar;
  * relocation as segment-relative and what keeps them out of the
  * object's symbol table.
  */
-struct symbol dollarsym[2];
+/*
+ * Two bytes of name, "$", and they are statics rather than allocated,
+ * so the tail has to be declared here rather than asked for.
+ */
+struct { struct symbol s; char pad[1]; } dollarsym[2];
+
+/*
+ * permalloc - the permanent arena
+ *
+ * Symbols, relocations and jumps live from the moment they are made
+ * until the assembler exits.  Not one of them is ever freed, and
+ * paying malloc for that is what put asz over the side of a 64k
+ * machine: the allocator in libc keeps a three-byte header per block
+ * and rounds the payload up to a three-byte granule, so a seven-byte
+ * relocation cost twelve and a ten-byte jump cost fifteen.  Assembling
+ * cpp's norm.c wanted 633 symbols, 941 relocations and 568 jumps -
+ * 26,826 bytes of structures that malloc turned into 36,903, against
+ * a heap that stops around 31k.  It said "out of memory" and it was
+ * right.
+ *
+ * Here the header is paid once per chunk instead of once per node.
+ * Nothing is freed because nothing was ever going to be.
+ *
+ * PERMCHUNK is a multiple of the 129-byte granule libc's malloc grabs
+ * from sbrk, so a chunk is a whole number of them and nothing is left
+ * stranded on the end of each one.
+ */
+#define PERMCHUNK   (8 * 129)       /* 1032 */
+
+extern void gripe();
+
+static char *permp;                 /* next free byte */
+static unsigned short permleft;     /* how many are left there */
+
+char *
+permalloc(n)
+unsigned short n;
+{
+    char *p;
+
+    /*
+     * Even, so that the shorts and pointers in what comes back are
+     * laid out the way the compiler expects them.
+     */
+    n = (n + 1) & ~1;
+
+    if (n > permleft) {
+        /*
+         * The remainder of the old chunk is abandoned - at most one
+         * node's worth, and chasing it would cost more than it saves.
+         */
+        permleft = n > PERMCHUNK ? n : PERMCHUNK;
+        permp = malloc(permleft);
+        if (!permp)
+            gripe("out of memory");
+    }
+    p = permp;
+    permp += n;
+    permleft -= n;
+    return p;
+}
 
 /*
  * segment tops 
@@ -489,7 +549,7 @@ int create;
     }
     if (!create)
         return 0;
-    ls = (struct local_state *)malloc(sizeof(struct local_state));
+    ls = (struct local_state *)permalloc(sizeof(struct local_state));
     ls->num = n;
     ls->pending = 0;
     ls->last = 0;
@@ -895,7 +955,16 @@ int visible;
 	sym = sym_fetch(name);
 
 	if (!sym) {
-		sym = (struct symbol *) malloc(sizeof(struct symbol));
+		/*
+		 * sizeof carries one byte of name - see asm.h - so a name
+		 * of i characters wants i more, terminator included.
+		 */
+		{
+			register char *s = name;
+			for (i = 0; i < SYMLEN && s[i]; i++)
+				;
+		}
+		sym = (struct symbol *) permalloc(sizeof(struct symbol) + i);
 		sym->next = 0;
 		/* append to preserve first-reference order */
 		if (symbols_tail)
@@ -908,7 +977,9 @@ int visible;
 		{
 			register char *d = sym->name;
 			char *s = name;
-			for (i = SYMLEN; i && *s; i--)
+			int n = i;
+
+			while (n--)
 				*d++ = *s++;
 			*d = 0;
 		}
@@ -1032,7 +1103,7 @@ unsigned char hilo;
     if (sym->seg == SEG_UNDEF)
         return;
 
-    r = (struct reloc *) malloc(sizeof(struct reloc));
+    r = (struct reloc *) permalloc(sizeof(struct reloc));
 
 	r->addr = addr;
     r->sym = sym;
@@ -1072,7 +1143,7 @@ unsigned char cond;
     if (used_dollar)
         return;
 
-    j = (struct jump *)malloc(sizeof(struct jump));
+    j = (struct jump *)permalloc(sizeof(struct jump));
     j->addr = addr;
     j->sym = sym;
     j->offset = offset;
@@ -1218,9 +1289,9 @@ segbase()
 	struct symbol *sym;
 
 	if (segment == SEG_TEXT)
-		sym = &dollarsym[0];
+		sym = &dollarsym[0].s;
 	else if (segment == SEG_DATA)
-		sym = &dollarsym[1];
+		sym = &dollarsym[1].s;
 	else
 		return 0;
 
@@ -2350,8 +2421,16 @@ assemble()
 		outtmp(sym->value & 0xff);
 		outtmp(sym->value >> 8);
 		outtmp(type);
-		for (next = 0; next < (m_flag ? 9 : 15); next++) {
-			outtmp(sym->name[next]);
+		/*
+		 * The field in the object file is fixed width and the name
+		 * is not any more, so the zeroes that used to come free out
+		 * of a padded array get written here.
+		 */
+		{
+			register char *sp = sym->name;
+
+			for (next = 0; next < (m_flag ? 9 : 15); next++)
+				outtmp(*sp ? *sp++ : 0);
 		}
 	}
 
@@ -2382,8 +2461,12 @@ assemble()
 		outtmp(sym->value & 0xff);
 		outtmp(sym->value >> 8);
 		outtmp(sym->seg == SEG_DATA ? 0x06 : 0x07);
-		for (next = 0; next < (m_flag ? 9 : 15); next++)
-			outtmp(sym->name[next]);
+		{
+			register char *sp = sym->name;
+
+			for (next = 0; next < (m_flag ? 9 : 15); next++)
+				outtmp(*sp ? *sp++ : 0);
+		}
 	}
 
 	/*
