@@ -157,14 +157,45 @@ sizecheck:
 micronix: all
 	$(SUBMAKE) -C src micronix
 
-# The same, as CP/M .com images into destcpm/bin.
+#
+# DORMANT (2026-08-13).  The CP/M target is parked, and is expected to
+# stay parked for a long time.  Do not work on it.
+#
+# It is not parked because it broke.  It is parked because the passes do
+# not fit: CP/M 3 leaves about 61K of TPA and there is no room in it for
+# what these have become.  A serious slimming exercise comes first, and
+# until that has happened there is nothing to be gained by making the
+# link work - a pass that fits nothing is not progress.
+#
+# So this target's failures are not findings.  The one you will hit
+# first is
+#
+#	wsld: cannot open desthost/lib/crtcpm.o
+#
+# which no rule builds - src/libcpm/crtcpm.s is the only crtcpm in the
+# tree - and which the install note at the top of this file already
+# records as having outlived the split into destcpm.  Leave it.
+#
+# CPM=1 builds it anyway, for whoever picks the slimming up.
+#
 cpm: all
-	$(SUBMAKE) -C src cpm
+	@if [ -z "$(CPM)" ]; then \
+		echo "cpm: dormant - the passes do not fit the TPA yet."; \
+		echo "     Slimming comes first.  CPM=1 to build it anyway."; \
+	else \
+		$(SUBMAKE) -C src cpm ; \
+	fi
 
 # Run the compiler's own passes under the CP/M 3 machine in
 # src/cpm3 and check they agree with the host.
+#
+# DORMANT with the cpm target above, which it is built on.
 selfcheck:
-	$(SUBMAKE) -C src selfcheck
+	@if [ -z "$(CPM)" ]; then \
+		echo "selfcheck: dormant with the cpm target - see GNUmakefile."; \
+	else \
+		$(SUBMAKE) -C src selfcheck ; \
+	fi
 
 # libc.a and libccc.a are system-independent by construction: the
 # system-call layer is libu.a on Micronix and libcpm.a on CP/M, and
@@ -185,10 +216,15 @@ libcheck:
 # runs on the target but emits something subtly different is worse than
 # one that will not run at all, because its output looks right.
 #
-# Needs all three builds present, so it depends on them.  LEGS=mx or
-# LEGS=cpm runs one target; TPA= sizes the CP/M machine.
-selfhost: all micronix cpm
-	@sh src/cpm3/selfhost.sh
+# Two ways for now, not three: the CP/M leg is dormant (see the cpm
+# target above), so this runs LEGS=mx and the Micronix leg is the gate.
+# It is still the gate that matters - a pass that runs on the target and
+# emits something subtly different is worse than one that will not run.
+#
+# LEGS=cpm or LEGS="mx cpm" asks for the dormant leg back, once there is
+# a CP/M build to compare against; TPA= sizes the CP/M machine.
+selfhost: all micronix
+	@LEGS=$${LEGS:-mx} sh src/cpm3/selfhost.sh
 
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.

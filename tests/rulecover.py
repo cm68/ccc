@@ -27,7 +27,16 @@ CORPUS = sorted(set(
     glob.glob(ROOT + '/src/pass2/*.c') + glob.glob(ROOT + '/tools/*.c') +
     glob.glob(ROOT + '/tests/run/rt_*.c') +
     glob.glob(ROOT + '/tests/run/gp_*.c') + glob.glob(ROOT + '/src/libc/*.c') +
-    glob.glob(ROOT + '/src/libu/*.c') + glob.glob(ROOT + '/src/libcpm/*.c')))
+    glob.glob(ROOT + '/src/libu/*.c')))
+
+#
+# src/libcpm is deliberately not in that list.  The CP/M target is
+# dormant - see the cpm target in the top GNUmakefile - and dormant
+# means out of the corpus too, not merely unbuilt.  Coverage measured
+# over code nothing is going to run reports rules as exercised that
+# nothing exercises, which is the exact failure this script exists to
+# catch.
+#
 
 env = dict(os.environ, CCC_RULEHITS=HITS)
 fails = []
