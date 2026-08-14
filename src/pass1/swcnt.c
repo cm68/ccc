@@ -243,7 +243,22 @@ static unsigned short funcCntIdx = 0;   /* read pointer (phase 2) */
  * needing 451.  A byte apiece, so there is room to be well clear of
  * the worst rather than just past it.
  */
-#define MAX_BLKCNTS 1024
+/*
+ * 256, and it was 1024.  Measured across every source of cpp, c0 and
+ * c1 - the largest C this system compiles - the high water mark is
+ * 76, and declare.c, the biggest single file at 46k, reaches 39.
+ *
+ * A worst-case table costs its worst case on a machine with 64k and
+ * no virtual memory: this array is bss, bss is image, and image is
+ * heap that the program will never get back.  768 bytes of it were
+ * being held against a case nothing in the tree comes within an order
+ * of magnitude of.
+ *
+ * Overflow is fatal(ER_S_BLK) - a diagnostic, not corruption - so
+ * sizing to a measured maximum with room over it is safe, and 256 is
+ * three times the largest thing ever seen here.
+ */
+#define MAX_BLKCNTS 256
 static unsigned char blkCnts[MAX_BLKCNTS];
 static unsigned short blkCntTop = 0;     /* next entry ID to assign (phase 1) */
 static unsigned short blkCntIdx = 0;     /* current read index (phase 2) */

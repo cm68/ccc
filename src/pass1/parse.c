@@ -42,7 +42,13 @@ unsigned char swEmitDepth = 0;              /* emit stack depth */
  * faster than its ifs alone suggest.  256 was not enough for a
  * 2900-line one.
  */
-#define MAX_IFS 4096
+/*
+ * 512, and it was 4096.  This is a bitmap, one bit per if, so 4096
+ * cost 512 bytes of bss - and the most ifs in any source of cpp, c0
+ * or c1 is 66.  512 leaves it seven times the room it has ever
+ * needed and costs 64 bytes.  Overflow is fatal(ER_S_IF).
+ */
+#define MAX_IFS 512
 unsigned char ifHasElse[MAX_IFS / 8]; /* bit N set: if #N has else */
 unsigned short ifCount = 0;          /* phase 1: count of if statements */
 unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
