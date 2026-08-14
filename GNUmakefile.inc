@@ -142,21 +142,37 @@ INSTALL = cp -u
 # found on PATH: they are built in this tree and a stale copy of an
 # older install sitting on PATH is exactly the failure that made a
 # clean checkout unbuildable.
+#
+# The passes, the assembler and the linker are in LIBEXEC and not in
+# lib - see HOSTLIBEXEC above and the comment in tools/ccc.c that says
+# why.  These four moved with them and did not, which is what made
+# "make clean ; make sysinstall" stop working: the install put pass0
+# in libexec and every runtime object went on asking for lib/pass0,
+# which no rule makes.
+#
+# The host linker is mxld.  "ld" here would be the build machine's
+# own, so the file installed is called mxld and this has to ask for it
+# by that name; the Micronix build gets ld, being that machine's.  The
+# same goes for size, installed as mxsize.  wslib has not been renamed
+# and is in bin, being a program a person uses.
+#
 CCC     = $(HOSTDIR)/bin/ccc
-AS      = $(HOSTLIB)/asz
-LD      = $(HOSTLIB)/ld
+AS      = $(HOSTLIBEXEC)/asz
+LD      = $(HOSTLIBEXEC)/mxld
 LIB     = $(HOSTDIR)/bin/wslib
-SIZE    = $(HOSTDIR)/bin/size
+SIZE    = $(HOSTDIR)/bin/mxsize
 
 # The compiler proper.  A runtime rebuild depends on these, because
 # these objects exist to be run and a codegen fix that leaves a stale
 # one behind reads as a fix that did not work.
 #
 # pass0 is what cpp installs as - the driver runs it by that name, and
-# this list has to spell it the same way or every target build asks
-# for a lib/cpp that no rule makes.
-CCDEP   = $(HOSTLIB)/pass0 $(HOSTLIB)/c0 \
-	  $(HOSTLIB)/c1 $(HOSTLIB)/peep
+# this list has to spell it the same way, and put it in the same
+# DIRECTORY, or every target build asks for something no rule makes.
+# It has been wrong both ways now: first lib/cpp, then lib/pass0 after
+# the passes moved to libexec.
+CCDEP   = $(HOSTLIBEXEC)/pass0 $(HOSTLIBEXEC)/c0 \
+	  $(HOSTLIBEXEC)/c1 $(HOSTLIBEXEC)/peep
 
 # ---------------------------------------------------------------
 # Default rules.
