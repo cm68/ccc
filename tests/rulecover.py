@@ -42,8 +42,18 @@ for f in CORPUS:
     #
     saved = open(s, 'rb').read() if os.path.exists(s) else None
     r = subprocess.run(
+        #
+        # -I src/cpp is for lexeme.h, which pass1, pass2 and astpp all
+        # read - src/pass1/GNUmakefile carries the same -I../cpp and says
+        # so.  Without it every one of those files failed to compile and
+        # the run said so in a count nobody read: 44 of 279, and thirty
+        # of them were the compiler itself.  The corpus was measuring
+        # rule coverage over libc and the runtime tests while leaving out
+        # the largest and least regular C in the tree.
+        #
         [ROOT + '/desthost/bin/ccc', '-DCCC', '-s', '-I' + d, '-I' + ROOT + '/src/ccclib',
          '-I' + ROOT + '/tests/run', '-I' + ROOT + '/src/include',
+         '-I' + ROOT + '/src/cpp',
          os.path.basename(f)], cwd=d, capture_output=True, env=env, timeout=300)
     if r.returncode:
         fails.append(f.replace(ROOT + '/', ''))

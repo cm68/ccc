@@ -98,6 +98,76 @@ emitOperand(struct expr *e, struct type *t)
 }
 
 /*
+ * Emit the right hand side of an assignment, narrowed to what is being
+ * assigned to.
+ *
+ * emitOperand() converts one way only - it widens, and an operand wider
+ * than the target was emitted at its own width and left there.  Nothing
+ * noticed while the only wide type arrived through a DEREF, because the
+ * assignment path narrowed those itself: candemote() said the low bytes
+ * were the ones lying at the object's own address and demote() retyped
+ * the tree to take them, which costs no code.
+ *
+ * That stopped being true of a long when the high word moved to the
+ * lower address (QLONG.md, NUXI).  The low half is two bytes along, so
+ * candemote() refuses now, and with nothing else to catch it
+ *
+ *	f->_cnt -= roffs;	int -= long
+ *	f->_ptr += roffs;	char * += long
+ *
+ * in libcpm's fseek reached pass2 as a short SUB with a long operand
+ * under it.  No rule matches that shape, so no code was emitted for
+ * either statement - the compiler said so, but only in a count that
+ * the rule-coverage corpus was throwing away.
+ *
+ * NARROW is the honest spelling and costs nothing: a long is held in
+ * HL':HL with its low word in HL, which is where a short already is.
+ *
+ * This is deliberately not in emitOperand().  That is called on lvalues
+ * too, where the node carries the type of the object rather than of a
+ * value being converted - "&lv + 2" over a long lv arrives as an INDEX
+ * of type long that is really an address, and narrowing it there put a
+ * NARROW around addresses in twelve of the runtime tests.
+ */
+static void
+emitAssignRHS(unsigned char op, struct expr *e, struct type *t)
+{
+	/*
+	 * Plain assignment is not the case: pass2 stores a long into a
+	 * short by storing the half it wants, and has rules that say so.
+	 * It is the ten compound forms that break, because pass2 takes
+	 * "a += b" apart into an assignment of "a + b" and that inner
+	 * operator is the one left holding operands of two widths.
+	 * Narrowing a plain one instead put a NARROW around a long local
+	 * that pass2 was reading perfectly well.
+	 */
+	if (op == ASSIGN)
+		return emitOperand(e, t);
+
+	/*
+	 * Folded first because the constant may not be one yet - a
+	 * character literal arrives as a cast around a number and only
+	 * becomes 115 further down, and wrapping that in a NARROW made a
+	 * shape with no rule where retyping the literal costs nothing.
+	 */
+	if (e)
+		e = foldTree(e);
+
+	if (e && t && e->type->size > t->size &&
+	    !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
+		if (e->op == CONST || (e->flags & E_CONST)) {
+			e->type = t;
+		} else {
+			emit1(NARROW);
+			emit1(typeSfx(t));
+			emitExpr(e);
+			return;
+		}
+	}
+	emitOperand(e, t);
+}
+
+/*
  * Does evaluating this subtree do anything besides produce a value?
  *
  * Asked of an lvalue that is about to be emitted a second time, so
@@ -552,7 +622,7 @@ emitExpr(struct expr *e)
 			/* mark the lvalue so DEREF above knows to keep itself */
 			inLvalue = 1;
 			emitChild(left);		/* a location, never widened */
-			emitOperand(right, type);	/* convert to the target */
+			emitAssignRHS(op, right, type);	/* convert to the target */
 		} else if (op == LAND || op == LOR) {
 			/*
 			 * The two sides of && and || are each tested against
