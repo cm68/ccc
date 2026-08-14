@@ -169,11 +169,56 @@ char *r16a[] = { "bc", "de", "hl", "af" };  /* for push/pop */
 char *cc[] = { "nz", "z", "nc", "c", "po", "pe", "p", "m" };
 char *alu[] = { "add a,", "adc a,", "sub ", "sbc a,", "and ", "xor ", "or ", "cp " };
 
+/*
+ * Names live in one block per object, not inside the structures.
+ *
+ * They were char[16] in struct sym and char[64] in struct usym, and
+ * the kernel has 411 symbols nine characters wide: 8,220 bytes in one
+ * table and 29,592 in the other, both live at once, on a machine with
+ * about 26k to spare.  That is what stopped it disassembling.
+ *
+ * A pointer costs two bytes and the name costs its own length, so the
+ * two tables now come to a tenth of that.  The block is sized exactly
+ * when the symbol count and the symbol width are both known, and it
+ * is never grown - a realloc would move it and every pointer into it
+ * would be left behind.
+ */
+char *strpool;
+long poolsize;
+long poolused;
+
+void
+poolinit(bytes)
+long bytes;
+{
+    if (strpool)
+        free(strpool);
+    strpool = (char *)malloc((unsigned)bytes);
+    poolsize = strpool ? bytes : 0;
+    poolused = 0;
+}
+
+char *
+poolstr(str)
+char *str;
+{
+    int n;
+    char *p;
+
+    n = strlen(str) + 1;
+    if (!strpool || poolused + n > poolsize)
+        return "";              /* no room: better blank than adrift */
+    p = strpool + poolused;
+    strcpy(p, str);
+    poolused += n;
+    return p;
+}
+
 /* symbol table for disassembly */
 struct sym {
     unsigned short value;
     unsigned char type;
-    char name[16];
+    char *name;
 } *symtab;
 int nsyms;
 int symlen_g;
@@ -233,7 +278,7 @@ struct ht_sym {
 
 /* unified symbol entry */
 struct usym {
-    char name[64];
+    char *name;                 /* into strpool - see poolstr */
     unsigned long value;
     int segment;      /* USEG_* */
     int scope;        /* USCOPE_* */
@@ -1543,7 +1588,15 @@ void
 genUobjSfl(name)
 char *name;
 {
-    int pc, i, len, ref_idx;
+    /*
+     * pc is a LONG.  A section can be the whole of a 64k address
+     * space, and "pc < (int)uobj.textsize" truncates on a z80 - the
+     * kernel's text is 45,313 bytes, which as a signed 16 bit int is
+     * negative, so the loop did not run once and the .text came out
+     * empty while the 11,253 byte .data was fine.
+     */
+    long pc;
+    int i, len, ref_idx;
     struct ureloc *up;
     char nbuf[128];
     char *p, *sym;
@@ -1603,7 +1656,7 @@ char *name;
 
         /* pre-pass: disassemble to find all relative jump targets */
         pc = 0;
-        while (pc < (int)uobj.textsize) {
+        while (pc < (long)uobj.textsize) {
             disasm_pc = -1;
             len = disasm(pc, pc, nbuf);
             pc += len;
@@ -1611,7 +1664,7 @@ char *name;
 
         /* main pass: output with labels */
         pc = 0;
-        while (pc < (int)uobj.textsize) {
+        while (pc < (long)uobj.textsize) {
             /* check for symbol at this address */
             sym = usym_lookup(pc, USEG_TEXT);
             if (sym) {
@@ -1690,7 +1743,7 @@ char *name;
         fprintf(gfile, "\n\t.data\n");
 
         pc = 0;
-        while (pc < (int)uobj.datasize) {
+        while (pc < (long)uobj.datasize) {
             /* check for symbol at this address */
             sym = usym_lookup(pc, USEG_DATA);
             if (sym) {
@@ -1743,7 +1796,7 @@ char *name;
                 in_string = 0;
                 line_start = pc;
 
-                while (pc < (int)uobj.datasize && linelen < 60) {
+                while (pc < (long)uobj.datasize && linelen < 60) {
                     /* check for symbol, data ref, or relocation - must break line */
                     if (pc > line_start && (usym_lookup(pc, USEG_DATA) ||
                                    find_data_ref(pc) >= 0 ||
@@ -1817,7 +1870,7 @@ char *name;
                 }
             }
 
-            fprintf(gfile, "\t.ds %d\n", i - pc);
+            fprintf(gfile, "\t.ds %d\n", i - (int)pc);
             pc = i;
         }
     }
@@ -1896,13 +1949,17 @@ long objsize;
     symlen_g = symlen;
     if (nsyms > 0) {
         long soff = symtab_off;
+        char nb[64];
+
         symtab = (struct sym *)malloc(nsyms * sizeof(struct sym));
+        poolinit((long)nsyms * (symlen + 1));
         for (i = 0; i < nsyms; i++) {
             symtab[i].value = get_word(soff);
             symtab[i].type = get_byte(soff + 2);
             for (k = 0; k < symlen; k++)
-                symtab[i].name[k] = get_byte(soff + 3 + k);
-            symtab[i].name[symlen] = '\0';
+                nb[k] = get_byte(soff + 3 + k);
+            nb[symlen] = '\0';
+            symtab[i].name = poolstr(nb);
             soff += symlen + 3;
         }
     }
@@ -1911,8 +1968,7 @@ long objsize;
     if (nsyms > 0) {
         uobj.syms = (struct usym *)malloc(nsyms * sizeof(struct usym));
         for (i = 0; i < nsyms; i++) {
-            strncpy(uobj.syms[i].name, symtab[i].name, sizeof(uobj.syms[i].name) - 1);
-            uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
+            uobj.syms[i].name = symtab[i].name;  /* the same pooled string */
 
             /* convert segment: WS uses 4=abs, 5=text, 6=data, 7=bss, <4=undef */
             seg = symtab[i].type & 0x07;
@@ -2129,13 +2185,17 @@ long objsize;
     symlen_g = symlen;
     if (nsyms > 0) {
         long soff = symtab_off;
+        char nb[64];
+
         symtab = (struct sym *)malloc(nsyms * sizeof(struct sym));
+        poolinit((long)nsyms * (symlen + 1));
         for (i = 0; i < nsyms; i++) {
             symtab[i].value = get_word(soff);
             symtab[i].type = get_byte(soff + 2);
             for (k = 0; k < symlen; k++)
-                symtab[i].name[k] = get_byte(soff + 3 + k);
-            symtab[i].name[symlen] = '\0';
+                nb[k] = get_byte(soff + 3 + k);
+            nb[symlen] = '\0';
+            symtab[i].name = poolstr(nb);
             soff += symlen + 3;
         }
     }
@@ -2281,8 +2341,7 @@ int nsyms;
     if (nsyms > 0) {
         uobj.syms = (struct usym *)malloc(nsyms * sizeof(struct usym));
         for (i = 0; i < nsyms; i++) {
-            strncpy(uobj.syms[i].name, syms[i].name, sizeof(uobj.syms[i].name) - 1);
-            uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
+            uobj.syms[i].name = poolstr(syms[i].name);
 
             /* convert segment */
             if ((syms[i].flags & 0x0f) == 6) {
