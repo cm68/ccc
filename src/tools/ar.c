@@ -863,7 +863,19 @@ ranlib()
 
 	for (i = 0; i < 14; i++)
 		arbuf.ar_name[i] = i < strlen(SYMDEF) ? SYMDEF[i] : '\0';
-	arbuf.ar_date = 0;
+	/*
+	 * The archive's own mtime, not zero - which showed as 1969 in
+	 * "ar tv" and is the sort of thing that makes a reader wonder
+	 * what else is wrong.
+	 *
+	 * v7's ranlib put a date here so a linker could compare it with
+	 * the archive's and warn when the index was older, which is the
+	 * one thing this cannot be: it is rebuilt by every command that
+	 * writes the archive.  So the date is for a person reading a
+	 * listing and for nothing else, and the archive's own is the
+	 * honest answer to "when was this made".
+	 */
+	arbuf.ar_date = stat(arnam, &stbuf) < 0 ? 0 : stbuf.st_mtime;
 	arbuf.ar_uid = 0;
 	arbuf.ar_gid = 0;
 	arbuf.ar_mode = 0444;
@@ -1202,8 +1214,30 @@ longt()
 	register char *cp;
 
 	pmode();
-	printf("%3d/%1d", arbuf.ar_uid, arbuf.ar_gid);
-	printf("%7D", arbuf.ar_size);
+	/*
+	 * The uid and gid are one byte each in the header and the
+	 * struct declares them char, so a uid above 127 came out
+	 * negative - "-24/-24" for 1000, which is 232 truncated and
+	 * then read back signed.  Masked here rather than retyped,
+	 * because the field's width is the FORMAT's and not ours.
+	 */
+	printf("%3d/%1d", arbuf.ar_uid & 0xff, arbuf.ar_gid & 0xff);
+	/*
+	 * %D is v7's spelling of a long, and this tree's own libc still
+	 * takes it - see doprnt.c, which has 'D' beside 'd'.  The host's
+	 * printf does not, and printed the format itself: "%7D" where
+	 * the size should be.  This file is built both ways, micronix's
+	 * cmd/ar being a symlink to it, so it needs a spelling both
+	 * understand.
+	 *
+	 * An int, not a long.  The size FIELD is four bytes because the
+	 * v7 format says so, but the value cannot be: a Z80 object is
+	 * addressed with sixteen bits and nothing that goes in one of
+	 * these archives reaches 64K.  Printing it as an int keeps long
+	 * formatting out of the librarian on the machine that has the
+	 * least room for it.
+	 */
+	printf("%7d", (int) arbuf.ar_size);
 	cp = ctime(&arbuf.ar_date);
 	printf(" %-12.12s %-4.4s ", cp+4, cp+20);
 }
