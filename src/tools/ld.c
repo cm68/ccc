@@ -12,6 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+/*
+ * for creat's mode argument, in write_output: the output of a linker
+ * is a program and has to be created executable.  On micronix creat
+ * is in libu and needs no declaration; here the prototype has to be
+ * in scope or gcc treats the call as an error rather than a guess.
+ */
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /*
  * __malloc is the allocation that may come back empty.  On Micronix
@@ -2407,6 +2415,28 @@ pass2_output()
 
     /* default to 15-char symbols */
     symlen = out_symlen ? out_symlen : 15;
+
+    /*
+     * CREATE IT WITH THE MODE IT SHOULD HAVE.  What a linker writes is
+     * a program, and fopen has no way to say so - it creates under the
+     * umask, 0664, and nothing here was putting the execute bit back.
+     * creat takes the mode, and fopen below does not disturb the mode
+     * of a file that already exists, so this is where it gets decided.
+     * There is no fdopen in this libc or the one on micronix, which is
+     * why it is two calls and not open() with a mode.
+     *
+     * It went unnoticed while every install copied ONTO a file that
+     * was already executable, because cp keeps the mode of a
+     * destination that exists.  The first install to remove the old
+     * name first produced a /bin full of programs that would not run,
+     * and make(1) found it: it checks access(path, 1) before it will
+     * exec, so it walked past everything in /bin and said "could not
+     * locate ccc" about a file sitting right there.
+     *
+     * -r output is not a program.  It is a relocatable object to be
+     * linked again, and it gets 0644 like any other .o.
+     */
+    close(creat(outfile, rflag ? 0644 : 0755));
 
     /*
      * "w+b", not "wb": a segment too big to hold is copied out and

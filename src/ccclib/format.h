@@ -133,7 +133,19 @@ opName(int c)
 	}
 }
 
+/*
+ * The attribute is gcc's and is here to stop it warning about a
+ * static that a given includer does not call.  It has to be guarded:
+ * ccc does not parse it, and until astpp moved into the micronix tree
+ * nothing had ever asked it to - pass2 is the only other includer of
+ * this file and its #include sits inside #ifdef DEBUG, so c0 had
+ * never once seen these lines.  It reported them as "fn array" and
+ * "bad decl token", which is what a compiler says about a declaration
+ * with a word in it that it has no idea about.
+ */
+#ifdef __GNUC__
 __attribute__((unused))
+#endif
 static int
 opArity(int c)
 {
