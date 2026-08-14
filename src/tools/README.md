@@ -3,7 +3,7 @@
 Tools for assembling, linking, and managing Z80 relocatable object files, plus
 the `ccc` compiler driver.
 
-`make` here builds `asz ld nm wslib wssize ccc`.
+`make` here builds `asz ld nm wslib size ccc`.
 
 ## Tools
 
@@ -88,12 +88,12 @@ See [HITECHLIB.md](HITECHLIB.md) for the HiTech archive format and
 [HITECHOBJ.md](HITECHOBJ.md) for the HiTech object format that `ld` and
 `nm` also read.
 
-### wssize - Size Utility
+### size - Size Utility
 
 Displays segment sizes for object files.
 
 ```
-wssize file...
+size file...
 ```
 
 Prints text, data, bss, and total per file. The compiler Makefiles' `sizecheck`

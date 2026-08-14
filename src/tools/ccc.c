@@ -556,7 +556,17 @@ main(int argc, char **argv)
     sprintf(cc1_path, "%s/c0", libdir);
     sprintf(cc2_path, "%s/c1", libdir);
     sprintf(asm_path, "%s/asz", libdir);
+    /*
+     * The linker beside us.  On micronix it is ld, the system's own;
+     * on the host it is mxld, because "ld" there is the host's linker
+     * and this is not it.  Same program, and the name says which
+     * machine it runs on rather than what it reads.
+     */
+#ifdef CCC
     sprintf(ld_path, "%s/ld", libdir);
+#else
+    sprintf(ld_path, "%s/mxld", libdir);
+#endif
     sprintf(astpp_path, "%s/astpp", libdir);
     sprintf(peep_path, "%s/peep", libdir);
 

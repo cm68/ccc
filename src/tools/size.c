@@ -1,5 +1,5 @@
 /*
- * wssize - display Whitesmith's object file sizes
+ * size - display Whitesmith's object file sizes
  *
  * Output format matches linux 'size' command
  */

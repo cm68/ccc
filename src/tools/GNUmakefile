@@ -5,7 +5,7 @@
 #   ld   - linker
 #   nm   - object/archive dump
 #   wslib  - archive librarian
-#   wssize - display object sizes
+#   size - display object sizes
 #
 # plus the two that belong to the compiler:
 #   ccc    - the driver: runs cpp, c0, c1, peep, asz and ld
@@ -33,7 +33,14 @@ WARNS = -Wall -Werror -pedantic \
 CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
 endif
 
-ALL = asz ld nm wslib wssize ccc astpp
+#
+# HOST binaries.  ar, ld, nm and size are the system's own names on
+# this machine, and these are not those programs - they read micronix
+# objects - so the host build wears the mx prefix and the micronix
+# build below does not.  MXBINTOOLS is what goes into /bin over there
+# and is named plainly.
+#
+ALL = asz mxld mxnm wslib mxsize ccc astpp
 
 all: $(ALL)
 
@@ -45,23 +52,28 @@ wsobj.o: wsobj.h
 ld.o: wsobj.h
 nm.o: wsobj.h
 wslib.o: wsobj.h
-wssize.o: wsobj.h
+size.o: wsobj.h
 
 # Link targets
 asz: asz.o asm.o asmz80.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ asz.o asm.o asmz80.o wsobj.o
 
-ld: ld.o wsobj.o
+#
+# The HOST linker is mxld: "ld" on this machine is the host's own and
+# this is not it.  The micronix-hosted build below stays ld, because
+# there it IS the system's linker - see MXLIBTOOLS.
+#
+mxld: ld.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ ld.o wsobj.o
 
-nm: nm.o wsobj.o
+mxnm: nm.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ nm.o wsobj.o
 
 wslib: wslib.o
 	$(CC) $(CFLAGS) -o $@ wslib.o
 
-wssize: wssize.o
-	$(CC) $(CFLAGS) -o $@ wssize.o
+mxsize: size.o
+	$(CC) $(CFLAGS) -o $@ size.o
 
 # The driver finds the passes and the runtime from argv[0] - see the
 # comment on libdir in ccc.c - so nothing about where the tree lives
@@ -114,10 +126,11 @@ clobber: clean
 
 # The driver is the user command; the assembler, the linker and the
 # AST printer are things the driver runs, so they go in lib beside the
-# passes.  wslib, nm and wssize are ordinary tools a person uses on
-# an object file and stay on the path.
-LIBTOOLS = asz ld astpp
-BINTOOLS = ccc wslib nm wssize
+# passes.  wslib, mxnm and mxsize are ordinary tools a person uses on
+# an object file and stay on the path - under the mx names, because on
+# the path is exactly where "nm" and "size" would be the host's.
+LIBTOOLS = asz mxld astpp
+BINTOOLS = ccc wslib mxnm mxsize
 
 install: all man-install
 	@mkdir -p $(HOSTDIR)/bin $(HOSTDIR)/lib
@@ -162,7 +175,7 @@ $(MXBUILD)/nm:   $(addprefix $(MXBUILD)/,nm.o wsobj.o)
 	$(mxlink)
 $(MXBUILD)/wslib:  $(MXBUILD)/wslib.o
 	$(mxlink)
-$(MXBUILD)/wssize: $(MXBUILD)/wssize.o
+$(MXBUILD)/size: $(MXBUILD)/size.o
 	$(mxlink)
 $(MXBUILD)/ccc:    $(MXBUILD)/ccc.o
 	$(mxlink)
@@ -176,7 +189,7 @@ $(MXBUILD)/ccc:    $(MXBUILD)/ccc.o
 # astpp is deliberately not here.  It is a host-only debugging aid -
 # it needs cpp's lexeme.h and was written mixing declarations and
 # code - and nothing on the target runs it.
-MXBINTOOLS = ccc wslib nm wssize
+MXBINTOOLS = ccc wslib nm size
 MXLIBTOOLS = asz ld
 
 MXALL = $(addprefix $(MXBUILD)/,$(MXBINTOOLS) $(MXLIBTOOLS))
@@ -194,7 +207,7 @@ mx-install: mx-ccc
 
 CCCFLAGS = -DCCC -i../include
 
-SRCS = asm.c asmz80.c asz.c ld.c wslib.c nm.c wsobj.c wssize.c
+SRCS = asm.c asmz80.c asz.c ld.c wslib.c nm.c wsobj.c size.c
 
 stage1: 
 	mkdir -p stage1
@@ -208,7 +221,7 @@ stage1:
 
 sizecheck: stage1
 	@echo "=== tools stage1 sizes ==="
-	@./wssize $(STAGE1_OBJS) | \
+	@./size $(STAGE1_OBJS) | \
 	awk '($$1 != "text") {printf "%-12s %5d %5d %5d = %5d\n", substr($$6, 8), $$1, $$2, $$3, $$1+$$2+$$3}'
 
 # Link stage1 tools with libccc.a
@@ -227,12 +240,12 @@ stage1/nm: stage1/nm.o stage1/wsobj.o $(LIBCCC)
 stage1/wslib: stage1/wslib.o $(LIBCCC)
 	$(WSLD) -r -o $@ stage1/wslib.o $(LIBCCC)
 
-stage1/wssize: stage1/wssize.o $(LIBCCC)
-	$(WSLD) -r -o $@ stage1/wssize.o $(LIBCCC)
+stage1/size: stage1/size.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/size.o $(LIBCCC)
 
-link: stage1/asz stage1/ld stage1/nm stage1/wslib stage1/wssize
+link: stage1/asz stage1/ld stage1/nm stage1/wslib stage1/size
 	@echo "=== Linked stage1 tools ==="
-	@ls -la stage1/asz stage1/ld stage1/nm stage1/wslib stage1/wssize
+	@ls -la stage1/asz stage1/ld stage1/nm stage1/wslib stage1/size
 
 regression:
 	../../tests/regress.sh --filter src/tools/ $(REGRESS_FLAGS)
@@ -244,7 +257,7 @@ regression:
 # They live in man1/ rather than here, and have to: ".1" is pass1's
 # AST suffix and is swept by CRUFT, so a page beside the source would
 # be removed by the next "make clean".
-MANPAGES = man1/ccc.1 man1/ld.1 man1/wslib.1 man1/nm.1 man1/wssize.1
+MANPAGES = man1/ccc.1 man1/ld.1 man1/wslib.1 man1/nm.1 man1/size.1
 
 man-install:
 	@mkdir -p $(MXDIR)/usr/man/man1

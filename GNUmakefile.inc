@@ -140,7 +140,7 @@ CCC     = $(HOSTDIR)/bin/ccc
 AS      = $(HOSTLIB)/asz
 LD      = $(HOSTLIB)/ld
 LIB     = $(HOSTDIR)/bin/wslib
-SIZE    = $(HOSTDIR)/bin/wssize
+SIZE    = $(HOSTDIR)/bin/size
 
 # The compiler proper.  A runtime rebuild depends on these, because
 # these objects exist to be run and a codegen fix that leaves a stale

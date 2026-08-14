@@ -3,10 +3,10 @@
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Get total sizes using wssize
-cpp_size=$(./root/bin/wssize cpp/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
-cc1_size=$(./root/bin/wssize ccc/pass1/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
-cc2_size=$(./root/bin/wssize ccc/pass2/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+# Get total sizes using size
+cpp_size=$(./root/bin/size cpp/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+cc1_size=$(./root/bin/size ccc/pass1/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+cc2_size=$(./root/bin/size ccc/pass2/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
 
 # Only add if we have at least one size
 if [ -n "$cpp_size" ] || [ -n "$cc1_size" ] || [ -n "$cc2_size" ]; then

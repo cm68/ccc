@@ -81,7 +81,7 @@ bytod()
 
 
 /*
- * tools/wssize.c byname(): a byte array subscripted by a long.  The
+ * tools/size.c byname(): a byte array subscripted by a long.  The
  * sum of a pointer and a long is a pointer, so only the low word can
  * reach the address - but the long operand was emitted at its own
  * width and pass2 has no rule for adding the two together, so nothing

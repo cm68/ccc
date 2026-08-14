@@ -3,7 +3,7 @@ asz
 ld
 nm
 wslib
-wssize
+size
 ccc
 astpp
 *.o

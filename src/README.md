@@ -74,7 +74,7 @@ own compiler. `PROGRESS.md` at the top level tracks where that stands.
 - **asz** — Z80 assembler producing relocatable objects
 - **ld** — linker for objects and libraries
 - **nm** — symbol table and disassembly
-- **wslib** / **wssize** — library manager, size reporter
+- **wslib** / **size** — library manager, size reporter
 - See [../tools/README.md](../tools/README.md), [../tools/ASZ.md](../tools/ASZ.md),
   [../tools/WS.md](../tools/WS.md)
 
@@ -165,7 +165,7 @@ ccc/                      # the repository root
 │   ├── peep/             # peephole optimizer
 │   ├── lib/              # libccc: utilities shared by the passes
 │   └── astpp.c           # AST pretty printer
-├── tools/                # asz, ld, nm, wslib, wssize, and the ccc driver
+├── tools/                # asz, ld, nm, wslib, size, and the ccc driver
 ├── libsrc/               # runtime library source
 │   ├── include/          # system headers for the target
 │   ├── libc/             # C library
