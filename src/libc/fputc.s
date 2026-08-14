@@ -52,12 +52,10 @@ IOSTRG_BIT      equ     6
 _fputc:
 	push	bc			;the caller's register variable
 	push	iy			;and frame pointer; f rides here
+	ld	c,l			;c = the character, which arrived in hl
+	ld	b,0			;with the top byte clear
 	ld	hl,6
 	add	hl,sp			;past the saves and the return
-	ld	c,(hl)			;c = the character
-	ld	b,0			;with the top byte clear
-	inc	hl
-	inc	hl
 	ld	e,(hl)
 	inc	hl
 	ld	d,(hl)
@@ -112,11 +110,11 @@ done:
 	ret
 
 flush:
-	push	iy			;the file argument
-	push	bc			;the character argument
+	push	iy			;the file argument, on the stack
+	ld	l,c
+	ld	h,b			;the character rides in hl
 	call	__flsbuf		;returns the character or EOF
-	pop	de			;the arguments off again
-	pop	de
+	pop	de			;the argument off again
 	jr	done
 
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:

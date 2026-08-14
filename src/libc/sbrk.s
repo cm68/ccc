@@ -11,18 +11,12 @@
 ;	back the way they came in.
 
 _brk:
-	pop	hl	;return address
-	pop	de	;argument
-	ld	(memtop),de	;store it
-	push	de		;adjust stack
-	jp	(hl)	;return
+	ld	(memtop),hl	;the argument arrives in hl
+	ret
 
 _sbrk:
-	pop	hl	;return address - not bc, see above
-	pop	de
-	push	de
-	push	hl
 	push	bc		;the caller's register variable
+	ex	de,hl		;de = the increment, which arrived in hl
 	ld	hl,(memtop)
 	ld	a,l
 	or	h
