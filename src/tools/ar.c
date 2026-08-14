@@ -370,6 +370,9 @@ qcmd()
 		movefil(f);
 		qf = tf;
 	}
+	close(qf);
+	qf = -1;
+	ranlib();
 }
 
 /*
@@ -947,13 +950,6 @@ cleanup()
 		movefil(f);
 	}
 	install();
-	/*
-	 * The archive has just been rewritten, so whatever index it had
-	 * describes the old one.  Rebuild it here rather than leaving
-	 * it to be remembered: an index that is WRONG is worse than
-	 * none, because a linker believes it.
-	 */
-	ranlib();
 }
 
 install()
@@ -989,6 +985,22 @@ install()
 			if (write(af, buf, i) != i)
 				wrerr();
 	}
+	close(af);
+	af = -1;
+
+	/*
+	 * The archive has just been rewritten, so whatever index it had
+	 * describes the old one.  Rebuild it HERE, at the one place all
+	 * of r, d and m come out through, rather than in each of them:
+	 * it was in cleanup() to begin with, which is rcmd's alone, so
+	 * delete and move left a stale index behind - and an index that
+	 * is WRONG is worse than none, because a linker believes it and
+	 * takes whatever member the offset lands on.
+	 *
+	 * q does not come through here; it appends to the archive in
+	 * place and calls ranlib() for itself.
+	 */
+	ranlib();
 }
 
 /*
