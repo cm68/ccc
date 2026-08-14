@@ -302,50 +302,75 @@ insline(int i, char *s)
 extern long n_noframe;		/* the counter lives with the others */
 extern long saved;
 
-/* is c able to sit inside a symbol name */
-static int
-insym(char c)
-{
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-	    (c >= '0' && c <= '9') || c == '_';
-}
+/*
+ * The routines that are handed the caller's frame pointer.
+ *
+ * IY is callee-saved: fenter pushes it and fexit gives it back, and
+ * every hand-written routine in libc that wants IY for itself saves
+ * it first - ldiv says so in as many words, "get it in iy, saving old
+ * iy".  So an ordinary call cannot disturb the frame, and the only
+ * calls that reach it are the ones IY is passed to.  These are that
+ * set: they take the caller's IY and a displacement inline, four
+ * bytes where the byte-at-a-time (iy+d) form would be fourteen.
+ *
+ * Listing them is the point.  This test used to be a search for the
+ * letters "iy" anywhere in the line, which caught these by accident -
+ * through the spelling of their names - and would equally have caught
+ * a C function with "iy" inside its symbol, and would silently miss a
+ * helper added later under some other name.
+ */
+static char *iyhelp[] = {
+	"call qldiy",
+	"call qstiy",
+	0
+};
 
 /*
- * Does s name the stack pointer.  The target libc has no strstr and
- * two letters name the register, but they have to stand alone here:
- * _spanstop, _specs_static and _tdspec all carry an "sp" that is not
- * a register, and matching those kept the frame on functions with no
- * frame in them at all.
+ * Does this line reach the frame?
  *
- * IY gets no such treatment and stays a plain substring test below.
- * It has to: the frame is reached through qldiy and qstiy as often as
- * through a written (iy+n), and there the register is named only
- * inside the helper's own symbol.  r_hlarg rewrites the (iy+4) that
- * fetches the first argument into an HL read, so a body left using
- * nothing but q-helpers would scan clean and lose a frame it is still
- * reaching through - which is precisely what cpp's capply and cunary
- * do, and the selfhost gate catches them by the byte.
+ * A register has to be NAMED, not merely spelled: _spanstop is not
+ * the stack pointer, _specs_static and _tdspec are not either, and
+ * matching them kept frames on functions with nothing in them.  So
+ * this walks whole words and asks regs.c what each one names.  regat
+ * is there for this and says so - "the label _hlthing is not read as
+ * hl" - and it knows iyh and iyl are IY too, which a test for the two
+ * letters would have missed at the other end.
+ *
+ * SP is asked for separately because it carries no bit: nothing in
+ * the liveness analysis tracks the stack pointer, and regname lists
+ * it only to stop it being read as something else.
+ *
+ * Then the two helpers above, by name.
+ *
+ * Then the frame machinery itself.  Those can stay prefix tests: a C
+ * function is emitted with a leading underscore and a static with a
+ * leading S, so "call fe" cannot be reached by any symbol the user
+ * wrote - only by csv.s, where every name beginning fe is an entry or
+ * an exit.
  */
 static int
-hassp(char *s)
+reachesframe(char *key)
 {
-	char prev;
+	char *p;
+	int i;
 
-	for (prev = ' '; s[0] && s[1]; prev = *s++)
-		if (s[0] == 's' && s[1] == 'p' &&
-		    !insym(prev) && !insym(s[2]))
+	for (p = key; *p; ) {
+		if (!isalnum_(*p)) {
+			p++;
+			continue;
+		}
+		if (regat(p) & R_IY)
 			return 1;
-	return 0;
-}
-
-/* does s contain the letter pair a,b anywhere */
-static int
-has2(char *s, char a, char b)
-{
-	for (; s[0] && s[1]; s++)
-		if (s[0] == a && s[1] == b)
+		if (p[0] == 's' && p[1] == 'p' && !isalnum_(p[2]))
 			return 1;
-	return 0;
+		while (isalnum_(*p))
+			p++;
+	}
+	for (i = 0; iyhelp[i]; i++)
+		if (strcmp(key, iyhelp[i]) == 0)
+			return 1;
+	return strncmp(key, "call fe", 7) == 0 ||
+	    strncmp(key, "jp fexit", 8) == 0;
 }
 
 /*
@@ -536,10 +561,7 @@ nfemit(char *text, char *key)
 		 * scanned lines, three quarters of the work, and the four
 		 * tests here are the whole of what nfemit costs.
 		 */
-		if (!nfdirty &&
-		    (has2(key, 'i', 'y') || hassp(key) ||
-		     strncmp(key, "call fe", 7) == 0 ||
-		     strncmp(key, "jp fexit", 8) == 0))
+		if (!nfdirty && reachesframe(key))
 			nfdirty = 1;
 	}
 	outs(text);

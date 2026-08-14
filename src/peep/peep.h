@@ -87,6 +87,8 @@ extern void delline(int i, int n);
 extern void insline(int i, char *s);
 
 /* regs.c */
+extern int isalnum_(char c);	/* a character a symbol name may contain */
+extern int regat(char *p);	/* the register named at p, or 0 */
 extern int reads(char *insn);
 extern int writes(char *insn);
 extern int isdead(int reg, int from);
