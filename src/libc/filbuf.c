@@ -29,8 +29,24 @@ register FILE *	f;
 	 * nothing to read from.
 	 */
 	if (!(f->_flag & _IOREAD)) {
-		if (f->_flag & _IOWRT)
-			return(EOF);
+		if (f->_flag & _IOWRT) {
+			/*
+			 * A read-write stream that has been WRITING and is
+			 * now being read, with no seek in between - the
+			 * mirror of the case _flsbuf handles.  What is in
+			 * the buffer has to reach the file before the read
+			 * can see it, and after fflush the descriptor is
+			 * exactly where the writer left it, so the read
+			 * carries on from there.
+			 *
+			 * A stream that is only writable gets the refusal
+			 * it deserves.
+			 */
+			if (!(f->_flag & _IORW))
+				return(EOF);
+			fflush(f);
+			f->_flag &= ~_IOWRT;
+		}
 		f->_flag |= _IOREAD;
 	}
 	if (f->_base == (char *)NULL) {
@@ -58,7 +74,7 @@ register FILE *	f;
 	 * returned word, so every buffer whose first byte was 0x80 or
 	 * over read as end of file - and a Whitesmiths object file
 	 * begins with the magic 0x99, so no object could be read past
-	 * its first byte.  ld reported "read error" on files it had
+	 * its first byte.  wsld reported "read error" on files it had
 	 * just opened successfully.
 	 *
 	 * Only the byte _filbuf itself returns was affected; the ones

@@ -285,8 +285,11 @@ main(int argc, char **argv)
 	 * less what the rules removed - so both streams run binary.
 	 * The host's stdio has no such mode and no such flag.
 	 */
-	in->_flag |= _IOBINARY;
-	out->_flag |= _IOBINARY;
+	/*
+	 * _IOBINARY is gone: nothing ever tested it, and its bit is
+	 * _IORW now - setting it here would tell fseek these streams
+	 * were read-write when they are not.
+	 */
 #endif
 
 	/*
