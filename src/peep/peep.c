@@ -302,8 +302,43 @@ insline(int i, char *s)
 extern long n_noframe;		/* the counter lives with the others */
 extern long saved;
 
-/* does s contain the letter pair a,b anywhere - the target libc has
- * no strstr, and two letters are all the dirt test needs */
+/* is c able to sit inside a symbol name */
+static int
+insym(char c)
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+	    (c >= '0' && c <= '9') || c == '_';
+}
+
+/*
+ * Does s name the stack pointer.  The target libc has no strstr and
+ * two letters name the register, but they have to stand alone here:
+ * _spanstop, _specs_static and _tdspec all carry an "sp" that is not
+ * a register, and matching those kept the frame on functions with no
+ * frame in them at all.
+ *
+ * IY gets no such treatment and stays a plain substring test below.
+ * It has to: the frame is reached through qldiy and qstiy as often as
+ * through a written (iy+n), and there the register is named only
+ * inside the helper's own symbol.  r_hlarg rewrites the (iy+4) that
+ * fetches the first argument into an HL read, so a body left using
+ * nothing but q-helpers would scan clean and lose a frame it is still
+ * reaching through - which is precisely what cpp's capply and cunary
+ * do, and the selfhost gate catches them by the byte.
+ */
+static int
+hassp(char *s)
+{
+	char prev;
+
+	for (prev = ' '; s[0] && s[1]; prev = *s++)
+		if (s[0] == 's' && s[1] == 'p' &&
+		    !insym(prev) && !insym(s[2]))
+			return 1;
+	return 0;
+}
+
+/* does s contain the letter pair a,b anywhere */
 static int
 has2(char *s, char a, char b)
 {
@@ -476,7 +511,7 @@ nfemit(char *text, char *key)
 		 * tests here are the whole of what nfemit costs.
 		 */
 		if (!nfdirty &&
-		    (has2(key, 'i', 'y') || has2(key, 's', 'p') ||
+		    (has2(key, 'i', 'y') || hassp(key) ||
 		     strncmp(key, "call fe", 7) == 0 ||
 		     strncmp(key, "jp fexit", 8) == 0))
 			nfdirty = 1;
