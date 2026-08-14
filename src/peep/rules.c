@@ -47,6 +47,7 @@ long n_ccall = 0;
 long n_cret = 0;
 long n_jpnext = 0;
 long n_hlarg = 0;
+long n_noframe = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -642,6 +643,13 @@ r_hlarg(void)
 	return 0;
 }
 
+/*
+ * The frame that stops being necessary - see nfemit() in peep.c.  It
+ * is not a window rule: the tree's frame-free functions run past a
+ * hundred significant lines, and a window that held whole functions
+ * would be the buffering this program exists to avoid.  The counter
+ * lives here with the others.
+ */
 
 /*
  * A 16-bit equality test against -1, which is how every failed system
@@ -810,9 +818,9 @@ report(void)
 		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
 		n_outi);
 	fprintf(stderr, "peep: exx %ld  m1cmp %ld  ccall %ld  cret %ld"
-		"  jpnext %ld  hlarg %ld  pool %ld = %ld bytes\n",
+		"  jpnext %ld  hlarg %ld  noframe %ld  pool %ld = %ld bytes\n",
 		n_exx, n_m1cmp, n_ccall, n_cret, n_jpnext, n_hlarg,
-		poolmerged, saved);
+		n_noframe, poolmerged, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
