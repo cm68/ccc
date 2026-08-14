@@ -77,6 +77,9 @@ extern void freeNode(struct expr *e);
 extern struct expr *narrowidx(struct expr *e);
 extern struct type *unwrapDeref(struct expr **ep);
 extern void skipExpr(unsigned char pri);
+extern unsigned short hlArgSym;  /* parameter named while HL still held it */
+extern void hlOpen(void);
+extern void hlClose(void);
 extern struct expr *mkIncDec(struct expr *operand,
     unsigned char inc_op, unsigned char is_postfix);
 extern int isaggr(struct type *t);

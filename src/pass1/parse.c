@@ -139,6 +139,7 @@ statement(void)
                 stmt_count++;
                 break;
             case LABEL:
+                hlClose();      /* a loop's top is not a straight line */
                 gettoken();
                 stmt_count++;
                 break;

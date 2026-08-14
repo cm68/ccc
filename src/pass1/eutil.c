@@ -206,6 +206,51 @@ FreeExpr(struct expr *e)
 }
 
 /*
+ * Whether the first argument is still in HL when the body reads it.
+ *
+ * It arrives there, and the body's first expression is what takes HL
+ * away, so a parameter named anywhere in that first expression is
+ * still reachable - as the operand of the very first load, as the
+ * index added to a base, as the argument pushed for the first call.
+ * One expression later it is not: something has computed into HL and
+ * the parameter has to come back off the frame.
+ *
+ * So the window is one expression wide, and a label shuts it early.
+ * cpp lowers a loop to a label above its test, and under one there is
+ * no first expression - only a first iteration, with HL rebuilt on
+ * every pass through.  stfind and tdfind are that shape, naming their
+ * parameter once, in a test that runs once per list element.
+ *
+ * Phase 1 records and phase 2 asks, which works because process()
+ * runs the two of them over one function at a time.
+ */
+unsigned short hlArgSym;
+static unsigned char hlShut;
+
+/* start of a function body - nothing has taken HL yet */
+void
+hlOpen(void)
+{
+    hlArgSym = 0;
+    hlShut = 0;
+}
+
+/* the window is over: an expression has been and gone, or a label */
+void
+hlClose(void)
+{
+    hlShut = 1;
+}
+
+/* a parameter was named while HL could still be holding it */
+static void
+hlArg(unsigned short id)
+{
+    if (!hlShut && !hlArgSym)
+        hlArgSym = id;
+}
+
+/*
  * Skip an expression without building a tree (phase 1)
  * Consumes tokens to stay synchronized with the lexer.
  * Mirrors parseExpr structure but doesn't allocate.
@@ -243,6 +288,8 @@ skipExpr(unsigned char pri)
 
     case SYM:
         np = findName(cur.v.id, 0);
+        if (np && np->kind == kfunarg)
+            hlArg(cur.v.id);
         if (np && np->level > 1 && np->kind != kelem && !szskip &&
             !(np->type->flags & (TF_FUNC|TF_ARRAY))) {
             if (np->w.r.ref_count < 255)

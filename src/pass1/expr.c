@@ -112,6 +112,7 @@ parseExpr(unsigned char pri)
 	/* Phase 1: just consume tokens, don't build tree */
 	if (phase == 1) {
 		skipExpr(pri);
+		hlClose();	/* one expression is all HL survives */
 		return NULL;
 	}
 

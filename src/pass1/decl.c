@@ -119,6 +119,7 @@ parsefunc(struct name *f)
 			fdprintf(2, "parsefunc phase1: %s entering statement()\n",
 			         nameOf(f->id));
 #endif
+		hlOpen();     /* nothing has taken HL from the first argument */
 		statement();  /* Skips through function body */
 #ifdef DEBUG
 		if (VERBOSE(V_PHASE1))

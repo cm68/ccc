@@ -10,6 +10,7 @@
 #include "p1name.h"
 #include "p1stmt.h"
 #include "p1lex.h"
+#include "p1expr.h"
 #include "p1swcnt.h"
 #include "p1outh.h"
 
@@ -118,15 +119,21 @@ emitAsmStmt(char *text)
  *
  * The answer is deliberately conservative and means: NOTHING in this
  * body reaches through IY except possibly the single parameter that
- * now arrives in HL.  It says nothing about whether that parameter's
- * one reference can be served out of HL - that depends on the
- * Sethi-Ullman labelling in pass2, one pass later - so pass2 holds
- * the prologue until it has emitted the first expression and can see.
+ * now arrives in HL, and that one is read while HL still holds it.
  *
  *	frm_size	a scalar area is a frame by definition
  *	param_count	the second parameter lives at (iy+6)
  *	addr_taken	an address into the frame outlives any register
  *	ref_count	a parameter read twice cannot live in HL alone
+ *	hlArgSym	and read once is not enough either - it has to be
+ *			read while HL still holds it
+ *
+ * That last one is what counting alone kept getting wrong.  stfind
+ * and tdfind name their parameter exactly once, inside a loop that
+ * rebuilds HL on every pass; pushCount names its own once, an
+ * expression after a bounds test has been through HL.  All three were
+ * read back off a frame this predicate had already promised was not
+ * needed.  Sixteen of the compiler's own functions were that shape.
  */
 static int
 frameFree(struct name *func, int frm_size, int param_count)
@@ -138,7 +145,11 @@ frameFree(struct name *func, int frm_size, int param_count)
 	for (l = func->u.locals; l; l = l->next) {
 		if (l->addr_taken)
 			return 0;
-		if (l->kind == kfunarg && l->ref_count > 1)
+		if (l->kind != kfunarg)
+			continue;
+		if (l->ref_count > 1)
+			return 0;
+		if (l->ref_count == 1 && l->id != hlArgSym)
 			return 0;
 	}
 	return 1;
