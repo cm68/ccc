@@ -68,14 +68,32 @@ unsigned short total_bss;
 /*
  * symbol table entry
  */
+/*
+ * A SYMBOL COSTS WHAT ITS NAME COSTS.  The name was a fixed char[16]
+ * at the front, so every symbol paid for sixteen bytes whether it
+ * needed them or not, and the average name in what this links is six
+ * characters.  It is a tail now: last member, one byte declared, the
+ * rest allocated behind the structure by whoever makes the symbol.
+ *
+ * name[1] and not name[0] or name[], deliberately.  sizeof then
+ * carries the terminator, so permalloc(sizeof(struct symbol) + len)
+ * is exactly right for a name of len characters on both compilers -
+ * ccc gives a flexible member one byte and gcc gives it none - and
+ * "char name[0]" is a GNU extension that -pedantic -Werror rejects.
+ *
+ * This is what LD.md has described this structure as being for some
+ * time, and it was not: it said the name is a variable-length tail
+ * "so a symbol costs what its name costs" while the code carried the
+ * array.  Now it does.
+ */
 struct symbol {
-    char name[16];          /* max 15 chars + null */
     unsigned short value;   /* final resolved address */
     unsigned short size;    /* bss: how big, from the object that owns it */
     unsigned char type;     /* original type byte */
     unsigned char seg;      /* decoded segment */
     struct object *obj;     /* defining object (NULL for extern) */
     struct symbol *next;
+    char name[1];           /* variable length tail */
 };
 
 struct symbol *symbols;
@@ -262,17 +280,93 @@ usage()
  * symptom; see xalloc in cpp/util.c.  There is nothing useful to do
  * with a failed allocation, so say so and stop.
  */
+char *permalloc();
+
 char *
 xalloc(n)
 unsigned n;
 {
+    return permalloc(n);
+}
+
+/*
+ * permalloc - the permanent arena
+ *
+ * NOTHING xalloc HANDS OUT IS EVER FREED.  Symbols, objects, their
+ * symtab index maps and the display names of archive members all live
+ * from the moment they are made until ld exits - the only free() in
+ * this file is segbuf, which comes from __malloc and not from here.
+ *
+ * Paying malloc for that is expensive on the machine this links for:
+ * the allocator in its libc keeps a three-byte header per block and
+ * rounds the payload up to a three-byte granule, so the header alone
+ * was costing more than the type byte and the segment byte of every
+ * symbol put together.  Here it is paid once per chunk.
+ *
+ * PERMCHUNK is a multiple of the 129-byte granule that libc's malloc
+ * grabs from sbrk, so a chunk is a whole number of them.
+ *
+ * The chunks are not linked and there is no way to give one back.
+ * That is the point: this is the allocator for things that last as
+ * long as the program does, and ld links one output and exits.
+ */
+#define PERMCHUNK   (8 * 129)       /* 1032 */
+
+static char *permp;                 /* next free byte */
+static unsigned permleft;           /* how many are left there */
+
+/*
+ * A symbol with room for its name.  Names are truncated to 15
+ * characters, the width of the field in the object file, so that is
+ * the most this ever allocates a tail for.
+ */
+struct symbol *
+newsym(name)
+char *name;
+{
+    struct symbol *s;
+    register char *d;
+    unsigned n;
+
+    for (n = 0; n < 15 && name[n]; n++)
+        ;
+
+    s = (struct symbol *)permalloc(sizeof(struct symbol) + n);
+    d = s->name;
+    while (n--)
+        *d++ = *name++;
+    *d = '\0';
+    s->size = 0;
+    return s;
+}
+
+char *
+permalloc(n)
+unsigned n;
+{
     char *p;
 
-    p = malloc(n);
-    if (!p) {
-        fprintf(stderr, "ld: out of memory\n");
-        exit(1);
+    /*
+     * Even, so the shorts and pointers in what comes back are laid
+     * out the way the compiler expects them.
+     */
+    n = (n + 1) & ~1;
+
+    if (n > permleft) {
+        /*
+         * What is left of the old chunk is abandoned - at most one
+         * node's worth, and chasing it would cost more than it saves.
+         */
+        permleft = n > PERMCHUNK ? n : PERMCHUNK;
+        permp = malloc(permleft);
+        if (!permp) {
+            fprintf(stderr, "ld: out of memory\n");
+            exit(1);
+        }
     }
+    p = permp;
+    permp += n;
+    permleft -= n;
     return p;
 }
 
@@ -407,9 +501,7 @@ struct object *obj;
 {
     struct symbol *s;
 
-    s = (struct symbol *)xalloc(sizeof(struct symbol));
-    strncpy(s->name, name, 15);
-    s->name[15] = '\0';
+    s = newsym(name);
     s->value = value;
     s->seg = seg;
     s->type = type;
@@ -461,9 +553,7 @@ struct object *obj;
     }
 
     /* new symbol */
-    s = (struct symbol *)xalloc(sizeof(struct symbol));
-    strncpy(s->name, name, 15);
-    s->name[15] = '\0';
+    s = newsym(name);
     s->value = value;
     s->seg = seg;
     s->type = type;
@@ -2523,8 +2613,16 @@ pass2_output()
             default:       type = 0x08; break;
             }
             write_byte(type);
-            for (i = 0; i < symlen; i++) {
-                write_byte(s->name[i]);
+            /*
+             * The field in the object file is fixed width and the
+             * name is not any more, so the zeroes that used to come
+             * free out of a padded array get written here.
+             */
+            {
+                register char *np = s->name;
+
+                for (i = 0; i < symlen; i++)
+                    write_byte(*np ? *np++ : 0);
             }
         }
     }

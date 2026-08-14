@@ -603,7 +603,18 @@ int create;
     }
     if (!create)
         return 0;
-    ls = (struct local_state *)permalloc(sizeof(struct local_state));
+    /*
+     * malloc and not the arena: these are the only things here that
+     * really are given back - local_reset empties the table between
+     * segments - and arena memory cannot be freed one node at a time.
+     * Assembling lib/libu/sbrk.s is what caught it, with glibc saying
+     * "free(): invalid pointer" about a block that had never been a
+     * malloc block.  There are very few of them; the numbered local
+     * labels are all that make one.
+     */
+    ls = (struct local_state *)malloc(sizeof(struct local_state));
+    if (!ls)
+        gripe("out of memory");
     ls->num = n;
     ls->pending = 0;
     ls->last = 0;
