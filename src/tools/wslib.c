@@ -25,7 +25,9 @@
 #endif
 
 #include "wsobj.h"
+#ifdef DO_HITECH
 #include "hiobj.h"
+#endif
 
 char *progname;
 int verbose;
@@ -33,7 +35,12 @@ int verbose;
 int hitech_mode;    /* -H flag: create HiTech format library */
 #endif
 
-/* Symbol table for HiTech library creation */
+#ifdef DO_HITECH
+/*
+ * Symbol table for HiTech library creation.  Guarded: this is 500
+ * entries of 65 bytes, and it was sitting in the bss of every wslib
+ * ever built for a feature nothing has defined DO_HITECH to get.
+ */
 #define MAX_SYMS 500
 struct htsym {
     char name[64];
@@ -41,6 +48,7 @@ struct htsym {
 };
 struct htsym symtab[MAX_SYMS];
 int nsyms;
+#endif
 
 void
 usage()

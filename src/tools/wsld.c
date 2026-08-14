@@ -24,7 +24,9 @@
 #endif
 
 #include "wsobj.h"
+#ifdef DO_HITECH
 #include "hiobj.h"
+#endif
 
 /* use wsSegNames from wsobj.c */
 
@@ -124,12 +126,18 @@ struct object {
      */
     unsigned char *symseg;
     struct bssexc *exc;             /* what merging removed, in order */
-    /* Hi-Tech specific fields */
+#ifdef DO_HITECH
+    /*
+     * Hi-Tech specific fields.  Guarded with the code that uses them:
+     * five members on every object record is not something to carry
+     * for a format nothing in the tree has emitted in years.
+     */
     char is_hitech;                 /* 1 if Hi-Tech format */
     unsigned char *ht_text;         /* collected text segment data */
     unsigned char *ht_data;         /* collected data segment data */
     struct ht_reloc *ht_relocs;     /* relocation array */
     int ht_nrelocs;                 /* number of relocations */
+#endif
     struct object *next;
 };
 
@@ -162,6 +170,7 @@ struct outreloc *textRelocTl;
 struct outreloc *data_relocs;
 struct outreloc *dataRelocTl;
 
+#ifdef DO_HITECH
 /*
  * Hi-Tech relocation entry for linking
  */
@@ -171,6 +180,7 @@ struct ht_reloc {
     unsigned char seg;          /* SEG_TEXT or SEG_DATA */
     char target[16];            /* target name (symbol or psect) */
 };
+#endif
 
 char *outfile = "a.out";
 FILE *outfp;
@@ -2135,6 +2145,7 @@ int is_text;
     }
 }
 
+#ifdef DO_HITECH
 /*
  * apply Hi-Tech relocations to segment data
  */
@@ -2208,6 +2219,7 @@ unsigned short seg_base;
         }
     }
 }
+#endif
 
 /*
  * patch linker-defined symbols in data segment

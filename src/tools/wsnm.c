@@ -13,7 +13,9 @@
 #endif
 
 #include "wsobj.h"
+#ifdef DO_HITECH
 #include "hiobj.h"
+#endif
 
 FILE *fp;
 unsigned char *filebuf;
@@ -194,6 +196,7 @@ struct reloc {
 int nrels;
 unsigned short text_off_g, data_off_g, bss_off_g;  /* segment offsets for reloc fixup */
 
+#ifdef DO_HITECH
 /* HiTech relocation entry for collection */
 struct ht_reloc {
     unsigned long offset;
@@ -208,6 +211,7 @@ struct ht_sym {
     char psect[32];
     char name[64];
 };
+#endif
 
 /*
  * Unified object data structures
@@ -2084,6 +2088,7 @@ long objsize;
     nsyms = 0;
 }
 
+#ifdef DO_HITECH
 /*
  * generate relocation target name for HiTech
  */
@@ -2128,6 +2133,7 @@ char *buf;
         sprintf(buf, "%s", target);
     }
 }
+#endif
 
 #ifdef DO_HITECH
 /*
