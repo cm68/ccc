@@ -129,7 +129,18 @@ unsigned char *lineptr = (unsigned char *)"";
  * self-hosted compiler printed the next literal in the pool where
  * "ld h,a" should have been.
  */
-unsigned char linebuf[1024];
+/*
+ * 512, and it was 1024.  It only ever holds a line of CODE now -
+ * get_line consumes a comment where it starts rather than copying it
+ * in to be cut out later - and the longest the compiler emits is 270
+ * characters, a .db of rule text in c1/rules.s.  The longest in any
+ * hand-written assembly in the tree is 82.
+ *
+ * Not smaller than that.  Overflow here is gripe("line too long"),
+ * which stops the build, and a .db line is generated from tables that
+ * can grow; 512 is most of twice the largest ever seen.
+ */
+unsigned char linebuf[512];
 char l_flag;                    /* -l: write a listing file */
 FILE *lstfp;
 unsigned char filebuf[FILEBUFSIZE+1];
@@ -165,20 +176,55 @@ fillbuf()
 }
 
 /*
- * read an entire line into a null-terminated C string
- * the line will end with a newline.
+ * read a line into a null-terminated C string, ending with a newline.
  * comments and trailing whitespace are stripped.
+ *
+ * A COMMENT IS CONSUMED, NOT STORED.  It used to be copied into the
+ * buffer and then cut out again afterwards, which meant the buffer
+ * had to be big enough for the longest COMMENT rather than the
+ * longest line of code - and c1 writes the whole AST of an expression
+ * into one, so the longest the compiler emits is 2,226 characters
+ * against a longest code line of 270.
+ *
+ * That cost a kilobyte of bss to hold text that was thrown away two
+ * loops later, and it needed a special case for the line that did not
+ * fit: cut it if it began with a semicolon, gripe otherwise.  Neither
+ * is needed now.  The delimiter ends the line, the rest of the input
+ * is read and dropped, and what "line too long" means is what it says
+ * - a line of code too long to assemble.
  */
+static void
+skip_comment()
+{
+    unsigned char c;
+
+    while (1) {
+        if (inptr >= limit && fillbuf() == 0)
+            return;
+        c = *inptr++;
+        if (c == 0x1A) {
+            saw_eof = 1;
+            return;
+        }
+        if (c == '\n')
+            return;
+    }
+}
+
 void
 get_line()
 {
     int i;
     unsigned char c;
-    unsigned char *p;
+    unsigned char prev;
+    int in_string;
 
     list_line();		/* the line now ending gets its listing record */
 
     lineptr = linebuf;
+    prev = 0;
+    in_string = 0;
+
     for (i = 0; i < sizeof(linebuf) - 2; i++) {
         if (inptr >= limit) {
             if (fillbuf() == 0) {
@@ -193,46 +239,30 @@ get_line()
             *lineptr++ = T_EOF;
             break;
         }
-        *lineptr++ = c;
-        if (c == '\n') {
+
+        /*
+         * A quote toggles; a semicolon outside quotes ends the line.
+         * The escape test looks at the character before, which is
+         * what the second pass over the buffer used to do.
+         */
+        if (c == '"' && prev != '\\') {
+            in_string = !in_string;
+        } else if (c == ';' && !in_string) {
+            skip_comment();
+            *lineptr++ = '\n';
             break;
         }
+
+        *lineptr++ = c;
+        prev = c;
+        if (c == '\n')
+            break;
     }
-    if (i == sizeof(linebuf) - 2) {
-        /* line longer than the buffer: only a comment may be cut -
-         * anything else is data, and a silent cut puts a corrupt
-         * string in the object with no witness */
-        if (linebuf[0] != ';')
-            gripe("line too long");
-        *lineptr++ = '\n';
-        while (1) {
-            if (inptr >= limit && fillbuf() == 0)
-                break;
-            c = *inptr++;
-            if (c == 0x1A) {
-                saw_eof = 1;
-                break;
-            }
-            if (c == '\n')
-                break;
-        }
-    }
+    if (i == sizeof(linebuf) - 2)
+        gripe("line too long");
+
     *lineptr = '\0';
     lineNum++;
-
-    /* strip comments: find ; outside of strings and truncate */
-    {
-        int in_string = 0;
-        for (p = linebuf; *p; p++) {
-            if (*p == '"' && (p == linebuf || p[-1] != '\\')) {
-                in_string = !in_string;
-            } else if (*p == ';' && !in_string) {
-                *p++ = '\n';
-                *p = '\0';
-                break;
-            }
-        }
-    }
 
     /* strip trailing whitespace before newline */
     i = strlen((char *)linebuf);
