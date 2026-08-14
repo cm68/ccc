@@ -40,7 +40,7 @@ endif
 # build below does not.  MXBINTOOLS is what goes into /bin over there
 # and is named plainly.
 #
-ALL = asz mxld mxnm wslib mxsize ccc astpp
+ALL = asz mxld mxnm mxar mxsize ccc astpp
 
 all: $(ALL)
 
@@ -68,6 +68,26 @@ mxld: ld.o wsobj.o
 
 mxnm: nm.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ nm.o wsobj.o
+
+#
+# The HOST librarian is mxar: "ar" on this machine is the host's own
+# and this is not it, the same reason mxld and mxnm are spelled that
+# way.  Same source as micronix's cmd/ar - the tree there symlinks to
+# this file, as it does for ld, nm and size.
+#
+# It replaces wslib, which wrote the whitesmiths archive format: a
+# 14-byte name and a 2-byte length ended by a null name.  ar writes
+# the v7 header, with the date, uid, gid and mode as well, and ld
+# reads both.
+#
+# ar.c is K&R - it is a micronix command first and a host program
+# second - so it gets gnu89 and no warnings rather than the c99 and
+# -Werror the rest of this directory builds with.  The micronix tree
+# compiles the same file the same way.
+ARCFLAGS = -m32 -w -std=gnu89 -Dlinux
+
+mxar: ar.c ar.h
+	$(CC) $(ARCFLAGS) -o $@ ar.c
 
 wslib: wslib.o
 	$(CC) $(CFLAGS) -o $@ wslib.o
@@ -130,7 +150,7 @@ clobber: clean
 # an object file and stay on the path - under the mx names, because on
 # the path is exactly where "nm" and "size" would be the host's.
 LIBTOOLS = asz mxld astpp
-BINTOOLS = ccc wslib mxnm mxsize
+BINTOOLS = ccc mxar mxnm mxsize
 
 install: all man-install
 	@mkdir -p $(HOSTDIR)/bin $(HOSTLIBEXEC)

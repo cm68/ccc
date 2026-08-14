@@ -159,7 +159,17 @@ INSTALL = cp -u
 CCC     = $(HOSTDIR)/bin/ccc
 AS      = $(HOSTLIBEXEC)/asz
 LD      = $(HOSTLIBEXEC)/mxld
-LIB     = $(HOSTDIR)/bin/wslib
+#
+# The librarian is ar, built for the host as mxar.  It was wslib,
+# which wrote the whitesmiths archive format - a 14-byte name and a
+# 2-byte length, ended by a null name.  ar writes the v7 header, with
+# the date, uid, gid and mode as well, and ld reads both.
+#
+# The micronix tree switched to it some time ago and this one did not,
+# so every library ccc built was still whitesmiths while every library
+# beside it was v7 - and mxar could not so much as list its own libc.
+#
+LIB     = $(HOSTDIR)/bin/mxar
 SIZE    = $(HOSTDIR)/bin/mxsize
 
 # The compiler proper.  A runtime rebuild depends on these, because

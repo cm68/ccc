@@ -2983,14 +2983,42 @@ char **argv;
         }
     }
 
-    /* now process archives, possibly multiple times for circular deps */
+    /*
+     * Now the archives, and EACH ONE IS READ UNTIL IT STOPS GIVING,
+     * before the next is looked at.
+     *
+     * A member is only taken if something already undefined needs it
+     * when the scan arrives, so one pass over an archive misses
+     * anything that a LATER member asks for: lib/libc has malloc.o
+     * ahead of permaloc.o, and permalloc is what makes _malloc
+     * undefined, so malloc.o was walked straight past.
+     *
+     * The outer loop below was supposed to cover that, and did not.
+     * It finishes the whole list before coming back round, so by the
+     * time it returned to the first archive a later one had already
+     * answered - and with "-lc -lu -lc" naming two different libcs,
+     * what a program linked was the copy it reached second.  The
+     * tree's malloc was passed over on pass one and ccc's was taken
+     * on pass one, from an archive appended after it; the tree's
+     * never came up again because there was nothing left to want.
+     *
+     * Draining each archive in turn makes the first one that can
+     * answer a symbol the one that does, which is what naming it
+     * first is supposed to mean.  The outer loop stays for genuine
+     * circularity between two archives.
+     */
     pass = 0;
     do {
         added = 0;
         for (f = infiles; f; f = f->next) {
             if (f->is_archive == 1) {
-                /* Whitesmith archive */
-                added += read_archive(f);
+                /* Whitesmith or v7 archive */
+                int got;
+
+                do {
+                    got = read_archive(f);
+                    added += got;
+                } while (got > 0 && has_undefined());
 #ifdef DO_HITECH
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */

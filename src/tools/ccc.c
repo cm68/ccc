@@ -1204,7 +1204,26 @@ main(int argc, char **argv)
         for (i = 0; i < o_count; i++)
             ld_args[ld_argc++] = o_files[i];
 
-        ld_args[ld_argc++] = libc_path;
+        /*
+         * THE DRIVER'S OWN LIBRARIES GO LAST, after everything the
+         * command line named.  There used to be a libc_path here as
+         * well, ahead of them, and it meant a library named on the
+         * command line could not override anything: ccc's libc was
+         * asked first and answered, and the named one was left with
+         * whatever was still missing.
+         *
+         * Micronix has its own libc in lib/libc, built from the same
+         * sources, and links it by naming it - so every program in
+         * that tree was quietly taking ccc's copy of anything the two
+         * both define, which is nearly all of it.  An edit to the
+         * system's own C library reached nothing, and the binary gave
+         * no sign of which one it had.
+         *
+         * ld resolves in order and takes the first archive that can
+         * answer, so naming a library first is how a program says
+         * which one it means.  These are the fallback, and a fallback
+         * goes at the end.
+         */
 
         /* Add library files */
         for (i = 0; i < a_count; i++)
@@ -1214,8 +1233,14 @@ main(int argc, char **argv)
         for (i = 0; i < ld_lib_count; i++)
             ld_args[ld_argc++] = ld_libs[i];
 
-        ld_args[ld_argc++] = libu_path;
+        /*
+         * libc, libu, libc: they call each other - libc's printf wants
+         * write from libu, libu's perror wants libc - and ld takes one
+         * pass per archive, so each has to be offered again after the
+         * other has had its say.
+         */
         ld_args[ld_argc++] = libc_path;
+        ld_args[ld_argc++] = libu_path;
         ld_args[ld_argc++] = libc_path;
 
         ld_args[ld_argc] = NULL;
