@@ -57,33 +57,52 @@ Where the first argument already sits:
 | first argument in DE/BC, `push de` becomes `ex de,hl` | 205 | 1 byte | 205 |
 | | | | **4,523** |
 
-## Half the callees want no spill
+## Where the argument has to go, and how soon
 
-HLARG.md puts the spill in the shared helper, one place.  The corpus
-uses all five entries in `csv.s`:
+HL IS SCRATCH.  The parameter's life in it ends at the first 16-bit
+expression the function evaluates, so it is never a question of
+leaving it there - only of where it is staged and how much that costs.
+The corpus says so plainly:
 
-```
-fentbx 169    fentb 128    fentx 86    fenter 59    fentn 13
-```
+| | |
+|---|---|
+| functions reading the first parameter from the frame | **359 of 373** |
+| first read within two instructions of entry | 210 |
+| first read later | 149 |
+| total reads of `iy+4`/`iy+5` | **1,002**, 2.8 per function |
 
-455 of 500 functions enter through one of them, so the spill is 30 to
-50 bytes in libc against 373 functions that would each have paid six.
+2.8 reads apiece.  The value lives in memory, and almost every use of
+it is a use from memory.
 
-And half of those do not want it.  pass1 already assigns registers to
-parameters and ships the answer in the AST; `parseast.c` reads it and
-stages frame parameters into registers at entry.  Counting the first
-parameter of every function that has one:
+pass1 already decides where it should live and ships the answer in the
+AST; `parseast.c` reads it and stages frame parameters into registers
+at entry.  Counting the first parameter of every function that has
+one:
 
-| | count | share |
-|---|---|---|
-| assigned a register (`r != 0`) - no spill wanted | **177** | 47.5% |
-| frame-resident (`r = 0`) - spill wanted | 196 | 52.5% |
+| | count | share | staged to |
+|---|---|---|---|
+| register assigned (`r != 0`) | **177** | 47.5% | its register |
+| frame-resident (`r = 0`) | 196 | 52.5% | the frame |
 
-For the 177 the value arrives in HL, goes to its register, and the
-load that stages it out of the frame today disappears as well.  The
-question of whether the helper can be told which to do is the one
-HLARG.md leaves open, and this is its size: it decides the time result
-for half the functions in the tree.
+Both are staging.  The difference is the price:
+
+**The 177 with a register.**  Today the entry loads the value out of
+the frame - `ld c,(iy+4)` / `ld b,(iy+5)`, six bytes and 38 T.  After,
+it is already in HL: `ld c,l` / `ld b,h`, two bytes and 8 T.  **Four
+bytes and 30 T better**, and this is the case that genuinely stops
+touching the frame.
+
+**The 196 without one.**  The value must reach the frame because it is
+read from there repeatedly, so the helper stores it: 38 T per call
+against the caller's 21 T saved - **net 17 T worse**, while the size
+still improves by the caller's two bytes.  The store is in the shared
+helper, so it costs 30 to 50 bytes in libc once, not six per function.
+
+So the change is unambiguously smaller, and faster only where the
+parameter has a register or the callee has no frame at all.  A
+majority of functions pay a little time for the space.  Whether the
+helper can be told which case it is in is the question HLARG.md
+leaves open, and this is what it decides.
 
 ## The frame that stops being necessary
 
@@ -156,12 +175,18 @@ hl,sp / ld e,(hl) / inc hl / ld d,(hl)` where `ex de,hl` would do.
 
 | | bytes | time, per call |
 |---|---|---|
-| call sites, 2,364 with an argument | ~4,500 | 21 T |
+| call sites, 2,364 with an argument | ~4,500 | 21 T saved |
 | frames no longer needed, 102 functions | ~500-800 | ~200 T |
 | libu, 44 wrappers | ~250 | 42-127 T |
 | libc hand-written, 93 objects | ~400 | 42 T |
 | entry helpers, once | +40 | |
 | | **~5,600-5,900** | |
+
+The time column is the caller's side only.  On the callee's, 177
+functions gain 30 T from a register move replacing a frame load, and
+196 pay 38 T for the helper's store against 21 saved.  Net time is a
+clear win for the frameless and register cases and a small loss for
+frame-resident ones; net size is a win everywhere.
 
 **4.6% of the corpus text**, and against the passes:
 
@@ -183,8 +208,11 @@ lands on every input and cannot be handed back on a different one.
 
 **Whether the spill can be conditional.**  The caller saves 21 T; a
 helper that spills unconditionally spends 38 - `ld (iy+4),l` and `ld
-(iy+5),h` at 19 each.  For the 52.5% that are frame-resident the size
-still improves and the time may not.
+(iy+5),h` at 19 each.  For the 52.5% that are frame-resident that is
+17 T worse per call, and they are the majority.  This is the single
+biggest open question in the projection: it is the difference between
+a change that is smaller and faster, and one that is smaller and
+slightly slower on most calls.
 
 **Whether dropping the frame is cheap to decide.**  "This parameter
 has a register" is a byte pass1 already computed.  "This function
