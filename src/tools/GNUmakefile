@@ -200,8 +200,16 @@ mx-ccc: $(MXALL)
 # Into destmicronix as a system root: the user commands in bin, the
 # things the driver runs in the lib beside them - the same split the
 # host install makes, because it is the same driver making it.
+#
+# MXLIBEXEC in the mkdir as well as bin and lib.  It was not there, so
+# this worked only while the directory happened to survive from an
+# older build and stopped the moment anything cleaned - "cp: target
+# destmicronix/libexec: No such file or directory" out of a tree that
+# had just built everything.  The passes install into $(MXDIR)/lib and
+# so never noticed.
+#
 mx-install: mx-ccc
-	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib
+	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib $(MXLIBEXEC)
 	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXBINTOOLS)) $(MXDIR)/bin
 	$(INSTALL) $(addprefix $(MXBUILD)/,$(MXLIBTOOLS)) $(MXLIBEXEC)
 

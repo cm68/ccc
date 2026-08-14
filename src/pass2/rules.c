@@ -1981,6 +1981,27 @@ struct rule rules[] = {
 	R(ASSIGN,DEREF,SYMREF,SYMREF,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
 	/*
+	 * And the same store one byte wide, which is the address
+	 * TRUNCATED rather than kept.  The kernel builds a controller
+	 * command block a byte at a time:
+	 *
+	 *	*p++ = ((unsigned) djcomm >> 0);
+	 *	*p++ = ((unsigned) djcomm >> 8);
+	 *
+	 * and the first of those is this shape, the ">> 0" having folded
+	 * away and left the bare address being stored into a byte.  The
+	 * second and third are shifts and reduce to a register before
+	 * they get here, so only the one that looks least like a
+	 * truncation is the one that had no rule - sys/cus.c, djinit.
+	 *
+	 * The address goes to DE rather than HL because HL is where the
+	 * POINTER has to end up, and it has to be loaded second: $LL is
+	 * a pointer in memory and reading it would overwrite the value
+	 * if the value were sitting in HL.
+	 */
+	R(ASSIGN,DEREF,SYMREF,SYMREF,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tld a,e\n\tld hl,($LL)\n\tld (hl),a\n", R_A),
+	/*
 	 * A register variable stored through a pointer in memory:
 	 * "*p = r" with r in BC.  The value needs no code, so the
 	 * pointer can come to HL and take the store directly.
@@ -1989,6 +2010,31 @@ struct rule rules[] = {
 		"\tld hl,($LL)\n\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
 	R(ASSIGN,DEREF,SYMREF,INHL,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER F_LDHLE F_INCHL F_LDHLD, R_DE),
+	/*
+	 * The byte of it, which is the address truncated.  This is the
+	 * one sys/cus.c hits:
+	 *
+	 *	*p++ = ((unsigned) djcomm >> 0);
+	 *
+	 * with p a local the allocator put in HL.  The address goes to
+	 * DE and not HL because HL already holds the pointer and is
+	 * about to be stored through.
+	 */
+	R(ASSIGN,DEREF,SYMREF,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tld a,e\n" F_LDHLA, R_A),
+	/*
+	 * The same with the pointer in BC instead of HL, which is where
+	 * a word register variable lives.  "ichan[0] = &cmd" in the mw
+	 * driver is exactly it: the channel array's address is a
+	 * register variable and the value stored is a symbol's own
+	 * address.  The INHL form above and the INDEX form below both
+	 * existed; this one did not, so the store compiled to a comment.
+	 *
+	 * BC cannot be stored through, so the pointer moves to HL
+	 * first.  The value is in DE by then and survives the move.
+	 */
+	R(ASSIGN,DEREF,SYMREF,INBC,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER F_LDLC F_LDHB F_LDHLE F_INCHL F_LDHLD, R_DE),
 	R(ASSIGN,DEREF,SYMREF,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER "\tld l,($LL)\n\tld h,($LL+)\n"
 		F_LDHLE F_INCHL F_LDHLD, R_DE),
@@ -2709,6 +2755,20 @@ struct rule rules[] = {
 	 */
 	R(MINUS,SYMREF,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	/*
+	 * And BOTH sides a symbol's address, which is how a program
+	 * measures the gap between two things it was linked with.  The
+	 * kernel sizes its buffer pool that way:
+	 *
+	 *	space = (UINT) (&usrtop) - (UINT) (blist);
+	 *
+	 * in main.c's binit.  Either half alone had a rule - SYMREF
+	 * minus INDE above, INHL minus SYMREF below - and the pair had
+	 * none, so the subtraction left a marker and the size came out
+	 * as whatever was in HL.
+	 */
+	R(MINUS,SYMREF,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_LDDER F_ORA F_SBCHLDE, R_HL),
 	/* less a symbol's address, which is one half of a pointer
 	 * difference once the other half is in HL */
 	R(MINUS,INHL,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),

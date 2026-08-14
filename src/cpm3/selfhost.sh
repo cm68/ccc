@@ -173,10 +173,17 @@ for p in $passes; do
 
 		( cd "$work" && rm -f h.x h.nam h.ast h.dat h.s g.x g.nam g.ast g.dat g.s )
 
+		#
+		# libexec, not lib.  The passes moved and this did not,
+		# so every file failed the HOST half of the comparison
+		# and was reported "skip (host)" - a gate that answered
+		# "0 agree, 0 do not" and exited 0, which reads like
+		# success and is the absence of one.
+		#
 		if ! ( cd "$work" &&
-		       "$top"/desthost/lib/pass0 -DCCC $inc -o h "$b.c" &&
-		       "$top"/desthost/lib/c0 h.x h.ast h.dat &&
-		       "$top"/desthost/lib/c1 h.ast h.dat h.s ) >/dev/null 2>&1; then
+		       "$top"/desthost/libexec/pass0 -DCCC $inc -o h "$b.c" &&
+		       "$top"/desthost/libexec/c0 h.x h.ast h.dat &&
+		       "$top"/desthost/libexec/c1 h.ast h.dat h.s ) >/dev/null 2>&1; then
 			printf '%-8s %-12s %7s %6s  %s\n' \
 				"$p" "$b" "$sz" - "skip (host)"
 			continue

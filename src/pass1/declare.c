@@ -658,7 +658,15 @@ declare(struct type **btp, unsigned char struct_elem)
     unsigned long i;
     unsigned long dims[MAXDIM];
     unsigned char ndim;
+    /*
+     * Set when this level read a parenthesised declarator.  It is what
+     * tells "(*p)[8]" from "*p[8]": the brackets belong to a different
+     * level in each, and the anonymous pointer they meet looks the
+     * same either way.  See the pointer-to-array case below.
+     */
+    unsigned char paren;
 
+    paren = 0;
     suffix = 0;
 
     nm = 0;
@@ -680,6 +688,7 @@ declare(struct type **btp, unsigned char struct_elem)
 
     // parenthesed type definition does precedence
     if (cur.type == LPAR) {
+        paren = 1;
         gettoken();
         rt = 0;
         nm = declare(&rt, struct_elem);       // recurse
@@ -867,6 +876,51 @@ declare(struct type **btp, unsigned char struct_elem)
              * is the base type (int), so we just use suffix directly.
              */
             nm->type = getType(TF_POINTER, suffix, 0);
+        } else if (paren && nm->type && (nm->type->flags & TF_POINTER) &&
+                   !(nm->type->flags & TF_ARRAY) &&
+                   (suffix->flags & TF_ARRAY) && !nm->type->sub) {
+            /*
+             * A pointer to an ARRAY, "char (*buffer)[512]".  The same
+             * shape as the function pointer just above and it needs
+             * the same answer: the recursion on "(*buffer)" left an
+             * anonymous pointer with no sub, and this level's "[512]"
+             * is what it points at.
+             *
+             * ONLY when this level read the parentheses, which is what
+             * "paren" is for.  Without that test it also caught the
+             * inner half of "unsigned (*slist[8])()" - an array of
+             * eight function pointers, which is what proc.h keeps its
+             * signal dispositions in.  There the "[8]" is at the same
+             * level as the "*" and means an array OF pointers; here
+             * the brackets are outside the parentheses and mean a
+             * pointer TO an array.  The anonymous pointer looks
+             * identical in both, so the brackets' level is the only
+             * thing that separates them.
+             *
+             * Without this it fell to the plain "nm->type = suffix"
+             * at the bottom and the whole declaration came out as a
+             * bare array of 512 char.  An array is not an lvalue, so
+             * the symptom was not a wrong type but a rejected
+             * program:
+             *
+             *  char (*buffer)[512];
+             *  buffer = 0;             "need lvalue"
+             *  buffer = &blist[n];     "need lvalue"
+             *  buffer[1][2]            "bad index"
+             *
+             * even for an assignment as plain as "= 0".  The comment
+             * on the array-of-function-pointers case below says the
+             * quiet version of this is the worse one; here it is the
+             * other way round, and the kernel's main.c has not
+             * compiled because of it - binit() keeps its buffer pool
+             * as exactly this type.
+             *
+             * Rebuilt rather than having its sub plugged, for the
+             * reason given below: an array type comes from getType
+             * and is shared, so writing through it would retype every
+             * other array of the same shape.
+             */
+            nm->type = getType(TF_POINTER, suffix, 0);
         } else if (nm->type && (nm->type->flags & TF_ARRAY) &&
                    (suffix->flags & TF_FUNC) && nm->type->sub &&
                    (nm->type->sub->flags & TF_POINTER) &&
@@ -897,6 +951,32 @@ declare(struct type **btp, unsigned char struct_elem)
             nm->type = getType(TF_ARRAY | TF_POINTER,
                                getType(TF_POINTER, suffix, 0),
                                nm->type->count);
+        } else if (paren && nm->type && (nm->type->flags & TF_POINTER) &&
+                   !(nm->type->flags & TF_ARRAY) &&
+                   (suffix->flags & TF_ARRAY) && nm->type->sub &&
+                   (nm->type->sub->flags & TF_ARRAY)) {
+            /*
+             * The second walk of a pointer to an array, which already
+             * has the type the first walk gave it.  Leave it alone.
+             *
+             * A file-scope declarator is read twice and the two walks
+             * meet different things: the first the anonymous pointer
+             * from "(*buffer)", the second the finished
+             * pointer-to-array.  That carries no TF_ARRAY of its own -
+             * the array-ness is one level down in the sub - so it
+             * reaches here and, with nothing to catch it, fell to the
+             * plain "nm->type = suffix" at the bottom and was
+             * flattened back to a bare array.  Then the two walks
+             * disagreed and said so.
+             *
+             * Answered here and not by refusing entry above, because
+             * the condition up there is shared with the array of
+             * function pointers - "unsigned (*slist[8])()", which is
+             * what proc.h keeps signal dispositions in - and tightening
+             * it broke that instead.  Doing nothing in the right case
+             * is cheaper than deciding not to arrive.
+             */
+            ;
         } else if (nm->type && (nm->type->flags & TF_FUNC) &&
                    nm->type->sub && (nm->type->sub->flags & TF_POINTER) &&
                    !(nm->type->sub->flags & TF_ARRAY) &&
@@ -1074,10 +1154,53 @@ parseTypeName(void)
         gettoken();
         if (cur.type == STAR) {
             struct type *fn;
+            unsigned long adims[MAXDIM];
+            unsigned char andim;
+            unsigned long av;
+
             gettoken();
             while (cur.type == STAR)    /* (**)() etc. */
                 gettoken();
             expect(RPAR, ER_D_DP);
+            /*
+             * "(*)[n]" - a pointer to an ARRAY, which is the cast the
+             * kernel's main.c needs for its buffer pool:
+             *
+             *  char (*buffer)[512];
+             *  buffer = (char (*)[512]) &blist[nbuf];
+             *
+             * Only "(*)(args)" was read here, so a "[" after the
+             * parentheses was left in the input and the type came out
+             * as a pointer to a FUNCTION returning char.  The caller
+             * then met the brackets it had not consumed and said
+             * "expr paren" against the line the type was declared on,
+             * which is a long way from where the trouble is.
+             *
+             * The dimensions are wrapped from the innermost out, the
+             * same way declare() does it: "[3][4]" is 3 arrays of 4,
+             * so the LAST bracket is the innermost type.
+             */
+            if (cur.type == LBRACK) {
+                andim = 0;
+                while (cur.type == LBRACK) {
+                    gettoken();
+                    if (cur.type == RBRACK) {
+                        av = -1;
+                    } else {
+                        parseConst(RBRACK);
+                        av = constVal;
+                    }
+                    if (andim < MAXDIM)
+                        adims[andim++] = av;
+                    else
+                        gripe(ER_D_AD);
+                    expect(RBRACK, ER_D_AD);
+                }
+                while (andim)
+                    result_type = getType(TF_ARRAY | TF_POINTER,
+                                          result_type, adims[--andim]);
+                return getType(TF_POINTER, result_type, 0);
+            }
             fn = (struct type *)permalloc(sizeof(*fn));
             fn->flags = TF_FUNC;
             fn->sub = result_type;      /* return type */
