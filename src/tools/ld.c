@@ -713,6 +713,8 @@ has_undefined()
  * scan archive member at given file offset to see if it defines
  * any currently undefined symbol. returns 1 if it does.
  */
+int ar_byindex();
+
 int
 ar_needed(fp, base)
 FILE *fp;
@@ -967,6 +969,19 @@ struct infile *f;
         printf("scanning %s archive %s\n", v7 ? "v7" : "ws", name);
     }
 
+    /*
+     * If the archive carries an index, use it and do not walk.
+     *
+     * -1 says there is none - an archive written before ar learned to
+     * make one, or one too big for sixteen bit offsets - and the walk
+     * below is then exactly what it always was.  Nothing needs an
+     * index; it is only faster with one.
+     */
+    count = ar_byindex(name, fp, v7);
+    if (count >= 0)
+        return count;
+    count = 0;
+
     off = 2;  /* skip magic */
     while (1) {
         /* read 14-byte name */
@@ -1016,6 +1031,157 @@ struct infile *f;
     }
 
     /* the handle stays on the infile record; pass 2 still needs it */
+    return count;
+}
+
+/*
+ * Take members named by the archive's symbol index.
+ *
+ * The index is a member called __.SYMDEF and it is the first one -
+ * see the long comment in ar.c for what is in it.  Two bytes of
+ * count, then per symbol two bytes of offset and a NUL terminated
+ * name, the offset naming the member's HEADER so a reader can seek
+ * there and carry on as though it had walked to it.
+ *
+ * What this replaces is ar_needed(), which opens every member in the
+ * archive and reads its whole symbol table to ask one question.  With
+ * an index the question is asked of one member's worth of bytes read
+ * once, and the members that are not wanted are never touched.
+ *
+ * Returns the number of members taken, or -1 for "no index here",
+ * which is not an error: an archive from before this existed, or one
+ * too big to index, is read the old way by the caller.
+ *
+ * The pass repeats while it keeps taking, for the same reason the
+ * caller's loop does: a member pulled in can want something defined
+ * by a member EARLIER in the index, which this pass has already gone
+ * by.  Each repeat costs a walk of the index and no file reads at
+ * all, so draining an archive this way is cheap where draining it by
+ * ar_needed() is what made the linker slow.
+ */
+int
+ar_byindex(name, fp, v7)
+char *name;
+FILE *fp;
+int v7;
+{
+    unsigned char hdr[26];
+    char membername[16];
+    long idxbase, idxend, pos;
+    long base;
+    unsigned short nsym, i;
+    unsigned short memboff;
+    char symname[64];
+    int j, c, count, added;
+
+    if (fseek(fp, 2L, SEEK_SET) != 0)
+        return -1;
+    if (fread(membername, 1, 14, fp) != 14)
+        return -1;
+    membername[14] = '\0';
+    if (strcmp(membername, "__.SYMDEF") != 0)
+        return -1;
+
+    /* the index member's own length, per format */
+    if (v7) {
+        if (fread(hdr, 1, 12, fp) != 12)
+            return -1;
+        /*
+         * A v7 size is four bytes and this one cannot need them: ar
+         * refuses to write an index for an archive that will not fit
+         * sixteen bit offsets, so anything with the high half set is
+         * not an index of ours and is left to the walk.
+         */
+        if (hdr[V7_SIZEOFF + 2] || hdr[V7_SIZEOFF + 3])
+            return -1;
+        idxend = (long)(hdr[V7_SIZEOFF] & 0xff)
+               | ((long)(hdr[V7_SIZEOFF + 1] & 0xff) << 8);
+        idxbase = 2 + V7_HDRSIZ;
+    } else {
+        if (fread(hdr, 1, 2, fp) != 2)
+            return -1;
+        idxend = hdr[0] | (hdr[1] << 8);
+        idxbase = 2 + 16;
+    }
+    if (idxend < 2)
+        return -1;
+    idxend += idxbase;
+
+    /*
+     * Read from the file rather than into a buffer.
+     *
+     * The index is a few kilobytes - libc's is 253 symbols - and this
+     * linker has sixty-four of them for everything.  Buffering it
+     * would cost that much for as long as the archive is being
+     * scanned, and for nothing: the passes below are few, stdio is
+     * already buffering the reads, and the walk this replaces read
+     * every member of the archive rather than every byte of one.
+     */
+    count = 0;
+    do {
+        added = 0;
+        if (fseek(fp, idxbase, SEEK_SET) != 0)
+            break;
+        if (fread(hdr, 1, 2, fp) != 2)
+            break;
+        nsym = hdr[0] | (hdr[1] << 8);
+
+        for (i = 0; i < nsym; i++) {
+            if (ftell(fp) >= idxend)
+                break;
+            if (fread(hdr, 1, 2, fp) != 2)
+                break;
+            memboff = hdr[0] | (hdr[1] << 8);
+            for (j = 0; (c = getc(fp)) != EOF && c; ) {
+                if (j < (int)sizeof(symname) - 1)
+                    symname[j++] = c;
+            }
+            symname[j] = '\0';
+            if (c == EOF)
+                break;
+
+            if (!is_undefined(symname))
+                continue;
+
+            /*
+             * Wanted.  The place in the index has to be kept: the
+             * member is read through the same handle, and the scan
+             * carries on from here afterwards.
+             */
+            pos = ftell(fp);
+
+            if (fseek(fp, (long)memboff, SEEK_SET) != 0)
+                break;
+            if (fread(membername, 1, 14, fp) != 14)
+                break;
+            membername[14] = '\0';
+            /*
+             * The header is read to be sure it is there, not to learn
+             * the length: read_ar_obj() works from the base and the
+             * object's own header says how big it is.  A walk needs
+             * the length to find the NEXT member; an index does not.
+             */
+            if (v7) {
+                if (fread(hdr, 1, 12, fp) != 12)
+                    break;
+                base = (long)memboff + V7_HDRSIZ;
+            } else {
+                if (fread(hdr, 1, 2, fp) != 2)
+                    break;
+                base = (long)memboff + 16;
+            }
+
+            if (verbose)
+                printf("including %s(%s) [index]\n", name, membername);
+            read_ar_obj(name, fp, base, membername);
+            count++;
+            added++;
+
+            if (fseek(fp, pos, SEEK_SET) != 0)
+                break;
+        }
+    } while (added);
+
     return count;
 }
 

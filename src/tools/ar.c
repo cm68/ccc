@@ -50,7 +50,7 @@ struct	ar_hdr	arbuf;
 #define	OODD	4
 #define	HEAD	8
 
-char	*man	=	{ "mrxtdpq" };
+char	*man	=	{ "mrxtdpqs" };
 char	*opt	=	{ "uvnbail" };
 
 int	signum[] = {SIGHUP, SIGINT, SIGQUIT, 0};
@@ -63,6 +63,7 @@ int	tcmd();
 int	pcmd();
 int	mcmd();
 int	qcmd();
+int	scmd();
 int	(*comfun)();
 char	flg[26];
 char	**namv;
@@ -158,6 +159,9 @@ char *argv[];
 
 	case 'q':
 		setcom(qcmd);
+		continue;
+	case 's':
+		setcom(scmd);
 		continue;
 
 	default:
@@ -394,6 +398,50 @@ qcmd()
  */
 #define	AR_HDRSIZ	26
 
+/*
+ * The symbol index, which is what ranlib(1) makes and what "ar s"
+ * makes here.
+ *
+ * It is an ordinary member and it is always the first one, named
+ * __.SYMDEF as v7 names it.  A linker that does not know about it
+ * reads it as a member whose contents are not an object, skips it,
+ * and finds everything else where it expects; that is the whole
+ * reason for putting the index IN the archive rather than beside it.
+ *
+ * The contents are ours, not v7's.  v7 writes pairs of longs - an
+ * offset and an index into a string table - which costs eight bytes a
+ * symbol and needs long arithmetic to walk.  This is a sixteen bit
+ * machine and the archive that needs indexing most is 36K, so:
+ *
+ *	2 bytes		count of entries
+ *	per entry:
+ *	  2 bytes	offset of the member's HEADER from byte 0
+ *	  n bytes	the symbol's name, NUL terminated
+ *
+ * Four bytes plus the name, walked with a pointer and no arithmetic
+ * wider than the machine.  The offset points at the header and not at
+ * the object inside it, so a reader seeks there and carries on
+ * exactly as it would have done had it walked the archive itself.
+ *
+ * Sixteen bits caps a usable archive at 64K.  If the result would not
+ * fit, no index is written at all and the archive stays correct - a
+ * linker falls back to reading every member, which is what it did
+ * before there were indexes.  Being slow is a fair price; being wrong
+ * is not.
+ */
+#define	SYMDEF	"__.SYMDEF"
+#define	ARMAXOFF 65535L
+
+/*
+ * Two things out of the object format, spelled here rather than by
+ * including wsobj.h: that header is the linker's and brings a great
+ * deal else with it, and these are the only two an archiver needs to
+ * know to tell an object from anything else in the archive.  They are
+ * MAGIC and CONF_SYMASK there, and must agree.
+ */
+#define	OBJMAGIC	0x99
+#define	CONF_SYMASK	0x07
+
 putfield(p, v, n)
 char *p;
 long v;
@@ -568,6 +616,319 @@ morefil()
 	return(n);
 }
 
+/*
+ * Read one little endian word out of a buffer.  The object header and
+ * its symbol table are all sixteen bit fields; getfield() beside this
+ * does the same for the archive header's own, which are four byte and
+ * signed, so they do not serve for each other.
+ */
+arword(p)
+char *p;
+{
+	return ((p[0] & 0xff) | ((p[1] & 0xff) << 8));
+}
+
+/*
+ * Walk one member's symbol table, calling back for each DEFINED
+ * GLOBAL.  Returns 0 if the member is not an object at all, which is
+ * how __.SYMDEF itself and anything else in the archive is passed
+ * over.
+ *
+ * The layout is the one ld reads: a sixteen byte header, then text,
+ * then data, then the symbol table.  An entry is a two byte value, a
+ * type byte and the name, and the name's length comes out of the
+ * config byte, so the table's stride is per object and not a
+ * constant.  A symbol counts when it is both defined - type bits 0-2
+ * naming a segment rather than nothing - and global.
+ */
+arsyms(fd, base, size, fn, arg)
+long base, size;
+int (*fn)();
+char *arg;
+{
+	char hdr[16];
+	char ent[20];
+	int symlen, stride, nsym, i;
+	long symtab, text, data, off;
+
+	if (size < 16L)
+		return (0);
+	if (lseek(fd, base, 0) < 0)
+		return (0);
+	if (read(fd, hdr, 16) != 16)
+		return (0);
+	if ((hdr[0] & 0xff) != OBJMAGIC)
+		return (0);
+
+	symlen = (hdr[1] & CONF_SYMASK) * 2 + 1;
+	stride = symlen + 3;
+	symtab = arword(&hdr[2]) & 0xffffL;
+	text = arword(&hdr[4]) & 0xffffL;
+	data = arword(&hdr[6]) & 0xffffL;
+	nsym = symtab / stride;
+	off = base + 16L + text + data;
+
+	if (stride > sizeof(ent) - 1)
+		return (0);		/* a symlen this file cannot hold */
+
+	for (i = 0; i < nsym; i++) {
+		if (lseek(fd, off, 0) < 0)
+			return (0);
+		if (read(fd, ent, stride) != stride)
+			return (0);
+		off += stride;
+		/*
+		 * bit 2 says defined, bit 3 says global.  ld spells the
+		 * first as "the segment is not SEG_EXT" and arrives at
+		 * the same place.
+		 */
+		if ((ent[2] & 0x04) && (ent[2] & 0x08)) {
+			ent[3 + symlen] = '\0';
+			(*fn)(arg, &ent[3]);
+		}
+	}
+	return (1);
+}
+
+/*
+ * The two callbacks arsyms() drives, and the state they fill.
+ *
+ * Two passes over the archive: the first only counts, so that the
+ * exact amount of memory can be asked for rather than a limit
+ * invented; the second writes the names down.  A librarian on a
+ * sixty-four kilobyte machine cannot afford a table sized for the
+ * worst archive anyone might ever build.
+ */
+int	rlnsym;			/* symbols seen */
+long	rlnamsz;		/* bytes their names take, NULs included */
+char	*rlnames;		/* the names, end to end */
+char	*rlnp;			/* fills rlnames on the second pass */
+int	*rlmemb;		/* which member each symbol came from */
+int	rlmi;			/* the member being scanned */
+
+/*
+ * "ar s archive" - build the index and nothing else, which is what
+ * ranlib(1) is.  The other commands do it for themselves at the end,
+ * so this is for an archive that arrived from somewhere that does
+ * not, and for putting one back after something has been done to it
+ * by hand.
+ */
+scmd()
+{
+	ranlib();
+}
+
+rlcount(arg, name)
+char *arg, *name;
+{
+	rlnsym++;
+	rlnamsz += strlen(name) + 1;
+}
+
+rlgather(arg, name)
+char *arg, *name;
+{
+	rlmemb[rlnsym] = rlmi;
+	strcpy(rlnp, name);
+	rlnp += strlen(name) + 1;
+	rlnsym++;
+}
+
+/*
+ * Build the symbol index: ranlib, and "ar s".
+ *
+ * Runs over the FINISHED archive rather than being woven into the
+ * commands that write it, which is what ranlib has always been and
+ * what keeps r, d, m and q from having to know anything about it.
+ * They rebuild the archive; this rebuilds the index over the top.
+ *
+ * Three walks.  One to count the symbols and the members, one to
+ * collect the names, and one to copy the archive out with the index
+ * in front.  The offsets cannot be known until the index's own size
+ * is, since it sits at the front and moves everything behind it.
+ */
+ranlib()
+{
+	int fd, ofd, i, n, nmemb;
+	long off, size, idxsz, base;
+	long *msize;		/* each member, header and data and pad */
+	long *moff;		/* and where it lands in the new archive */
+	/*
+	 * Its own template.  mktemp() substitutes IN PLACE, so the one
+	 * init() used has had its XXXXXX eaten by the time a command
+	 * that rebuilds the archive gets here, and asking again gives
+	 * back the name already in use - "cannot create temp file",
+	 * from a librarian that had just written the archive
+	 * successfully.
+	 */
+	char tmpl[16];
+	char *tname;
+	char hb[AR_HDRSIZ];
+
+	if ((fd = open(arnam, 0)) < 0) {
+		fprintf(stderr, "ar: cannot open %s\n", arnam);
+		return;
+	}
+	if (getmag(fd) != ARMAG) {
+		fprintf(stderr, "ar: %s not in archive format\n", arnam);
+		close(fd);
+		return;
+	}
+
+	/*
+	 * Walk one: how many members, how many symbols, how long are
+	 * the names.  An existing __.SYMDEF is passed over here and
+	 * never copied, so running this twice does not stack indexes.
+	 */
+	nmemb = 0;
+	rlnsym = 0;
+	rlnamsz = 0;
+	off = 2;
+	while (lseek(fd, off, 0) >= 0 && gethdr(fd) == AR_HDRSIZ) {
+		size = arbuf.ar_size;
+		base = off + AR_HDRSIZ;
+		if (strncmp(arbuf.ar_name, SYMDEF, 14) != 0) {
+			nmemb++;
+			arsyms(fd, base, size, rlcount, (char *)0);
+		}
+		off = base + size + (size & 1);
+	}
+	if (nmemb == 0) {
+		close(fd);
+		return;
+	}
+
+	idxsz = 2 + (long)rlnsym * 2 + rlnamsz;
+
+	msize = (long *)malloc((nmemb + 1) * sizeof(long));
+	moff = (long *)malloc((nmemb + 1) * sizeof(long));
+	rlnames = malloc((int)rlnamsz + 1);
+	rlmemb = (int *)malloc((rlnsym + 1) * sizeof(int));
+	if (!msize || !moff || !rlnames || !rlmemb) {
+		fprintf(stderr, "ar: out of memory for the index\n");
+		close(fd);
+		return;
+	}
+
+	/*
+	 * Walk two: the names, and each member's size, and from those
+	 * the offset it will have once the index is in front of it.
+	 */
+	rlnp = rlnames;
+	rlnsym = 0;
+	rlmi = 0;
+	off = 2;
+	base = 2 + AR_HDRSIZ + idxsz + (idxsz & 1);
+	lseek(fd, 2L, 0);
+	while (lseek(fd, off, 0) >= 0 && gethdr(fd) == AR_HDRSIZ) {
+		size = arbuf.ar_size;
+		if (strncmp(arbuf.ar_name, SYMDEF, 14) != 0) {
+			msize[rlmi] = AR_HDRSIZ + size + (size & 1);
+			moff[rlmi] = base;
+			base += msize[rlmi];
+			arsyms(fd, off + AR_HDRSIZ, size, rlgather, (char *)0);
+			rlmi++;
+		}
+		off += AR_HDRSIZ + size + (size & 1);
+	}
+
+	/*
+	 * If the finished archive would not fit in sixteen bits there
+	 * is no index to be had.  Say so once and leave the archive
+	 * exactly as it was: correct, and read the slow way.
+	 */
+	if (base > ARMAXOFF) {
+		fprintf(stderr,
+		    "ar: %s is %ld bytes, too big to index; none written\n",
+		    arnam, base);
+		close(fd);
+		return;
+	}
+
+	/*
+	 * Walk three: out it goes, index first.
+	 */
+	strcpy(tmpl, tmpltnam[0] == '/' ? "/tmp/sXXXXXX" : "sXXXXXX");
+	tname = mktemp(tmpl);
+	close(creat(tname, 0600));
+	if ((ofd = open(tname, 2)) < 0) {
+		fprintf(stderr, "ar: cannot create temp file\n");
+		close(fd);
+		return;
+	}
+	putmag(ofd, ARMAG);
+
+	for (i = 0; i < 14; i++)
+		arbuf.ar_name[i] = i < strlen(SYMDEF) ? SYMDEF[i] : '\0';
+	arbuf.ar_date = 0;
+	arbuf.ar_uid = 0;
+	arbuf.ar_gid = 0;
+	arbuf.ar_mode = 0444;
+	arbuf.ar_size = idxsz;
+	puthdr(ofd);
+
+	hb[0] = rlnsym & 0xff;
+	hb[1] = (rlnsym >> 8) & 0xff;
+	if (write(ofd, hb, 2) != 2)
+		wrerr();
+	rlnp = rlnames;
+	for (n = 0; n < rlnsym; n++) {
+		hb[0] = moff[rlmemb[n]] & 0xff;
+		hb[1] = (moff[rlmemb[n]] >> 8) & 0xff;
+		if (write(ofd, hb, 2) != 2)
+			wrerr();
+		i = strlen(rlnp) + 1;
+		if (write(ofd, rlnp, i) != i)
+			wrerr();
+		rlnp += i;
+	}
+	if (idxsz & 1) {
+		hb[0] = '\0';
+		if (write(ofd, hb, 1) != 1)
+			wrerr();
+	}
+
+	/* and the members, in the order they were already in */
+	off = 2;
+	lseek(fd, 2L, 0);
+	while (lseek(fd, off, 0) >= 0 && gethdr(fd) == AR_HDRSIZ) {
+		size = arbuf.ar_size;
+		if (strncmp(arbuf.ar_name, SYMDEF, 14) != 0) {
+			puthdr(ofd);
+			lseek(fd, off + AR_HDRSIZ, 0);
+			for (size += (size & 1); size > 0; size -= n) {
+				n = size > 512 ? 512 : size;
+				if (read(fd, buf, n) != n)
+					break;
+				if (write(ofd, buf, n) != n)
+					wrerr();
+			}
+			size = arbuf.ar_size;
+		}
+		off += AR_HDRSIZ + size + (size & 1);
+	}
+	close(fd);
+
+	/* over the top of the original */
+	if ((fd = creat(arnam, 0666)) < 0) {
+		fprintf(stderr, "ar: cannot rewrite %s\n", arnam);
+		close(ofd);
+		unlink(tname);
+		return;
+	}
+	lseek(ofd, 0L, 0);
+	while ((n = read(ofd, buf, 512)) > 0)
+		if (write(fd, buf, n) != n)
+			wrerr();
+	close(fd);
+	close(ofd);
+	unlink(tname);
+
+	if (flg['v'-'a'])
+		fprintf(stderr, "ar: %d symbols in %d members\n",
+		    rlnsym, nmemb);
+}
+
 cleanup()
 {
 	register i, f;
@@ -586,6 +947,13 @@ cleanup()
 		movefil(f);
 	}
 	install();
+	/*
+	 * The archive has just been rewritten, so whatever index it had
+	 * describes the old one.  Rebuild it here rather than leaving
+	 * it to be remembered: an index that is WRONG is worse than
+	 * none, because a linker believes it.
+	 */
+	ranlib();
 }
 
 install()
