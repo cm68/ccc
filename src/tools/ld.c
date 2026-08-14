@@ -709,66 +709,7 @@ has_undefined()
     return 0;
 }
 
-/*
- * scan archive member at given file offset to see if it defines
- * any currently undefined symbol. returns 1 if it does.
- */
 int ar_byindex();
-
-int
-ar_needed(fp, base)
-FILE *fp;
-long base;
-{
-    unsigned char magic, config;
-    int symlen;
-    unsigned short symtab_size, text_size, data_size;
-    unsigned char type, seg;
-    char symname[16];
-    int num_syms, i;
-    int needed = 0;
-
-    fseek(fp, (long)(base), SEEK_SET);
-
-    magic = read_byte(fp);
-    if (magic != MAGIC)
-        return 0;
-
-    config = read_byte(fp);
-    symlen = (config & CONF_SYMASK) * 2 + 1;
-    symtab_size = read_word(fp);
-    text_size = read_word(fp);
-    data_size = read_word(fp);
-    read_word(fp);  /* bss */
-    read_word(fp);  /* heap */
-    read_word(fp);  /* text_off */
-    read_word(fp);  /* data_off */
-
-    num_syms = symtab_size / (symlen + 3);
-
-    /* seek to symbol table */
-    fseek(fp, (long)(base + 16 + text_size + data_size), SEEK_SET);
-
-    /* scan symbols looking for definitions of undefined symbols */
-    for (i = 0; i < num_syms; i++) {
-        read_word(fp);  /* skip value */
-        type = read_byte(fp);
-        fread(symname, 1, symlen, fp);
-        symname[symlen] = '\0';
-        seg = decode_seg(type);
-
-        /* if this is a definition (not external) and we need it */
-        if (seg != SEG_EXT && (type & 0x08) && is_undefined(symname)) {
-            if (verbose) {
-                printf("  %s satisfies %s\n", symname, symname);
-            }
-            needed = 1;
-            /* don't break - continue scanning to report all */
-        }
-    }
-
-    return needed;
-}
 
 /*
  * read object from archive at given offset
@@ -902,22 +843,16 @@ struct infile *f;
     FILE *fp;
     unsigned char buf[2];
     unsigned short magic16;
-    long off;
-    char membername[15];
-    unsigned char hdr[12];
-    unsigned short len;
-    int count = 0;
-    int added;
+    int count;
     int v7;
-    long base;
 
     /*
-     * Once for the whole link.  The rescan loop below calls this again
-     * on every pass, and the members taken out of an archive keep its
-     * handle for pass 2 - so reopening leaked a FILE and its 512 byte
-     * buffer per pass, and _NFILE is twelve.  Linking anything that
-     * needed three passes over libc ran out of files on an archive
-     * that was already open.
+     * Once for the whole link.  The caller's loop can call this again
+     * for circularity between archives, and the members taken out of
+     * an archive keep its handle for pass 2 - so reopening leaked a
+     * FILE and its 512 byte buffer per call, and _NFILE is twelve.
+     * Linking anything that needed three passes over libc ran out of
+     * files on an archive that was already open.
      */
     if (!f->fp) {
         struct infile *o;
@@ -971,86 +906,24 @@ struct infile *f;
     }
 
     /*
-     * If the archive carries an index, use it and do not walk.
+     * EVERY ARCHIVE HAS AN INDEX.  ar writes one whenever it writes an
+     * archive and maintains it through delete, move and quick-append,
+     * and its offsets are three bytes, so there is no size at which it
+     * declines - sixteen megabytes is past anything this machine can
+     * hold, let alone link.
      *
-     * -1 says there is none - an archive written before ar learned to
-     * make one, or one too big for sixteen bit offsets - and the walk
-     * below is then exactly what it always was.  Nothing needs an
-     * index; it is only faster with one.
+     * So an archive without an index is not a slower kind of archive,
+     * it is a broken one, and saying so is better than quietly taking
+     * an hour to do what should take a moment.
+     *
+     * What used to be here was the walk: open every member in turn,
+     * read its whole symbol table, ask whether it defined anything
+     * still wanted, and go round again because a member taken can
+     * want one already passed.  That is gone, and ar_needed with it.
      */
     count = ar_byindex(name, fp, v7);
-    if (count >= 0)
-        return count;
-
-    /*
-     * No index, so walk the members - and walk them again while the
-     * walk keeps taking, for the reason ar_byindex gives above: a
-     * member taken can want something defined by a member EARLIER in
-     * the file, which this pass has already gone by.
-     *
-     * The repeat is what finishes an archive before the caller moves
-     * on to the next one, and finishing it is what makes naming a
-     * library first mean anything.  It used to be the caller's job,
-     * in a loop around this function; both paths drain themselves
-     * now, so the caller has none.
-     *
-     * Unlike the indexed pass, a repeat here costs a full walk of the
-     * members and the reads that go with it.  Every library this
-     * toolchain builds carries an index and never reaches this code;
-     * what does are the archives off the 1.6 disk, which are small.
-     */
-    count = 0;
-    do {
-        added = 0;
-        off = 2;  /* skip magic */
-        while (1) {
-        /* read 14-byte name */
-        fseek(fp, (long)(off), SEEK_SET);
-        if (fread(membername, 1, 14, fp) != 14)
-            break;
-        membername[14] = '\0';
-
-        if (v7) {
-            /*
-             * date, uid, gid, mode, size - and the size is a long, so
-             * it is read as four bytes and not as two.  There is no
-             * end marker: the last member is the one that runs out of
-             * file.
-             */
-            if (fread(hdr, 1, 12, fp) != 12)
-                break;
-            len = (unsigned short)((long)(hdr[V7_SIZEOFF] & 0xff)
-                | ((long)(hdr[V7_SIZEOFF + 1] & 0xff) << 8)
-                | ((long)(hdr[V7_SIZEOFF + 2] & 0xff) << 16)
-                | ((long)(hdr[V7_SIZEOFF + 3] & 0xff) << 24));
-            base = off + V7_HDRSIZ;
-        } else {
-            /* a null name is how a whitesmiths archive ends */
-            if (membername[0] == '\0')
-                break;
-
-            if (fread(buf, 1, 2, fp) != 2)
-                break;
-            len = buf[0] | (buf[1] << 8);
-
-            base = off + 16;  /* object starts after name and length */
-        }
-
-        /* check if this member satisfies any undefined symbol */
-        if (ar_needed(fp, base)) {
-            if (verbose) {
-                printf("including %s(%s)\n", name, membername);
-            }
-            read_ar_obj(name, fp, base, membername);
-            added++;
-        }
-
-        off = base + len;
-        if (v7 && (len & 1))
-            off++;              /* v7 pads a member out to even */
-        }
-        count += added;
-    } while (added > 0 && has_undefined());
+    if (count < 0)
+        error2("no symbol index in", name);
 
     /* the handle stays on the infile record; pass 2 still needs it */
     return count;
