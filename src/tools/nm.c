@@ -1614,13 +1614,19 @@ genUobjSfl(name)
 char *name;
 {
     /*
-     * pc is a LONG.  A section can be the whole of a 64k address
-     * space, and "pc < (int)uobj.textsize" truncates on a z80 - the
-     * kernel's text is 45,313 bytes, which as a signed 16 bit int is
-     * negative, so the loop did not run once and the .text came out
-     * empty while the 11,253 byte .data was fine.
+     * pc is an UNSIGNED SHORT: sixteen bits, which is exactly this
+     * machine's address space, so a section offset cannot be anything
+     * else.
+     *
+     * It was "int", and "pc < (int)uobj.textsize" truncates - the
+     * kernel's text is 45,313 bytes, which as a SIGNED sixteen bit
+     * int is negative, so the loop did not run once and .text came
+     * out empty while the 11,253 byte .data was fine.  Widening to
+     * long fixes that and is the wrong answer: it is four bytes and
+     * every comparison in the disassembler's main loop becomes a
+     * library call on a z80.  Unsigned is the fix; wider is not.
      */
-    long pc;
+    unsigned short pc;
     int i, len, ref_idx;
     struct ureloc *up;
     char nbuf[128];
@@ -1681,7 +1687,7 @@ char *name;
 
         /* pre-pass: disassemble to find all relative jump targets */
         pc = 0;
-        while (pc < (long)uobj.textsize) {
+        while (pc < (unsigned short)uobj.textsize) {
             disasm_pc = -1;
             len = disasm(pc, pc, nbuf);
             pc += len;
@@ -1689,7 +1695,7 @@ char *name;
 
         /* main pass: output with labels */
         pc = 0;
-        while (pc < (long)uobj.textsize) {
+        while (pc < (unsigned short)uobj.textsize) {
             /* check for symbol at this address */
             sym = usym_lookup(pc, USEG_TEXT);
             if (sym) {
@@ -1768,7 +1774,7 @@ char *name;
         fprintf(gfile, "\n\t.data\n");
 
         pc = 0;
-        while (pc < (long)uobj.datasize) {
+        while (pc < (unsigned short)uobj.datasize) {
             /* check for symbol at this address */
             sym = usym_lookup(pc, USEG_DATA);
             if (sym) {
@@ -1821,7 +1827,7 @@ char *name;
                 in_string = 0;
                 line_start = pc;
 
-                while (pc < (long)uobj.datasize && linelen < 60) {
+                while (pc < (unsigned short)uobj.datasize && linelen < 60) {
                     /* check for symbol, data ref, or relocation - must break line */
                     if (pc > line_start && (usym_lookup(pc, USEG_DATA) ||
                                    find_data_ref(pc) >= 0 ||
