@@ -418,22 +418,32 @@ qcmd()
  *
  *	2 bytes		count of entries
  *	per entry:
- *	  2 bytes	offset of the member's HEADER from byte 0
+ *	  3 bytes	offset of the member's HEADER from byte 0
  *	  n bytes	the symbol's name, NUL terminated
  *
- * Four bytes plus the name, walked with a pointer and no arithmetic
- * wider than the machine.  The offset points at the header and not at
- * the object inside it, so a reader seeks there and carries on
+ * Five bytes plus the name.  The offset points at the header and not
+ * at the object inside it, so a reader seeks there and carries on
  * exactly as it would have done had it walked the archive itself.
  *
- * Sixteen bits caps a usable archive at 64K.  If the result would not
- * fit, no index is written at all and the archive stays correct - a
- * linker falls back to reading every member, which is what it did
- * before there were indexes.  Being slow is a fair price; being wrong
- * is not.
+ * THREE bytes and not two.  Two was the first shape of this and it
+ * capped a usable archive at 64K, which was not a comfortable margin:
+ * libc.a was 40K the day it went in, 61 per cent of the way there and
+ * still growing.  Two was chosen to keep the arithmetic inside a
+ * sixteen bit machine's register; three keeps that too - it is a load
+ * and two shifts, no long anywhere - and moves the ceiling to 16M,
+ * which this format will not reach.  It costs one byte a symbol: 253
+ * of them on libc.a, against a limit that stops being thought about.
+ *
+ * Four bytes is what v7 uses and would need long arithmetic on the
+ * side that reads it, which is the machine with the least room for it.
+ *
+ * If an archive somehow passes 16M, no index is written at all and the
+ * archive stays correct - a linker falls back to reading every member,
+ * which is what it did before there were indexes.  Being slow is a
+ * fair price; being wrong is not.
  */
 #define	SYMDEF	"__.SYMDEF"
-#define	ARMAXOFF 65535L
+#define	ARMAXOFF 16777215L
 
 /*
  * Two things out of the object format, spelled here rather than by
@@ -801,7 +811,7 @@ ranlib()
 		return;
 	}
 
-	idxsz = 2 + (long)rlnsym * 2 + rlnamsz;
+	idxsz = 2 + (long)rlnsym * 3 + rlnamsz;
 
 	msize = (long *)malloc((nmemb + 1) * sizeof(long));
 	moff = (long *)malloc((nmemb + 1) * sizeof(long));
@@ -842,7 +852,7 @@ ranlib()
 	 */
 	if (base > ARMAXOFF) {
 		fprintf(stderr,
-		    "ar: %s is %ld bytes, too big to index; none written\n",
+		    "ar: %s is %ld bytes, past 16M; no index written\n",
 		    arnam, base);
 		close(fd);
 		return;
@@ -890,7 +900,8 @@ ranlib()
 	for (n = 0; n < rlnsym; n++) {
 		hb[0] = moff[rlmemb[n]] & 0xff;
 		hb[1] = (moff[rlmemb[n]] >> 8) & 0xff;
-		if (write(ofd, hb, 2) != 2)
+		hb[2] = (moff[rlmemb[n]] >> 16) & 0xff;
+		if (write(ofd, hb, 3) != 3)
 			wrerr();
 		i = strlen(rlnp) + 1;
 		if (write(ofd, rlnp, i) != i)

@@ -1061,9 +1061,14 @@ struct infile *f;
  *
  * The index is a member called __.SYMDEF and it is the first one -
  * see the long comment in ar.c for what is in it.  Two bytes of
- * count, then per symbol two bytes of offset and a NUL terminated
+ * count, then per symbol THREE bytes of offset and a NUL terminated
  * name, the offset naming the member's HEADER so a reader can seek
  * there and carry on as though it had walked to it.
+ *
+ * Three because two capped a usable archive at 64K and libc.a was
+ * already 40K.  Three reaches 16M and still costs no long arithmetic
+ * to assemble - a load and two shifts - which is the whole reason
+ * this format is not v7's four.
  *
  * What this replaces is ar_needed(), which opens every member in the
  * archive and reads its whole symbol table to ask one question.  With
@@ -1092,7 +1097,7 @@ int v7;
     long idxbase, idxend, pos;
     long base;
     unsigned short nsym, i;
-    unsigned short memboff;
+    long memboff;
     char symname[64];
     int j, c, count, added;
 
@@ -1109,15 +1114,14 @@ int v7;
         if (fread(hdr, 1, 12, fp) != 12)
             return -1;
         /*
-         * A v7 size is four bytes and this one cannot need them: ar
-         * refuses to write an index for an archive that will not fit
-         * sixteen bit offsets, so anything with the high half set is
-         * not an index of ours and is left to the walk.
+         * Three bytes of the v7 size, which is four.  An index for a
+         * 16M archive - the most ar will write one for - cannot need
+         * the fourth, and reading three keeps this off long
+         * arithmetic it does not need.
          */
-        if (hdr[V7_SIZEOFF + 2] || hdr[V7_SIZEOFF + 3])
-            return -1;
         idxend = (long)(hdr[V7_SIZEOFF] & 0xff)
-               | ((long)(hdr[V7_SIZEOFF + 1] & 0xff) << 8);
+               | ((long)(hdr[V7_SIZEOFF + 1] & 0xff) << 8)
+               | ((long)(hdr[V7_SIZEOFF + 2] & 0xff) << 16);
         idxbase = 2 + V7_HDRSIZ;
     } else {
         if (fread(hdr, 1, 2, fp) != 2)
@@ -1151,9 +1155,11 @@ int v7;
         for (i = 0; i < nsym; i++) {
             if (ftell(fp) >= idxend)
                 break;
-            if (fread(hdr, 1, 2, fp) != 2)
+            if (fread(hdr, 1, 3, fp) != 3)
                 break;
-            memboff = hdr[0] | (hdr[1] << 8);
+            memboff = (long)(hdr[0] & 0xff)
+                    | ((long)(hdr[1] & 0xff) << 8)
+                    | ((long)(hdr[2] & 0xff) << 16);
             for (j = 0; (c = getc(fp)) != EOF && c; ) {
                 if (j < (int)sizeof(symname) - 1)
                     symname[j++] = c;
@@ -1172,7 +1178,7 @@ int v7;
              */
             pos = ftell(fp);
 
-            if (fseek(fp, (long)memboff, SEEK_SET) != 0)
+            if (fseek(fp, memboff, SEEK_SET) != 0)
                 break;
             if (fread(membername, 1, 14, fp) != 14)
                 break;
@@ -1186,11 +1192,11 @@ int v7;
             if (v7) {
                 if (fread(hdr, 1, 12, fp) != 12)
                     break;
-                base = (long)memboff + V7_HDRSIZ;
+                base = memboff + V7_HDRSIZ;
             } else {
                 if (fread(hdr, 1, 2, fp) != 2)
                     break;
-                base = (long)memboff + 16;
+                base = memboff + 16;
             }
 
             if (verbose)
