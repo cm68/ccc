@@ -18,7 +18,9 @@
 #endif
 
 FILE *fp;
-unsigned char *filebuf;
+unsigned char *filebuf;         /* only ht_report still indexes this */
+unsigned char get_byte();
+int dbyte();
 long filesize;
 int bflag;      /* -b: hex dump segments */
 int dflag;      /* -d: disassemble */
@@ -242,6 +244,8 @@ struct uobj {
     unsigned char *text;
     unsigned long textsize;
     unsigned long textbase;     /* original base address for .org */
+    long textoff;               /* where the text is in the file */
+    long dataoff;               /* and the data - see ws_load_uobj */
     unsigned char *data;
     unsigned long datasize;
     unsigned long database;     /* original base address for .org */
@@ -620,6 +624,40 @@ unsigned short target;
 }
 
 /*
+ * Where disasm gets its bytes.
+ *
+ * It never looks further than three past the one it is on, so it does
+ * not need the code in memory - it needs a byte at a time, in order.
+ * Point it at a buffer when there is one and at the file otherwise,
+ * and a text section of any size costs only the reading.
+ */
+unsigned char *dis_buf;         /* a resident image, if there is one */
+long dis_base;                  /* else the file offset of offset 0 */
+long dis_limit;                 /* and how far the section runs */
+
+int
+dbyte(a)
+long a;
+{
+    /*
+     * Past the end of the section is nothing.
+     *
+     * disasm reads up to three bytes beyond the instruction it is on,
+     * so at the end of a section it reads past it.  That was harmless
+     * while the section was its own allocation - it read whatever was
+     * after it, which was reliably zero - and streaming makes it read
+     * the next member of the archive instead, which is how it turned
+     * up.  The answer is the same either way for the section proper;
+     * this only decides what a truncated last instruction shows.
+     */
+    if (dis_limit && a >= dis_limit)
+        return 0;
+    if (dis_buf)
+        return dis_buf[a];
+    return get_byte(dis_base + a);
+}
+
+/*
  * disassemble one instruction, return length
  * for -g mode, operand_pc is the PC for relocation lookup
  */
@@ -637,11 +675,11 @@ char *buf;
     int r, b;
     static char *rot[] = { "rlc", "rrc", "rl", "rr", "sla", "sra", "sll", "srl" };
 
-    op = filebuf[addr];
+    op = dbyte(addr);
 
     /* CB prefix - bit operations */
     if (op == 0xcb) {
-        op2 = filebuf[addr + 1];
+        op2 = dbyte(addr + 1);
         len = 2;
         r = op2 & 7;
         b = (op2 >> 3) & 7;
@@ -659,13 +697,13 @@ char *buf;
 
     /* ED prefix - extended */
     if (op == 0xed) {
-        op2 = filebuf[addr + 1];
+        op2 = dbyte(addr + 1);
         len = 2;
         switch (op2) {
         case 0x40: sprintf(buf, "in b,(c)"); break;
         case 0x41: sprintf(buf, "out (c),b"); break;
         case 0x42: sprintf(buf, "sbc hl,bc"); break;
-        case 0x43: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x43: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld (%s),bc", abuf); break;
         case 0x44: sprintf(buf, "neg"); break;
@@ -675,7 +713,7 @@ char *buf;
         case 0x48: sprintf(buf, "in c,(c)"); break;
         case 0x49: sprintf(buf, "out (c),c"); break;
         case 0x4a: sprintf(buf, "adc hl,bc"); break;
-        case 0x4b: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x4b: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld bc,(%s)", abuf); break;
         case 0x4d: sprintf(buf, "reti"); break;
@@ -683,7 +721,7 @@ char *buf;
         case 0x50: sprintf(buf, "in d,(c)"); break;
         case 0x51: sprintf(buf, "out (c),d"); break;
         case 0x52: sprintf(buf, "sbc hl,de"); break;
-        case 0x53: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x53: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld (%s),de", abuf); break;
         case 0x56: sprintf(buf, "im 1"); break;
@@ -691,7 +729,7 @@ char *buf;
         case 0x58: sprintf(buf, "in e,(c)"); break;
         case 0x59: sprintf(buf, "out (c),e"); break;
         case 0x5a: sprintf(buf, "adc hl,de"); break;
-        case 0x5b: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x5b: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld de,(%s)", abuf); break;
         case 0x5e: sprintf(buf, "im 2"); break;
@@ -705,13 +743,13 @@ char *buf;
         case 0x6a: sprintf(buf, "adc hl,hl"); break;
         case 0x6f: sprintf(buf, "rld"); break;
         case 0x72: sprintf(buf, "sbc hl,sp"); break;
-        case 0x73: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x73: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld (%s),sp", abuf); break;
         case 0x78: sprintf(buf, "in a,(c)"); break;
         case 0x79: sprintf(buf, "out (c),a"); break;
         case 0x7a: sprintf(buf, "adc hl,sp"); break;
-        case 0x7b: nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+        case 0x7b: nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
                    disasm_pc = pc + 2;
                    fmt_addr(abuf, nn); sprintf(buf, "ld sp,(%s)", abuf); break;
         case 0xa0: sprintf(buf, "ldi"); break;
@@ -738,33 +776,33 @@ char *buf;
     /* DD/FD prefix - IX/IY */
     if (op == 0xdd || op == 0xfd) {
         char *ir = (op == 0xdd) ? "ix" : "iy";
-        op2 = filebuf[addr + 1];
+        op2 = dbyte(addr + 1);
         len = 2;
 
         if (op2 == 0x21) {
-            nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+            nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
             disasm_pc = pc + 2;
             fmt_addr(abuf, nn); sprintf(buf, "ld %s,%s", ir, abuf);
         } else if (op2 == 0x22) {
-            nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+            nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
             disasm_pc = pc + 2;
             fmt_addr(abuf, nn); sprintf(buf, "ld (%s),%s", abuf, ir);
         } else if (op2 == 0x23) {
             sprintf(buf, "inc %s", ir);
         } else if (op2 == 0x2a) {
-            nn = filebuf[addr+2] | (filebuf[addr+3]<<8); len=4;
+            nn = dbyte(addr+2) | (dbyte(addr+3)<<8); len=4;
             disasm_pc = pc + 2;
             fmt_addr(abuf, nn); sprintf(buf, "ld %s,(%s)", ir, abuf);
         } else if (op2 == 0x2b) {
             sprintf(buf, "dec %s", ir);
         } else if (op2 == 0x34) {
-            d = filebuf[addr+2]; len=3;
+            d = dbyte(addr+2); len=3;
             sprintf(buf, "inc (%s%+d)", ir, (char)d);
         } else if (op2 == 0x35) {
-            d = filebuf[addr+2]; len=3;
+            d = dbyte(addr+2); len=3;
             sprintf(buf, "dec (%s%+d)", ir, (char)d);
         } else if (op2 == 0x36) {
-            d = filebuf[addr+2]; n = filebuf[addr+3]; len=4;
+            d = dbyte(addr+2); n = dbyte(addr+3); len=4;
             sprintf(buf, "ld (%s%+d),0%02xh", ir, (char)d, n);
         } else if (op2 == 0xe1) {
             sprintf(buf, "pop %s", ir);
@@ -778,22 +816,22 @@ char *buf;
             sprintf(buf, "ld sp,%s", ir);
         } else if ((op2 & 0xc0) == 0x40 && (op2 & 7) == 6) {
             /* ld r,(ix+d) */
-            d = filebuf[addr+2]; len=3;
+            d = dbyte(addr+2); len=3;
             sprintf(buf, "ld %s,(%s%+d)", r8[(op2>>3)&7], ir, (char)d);
         } else if ((op2 & 0xc0) == 0x40 && ((op2>>3) & 7) == 6) {
             /* ld (ix+d),r */
-            d = filebuf[addr+2]; len=3;
+            d = dbyte(addr+2); len=3;
             sprintf(buf, "ld (%s%+d),%s", ir, (char)d, r8[op2&7]);
         } else if ((op2 & 0xc0) == 0x80 && (op2 & 7) == 6) {
             /* alu (ix+d) */
-            d = filebuf[addr+2]; len=3;
+            d = dbyte(addr+2); len=3;
             sprintf(buf, "%s(%s%+d)", alu[(op2>>3)&7], ir, (char)d);
         } else if (op2 == 0xcb) {
             /* DD/FD CB d op */
             int b;
             static char *rot[] = { "rlc", "rrc", "rl", "rr", "sla", "sra", "sll", "srl" };
-            d = filebuf[addr+2];
-            op2 = filebuf[addr+3];
+            d = dbyte(addr+2);
+            op2 = dbyte(addr+3);
             len = 4;
             b = (op2 >> 3) & 7;
             if (op2 < 0x40) {
@@ -814,7 +852,7 @@ char *buf;
     /* main opcodes */
     switch (op) {
     case 0x00: sprintf(buf, "nop"); break;
-    case 0x01: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x01: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld bc,%s", abuf); break;
     case 0x02: sprintf(buf, "ld (bc),a"); break;
@@ -822,7 +860,7 @@ char *buf;
     case 0x04: sprintf(buf, "inc b"); break;
     case 0x05: sprintf(buf, "dec b"); break;
     case 0x06: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld b,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld b,%s", abuf); len=2; break;
     case 0x07: sprintf(buf, "rlca"); break;
     case 0x08: sprintf(buf, "ex af,af'"); break;
     case 0x09: sprintf(buf, "add hl,bc"); break;
@@ -831,13 +869,13 @@ char *buf;
     case 0x0c: sprintf(buf, "inc c"); break;
     case 0x0d: sprintf(buf, "dec c"); break;
     case 0x0e: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld c,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld c,%s", abuf); len=2; break;
     case 0x0f: sprintf(buf, "rrca"); break;
 
-    case 0x10: rel = filebuf[addr+1]; len=2;
+    case 0x10: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "djnz %s", abuf); break;
-    case 0x11: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x11: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld de,%s", abuf); break;
     case 0x12: sprintf(buf, "ld (de),a"); break;
@@ -845,9 +883,9 @@ char *buf;
     case 0x14: sprintf(buf, "inc d"); break;
     case 0x15: sprintf(buf, "dec d"); break;
     case 0x16: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld d,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld d,%s", abuf); len=2; break;
     case 0x17: sprintf(buf, "rla"); break;
-    case 0x18: rel = filebuf[addr+1]; len=2;
+    case 0x18: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "jr %s", abuf); break;
     case 0x19: sprintf(buf, "add hl,de"); break;
@@ -856,175 +894,175 @@ char *buf;
     case 0x1c: sprintf(buf, "inc e"); break;
     case 0x1d: sprintf(buf, "dec e"); break;
     case 0x1e: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld e,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld e,%s", abuf); len=2; break;
     case 0x1f: sprintf(buf, "rra"); break;
 
-    case 0x20: rel = filebuf[addr+1]; len=2;
+    case 0x20: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "jr nz,%s", abuf); break;
-    case 0x21: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x21: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld hl,%s", abuf); break;
-    case 0x22: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x22: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld (%s),hl", abuf); break;
     case 0x23: sprintf(buf, "inc hl"); break;
     case 0x24: sprintf(buf, "inc h"); break;
     case 0x25: sprintf(buf, "dec h"); break;
     case 0x26: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld h,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld h,%s", abuf); len=2; break;
     case 0x27: sprintf(buf, "daa"); break;
-    case 0x28: rel = filebuf[addr+1]; len=2;
+    case 0x28: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "jr z,%s", abuf); break;
     case 0x29: sprintf(buf, "add hl,hl"); break;
-    case 0x2a: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x2a: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld hl,(%s)", abuf); break;
     case 0x2b: sprintf(buf, "dec hl"); break;
     case 0x2c: sprintf(buf, "inc l"); break;
     case 0x2d: sprintf(buf, "dec l"); break;
     case 0x2e: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld l,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld l,%s", abuf); len=2; break;
     case 0x2f: sprintf(buf, "cpl"); break;
 
-    case 0x30: rel = filebuf[addr+1]; len=2;
+    case 0x30: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "jr nc,%s", abuf); break;
-    case 0x31: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x31: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld sp,%s", abuf); break;
-    case 0x32: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x32: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld (%s),a", abuf); break;
     case 0x33: sprintf(buf, "inc sp"); break;
     case 0x34: sprintf(buf, "inc (hl)"); break;
     case 0x35: sprintf(buf, "dec (hl)"); break;
     case 0x36: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld (hl),%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld (hl),%s", abuf); len=2; break;
     case 0x37: sprintf(buf, "scf"); break;
-    case 0x38: rel = filebuf[addr+1]; len=2;
+    case 0x38: rel = dbyte(addr+1); len=2;
                nn = pc + 2 + rel;
                fmt_rel_addr(abuf, nn); sprintf(buf, "jr c,%s", abuf); break;
     case 0x39: sprintf(buf, "add hl,sp"); break;
-    case 0x3a: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0x3a: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld a,(%s)", abuf); break;
     case 0x3b: sprintf(buf, "dec sp"); break;
     case 0x3c: sprintf(buf, "inc a"); break;
     case 0x3d: sprintf(buf, "dec a"); break;
     case 0x3e: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld a,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "ld a,%s", abuf); len=2; break;
     case 0x3f: sprintf(buf, "ccf"); break;
 
     case 0x76: sprintf(buf, "halt"); break;
 
     case 0xc0: sprintf(buf, "ret nz"); break;
     case 0xc1: sprintf(buf, "pop bc"); break;
-    case 0xc2: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xc2: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp nz,%s", abuf); break;
-    case 0xc3: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xc3: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp %s", abuf); break;
-    case 0xc4: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xc4: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call nz,%s", abuf); break;
     case 0xc5: sprintf(buf, "push bc"); break;
     case 0xc6: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "add a,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "add a,%s", abuf); len=2; break;
     case 0xc7: sprintf(buf, "rst 00h"); break;
     case 0xc8: sprintf(buf, "ret z"); break;
     case 0xc9: sprintf(buf, "ret"); break;
-    case 0xca: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xca: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp z,%s", abuf); break;
-    case 0xcc: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xcc: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call z,%s", abuf); break;
-    case 0xcd: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xcd: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call %s", abuf); break;
     case 0xce: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "adc a,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "adc a,%s", abuf); len=2; break;
     case 0xcf: sprintf(buf, "rst 08h"); break;
 
     case 0xd0: sprintf(buf, "ret nc"); break;
     case 0xd1: sprintf(buf, "pop de"); break;
-    case 0xd2: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xd2: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp nc,%s", abuf); break;
-    case 0xd3: sprintf(buf, "out (0%02xh),a", filebuf[addr+1]); len=2; break;
-    case 0xd4: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xd3: sprintf(buf, "out (0%02xh),a", dbyte(addr+1)); len=2; break;
+    case 0xd4: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call nc,%s", abuf); break;
     case 0xd5: sprintf(buf, "push de"); break;
     case 0xd6: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "sub %s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "sub %s", abuf); len=2; break;
     case 0xd7: sprintf(buf, "rst 10h"); break;
     case 0xd8: sprintf(buf, "ret c"); break;
     case 0xd9: sprintf(buf, "exx"); break;
-    case 0xda: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xda: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp c,%s", abuf); break;
-    case 0xdb: sprintf(buf, "in a,(0%02xh)", filebuf[addr+1]); len=2; break;
-    case 0xdc: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xdb: sprintf(buf, "in a,(0%02xh)", dbyte(addr+1)); len=2; break;
+    case 0xdc: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call c,%s", abuf); break;
     case 0xde: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "sbc a,%s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "sbc a,%s", abuf); len=2; break;
     case 0xdf: sprintf(buf, "rst 18h"); break;
 
     case 0xe0: sprintf(buf, "ret po"); break;
     case 0xe1: sprintf(buf, "pop hl"); break;
-    case 0xe2: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xe2: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp po,%s", abuf); break;
     case 0xe3: sprintf(buf, "ex (sp),hl"); break;
-    case 0xe4: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xe4: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call po,%s", abuf); break;
     case 0xe5: sprintf(buf, "push hl"); break;
     case 0xe6: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "and %s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "and %s", abuf); len=2; break;
     case 0xe7: sprintf(buf, "rst 20h"); break;
     case 0xe8: sprintf(buf, "ret pe"); break;
     case 0xe9: sprintf(buf, "jp (hl)"); break;
-    case 0xea: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xea: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp pe,%s", abuf); break;
     case 0xeb: sprintf(buf, "ex de,hl"); break;
-    case 0xec: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xec: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call pe,%s", abuf); break;
     case 0xee: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "xor %s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "xor %s", abuf); len=2; break;
     case 0xef: sprintf(buf, "rst 28h"); break;
 
     case 0xf0: sprintf(buf, "ret p"); break;
     case 0xf1: sprintf(buf, "pop af"); break;
-    case 0xf2: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xf2: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp p,%s", abuf); break;
     case 0xf3: sprintf(buf, "di"); break;
-    case 0xf4: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xf4: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call p,%s", abuf); break;
     case 0xf5: sprintf(buf, "push af"); break;
     case 0xf6: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "or %s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "or %s", abuf); len=2; break;
     case 0xf7: sprintf(buf, "rst 30h"); break;
     case 0xf8: sprintf(buf, "ret m"); break;
     case 0xf9: sprintf(buf, "ld sp,hl"); break;
-    case 0xfa: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xfa: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "jp m,%s", abuf); break;
     case 0xfb: sprintf(buf, "ei"); break;
-    case 0xfc: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
+    case 0xfc: nn = dbyte(addr+1) | (dbyte(addr+2)<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call m,%s", abuf); break;
     case 0xfe: disasm_pc = pc + 1;
-               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "cp %s", abuf); len=2; break;
+               fmt_byte(abuf, dbyte(addr+1)); sprintf(buf, "cp %s", abuf); len=2; break;
     case 0xff: sprintf(buf, "rst 38h"); break;
 
     default:
@@ -1063,14 +1101,49 @@ unsigned short
 get_word(off)
 long off;
 {
-    return filebuf[off] | (filebuf[off + 1] << 8);
+    return get_byte(off) | (get_byte(off + 1) << 8);
 }
+
+/*
+ * The file is READ THROUGH, not held.
+ *
+ * It used to be slurped whole and indexed, which caps this program at
+ * whatever is left of the 64k once it has loaded itself - about 26k.
+ * libc.a is 39k and the linked kernel 61k, so both said "out of
+ * memory", and neither is an unusual thing to ask about.
+ *
+ * What has to be resident is the symbol table and the relocations,
+ * because a disassembled operand is named from them and they are
+ * consulted out of order.  They already are their own allocations,
+ * and they are the worst case: the kernel's 411 symbols are about
+ * eight kilobytes, and a relocation costs more than a symbol does.
+ *
+ * The code is not consulted out of order, so it comes through this
+ * buffer, which refills when asked for something it does not hold.  A
+ * backwards seek refills it too - correct, just slower.
+ */
+#define IOBUFSZ 512
+
+unsigned char iobuf[IOBUFSZ];
+long iobase = -1;
+int iolen;
 
 unsigned char
 get_byte(off)
 long off;
 {
-    return filebuf[off];
+    if (iobase < 0 || off < iobase || off >= iobase + iolen) {
+        if (fseek(fp, off, 0) != 0)
+            return 0;
+        iobase = off;
+        iolen = fread(iobuf, 1, IOBUFSZ, fp);
+        if (iolen <= 0) {
+            iolen = 0;
+            iobase = -1;
+            return 0;
+        }
+    }
+    return iobuf[off - iobase];
 }
 
 /*
@@ -1116,7 +1189,7 @@ int addr_base;
         /* hex bytes */
         for (j = 0; j < 16; j++) {
             if (i + j < size)
-                printf("%02x ", filebuf[start + i + j]);
+                printf("%02x ", get_byte(start + i + j));
             else
                 printf("   ");
             if (j == 7)
@@ -1127,7 +1200,7 @@ int addr_base;
 
         /* ascii */
         for (j = 0; j < 16 && i + j < size; j++) {
-            c = filebuf[start + i + j];
+            c = get_byte(start + i + j);
             if (c >= 0x20 && c < 0x7f)
                 printf("%c", c);
             else
@@ -1147,7 +1220,7 @@ long symtab_off;
 int symtab_size;
 int symlen;
 {
-    int num_syms, i;
+    int num_syms, i, k;
     unsigned short val;
     unsigned char type;
     char name[16];
@@ -1166,7 +1239,8 @@ int symlen;
 
         val = get_word(off);
         type = get_byte(off + 2);
-        memcpy(name, &filebuf[off + 3], symlen);
+        for (k = 0; k < symlen; k++)
+            name[k] = get_byte(off + 3 + k);
         name[symlen] = '\0';
 
         ws_decode_sym(type, seg, scope, stype);
@@ -1270,7 +1344,7 @@ int num_syms;
                 long soff = symtab_off + symidx * (symlen + 3);
                 int i;
                 for (i = 0; i < symlen && i < 19; i++) {
-                    symname[i] = filebuf[soff + 3 + i];
+                    symname[i] = get_byte(soff + 3 + i);
                     if (symname[i] == '\0') break;
                 }
                 symname[i] = '\0';
@@ -1473,7 +1547,6 @@ char *name;
     struct ureloc *up;
     char nbuf[128];
     char *p, *sym;
-    unsigned char *save_filebuf;
 
     if (dflag) {
         /* disassembly mode: output to stdout */
@@ -1524,8 +1597,9 @@ char *name;
     if (uobj.textsize > 0) {
         fprintf(gfile, "\n\t.text\n");
 
-        save_filebuf = filebuf;
-        filebuf = uobj.text;
+        dis_buf = uobj.text;    /* 0 for whitesmiths: read the file */
+        dis_base = uobj.textoff;
+        dis_limit = uobj.textsize;
 
         /* pre-pass: disassemble to find all relative jump targets */
         pc = 0;
@@ -1560,7 +1634,7 @@ char *name;
                 if (up->size == 2) {
                     if (dflag) {
                         fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.textbase),
-                                uobj.text[pc], uobj.text[pc+1]);
+                                dbyte(pc), dbyte(pc+1));
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1568,7 +1642,7 @@ char *name;
                     pc += 2;
                 } else {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.textbase), uobj.text[pc]);
+                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.textbase), dbyte(pc));
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1588,7 +1662,7 @@ char *name;
                     fprintf(gfile, "  %04x  ", (int)(pc + uobj.textbase));
                     for (i = 0; i < 4; i++) {
                         if (i < len)
-                            fprintf(gfile, "%02x ", uobj.text[pc + i]);
+                            fprintf(gfile, "%02x ", dbyte(pc + i));
                         else
                             fprintf(gfile, "   ");
                     }
@@ -1600,13 +1674,18 @@ char *name;
             }
         }
 
-        filebuf = save_filebuf;
+        dis_buf = 0;
+        dis_limit = 0;
     }
 
     /* data section */
     if (uobj.datasize > 0) {
         int linelen, in_string, line_start;
         unsigned char c;
+
+        dis_buf = uobj.data;    /* 0 for whitesmiths: read the file */
+        dis_base = uobj.dataoff;
+        dis_limit = uobj.datasize;
 
         fprintf(gfile, "\n\t.data\n");
 
@@ -1629,7 +1708,7 @@ char *name;
                 if (up->size == 2) {
                     if (dflag) {
                         fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.database),
-                                uobj.data[pc], uobj.data[pc+1]);
+                                dbyte(pc), dbyte(pc+1));
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1637,7 +1716,7 @@ char *name;
                     pc += 2;
                 } else {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.database), uobj.data[pc]);
+                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.database), dbyte(pc));
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1654,7 +1733,7 @@ char *name;
 
             if (dflag) {
                 /* dflag mode: emit one byte per line with hex dump */
-                c = uobj.data[pc];
+                c = dbyte(pc);
                 fprintf(gfile, "  %04x  %02x           .db 0%02xh\n", (int)(pc + uobj.database), c, c);
                 pc++;
             } else {
@@ -1672,7 +1751,7 @@ char *name;
                         break;
                     }
 
-                    c = uobj.data[pc];
+                    c = dbyte(pc);
 
                     /* printable ASCII (excluding quotes and backslash) */
                     if (c >= 0x20 && c <= 0x7e && c != '"' && c != '\\') {
@@ -1761,6 +1840,7 @@ ws_load_uobj(base, objsize)
 long base;
 long objsize;
 {
+    int k;
     unsigned char config;
     int symlen;
     unsigned short symtab_size, text_size, data_size, bss_size;
@@ -1789,15 +1869,20 @@ long objsize;
 
     /* copy text segment */
     if (text_size > 0) {
-        uobj.text = (unsigned char *)malloc(text_size);
-        memcpy(uobj.text, &filebuf[base + 16], text_size);
+        /*
+         * NOT copied in.  A linked kernel's text is 45k and its data
+         * 11k, which is the whole budget on a 64k machine; what is
+         * kept is where to find them.
+         */
+        uobj.text = 0;
+        uobj.textoff = base + 16;
         uobj.textsize = text_size;
     }
 
     /* copy data segment */
     if (data_size > 0) {
-        uobj.data = (unsigned char *)malloc(data_size);
-        memcpy(uobj.data, &filebuf[base + 16 + text_size], data_size);
+        uobj.data = 0;
+        uobj.dataoff = base + 16 + text_size;
         uobj.datasize = data_size;
     }
 
@@ -1815,7 +1900,8 @@ long objsize;
         for (i = 0; i < nsyms; i++) {
             symtab[i].value = get_word(soff);
             symtab[i].type = get_byte(soff + 2);
-            memcpy(symtab[i].name, &filebuf[soff + 3], symlen);
+            for (k = 0; k < symlen; k++)
+                symtab[i].name[k] = get_byte(soff + 3 + k);
             symtab[i].name[symlen] = '\0';
             soff += symlen + 3;
         }
@@ -1873,6 +1959,14 @@ long objsize;
         parse_relocs(dataRelocOff, limit);
         data_relocs = nrels;
 
+        /*
+         * The addend for a text relocation is read out of the text,
+         * which is not held any more - point the fetch at it.
+         */
+        dis_buf = uobj.text;
+        dis_base = uobj.textoff;
+        dis_limit = uobj.textsize;
+
         /* allocate unified relocs */
         total_relocs = text_relocs + data_relocs;
         if (total_relocs > 0) {
@@ -1888,11 +1982,11 @@ long objsize;
                 /* resolve target name */
                 if (text_reltab[i].hilo) {
                     relocNmByte(text_reltab[i].symidx,
-                                   uobj.text[text_reltab[i].offset],
+                                   dbyte(text_reltab[i].offset),
                                    text_reltab[i].hilo, nbuf);
                 } else {
-                    addend = uobj.text[text_reltab[i].offset] |
-                            (uobj.text[text_reltab[i].offset + 1] << 8);
+                    addend = dbyte(text_reltab[i].offset) |
+                            (dbyte(text_reltab[i].offset + 1) << 8);
                     reloc_name(text_reltab[i].symidx, addend, nbuf);
                 }
                 strncpy(uobj.relocs[i].target, nbuf, sizeof(uobj.relocs[i].target) - 1);
@@ -1907,14 +2001,17 @@ long objsize;
                 uobj.relocs[idx].size = reltab[i].hilo ? 1 : 2;
                 uobj.relocs[idx].segment = USEG_DATA;
 
-                /* resolve target name */
+                /* resolve target name, out of the data section */
+                dis_buf = uobj.data;
+                dis_base = uobj.dataoff;
+                dis_limit = uobj.datasize;
                 if (reltab[i].hilo) {
                     relocNmByte(reltab[i].symidx,
-                                   uobj.data[reltab[i].offset],
+                                   dbyte(reltab[i].offset),
                                    reltab[i].hilo, nbuf);
                 } else {
-                    addend = uobj.data[reltab[i].offset] |
-                            (uobj.data[reltab[i].offset + 1] << 8);
+                    addend = dbyte(reltab[i].offset) |
+                            (dbyte(reltab[i].offset + 1) << 8);
                     reloc_name(reltab[i].symidx, addend, nbuf);
                 }
                 strncpy(uobj.relocs[idx].target, nbuf, sizeof(uobj.relocs[idx].target) - 1);
@@ -1969,6 +2066,7 @@ char *name;
 long base;
 long objsize;
 {
+    int k;
     unsigned char magic, config;
     int symlen;
     unsigned short symtab_size, text_size, data_size, bss_size;
@@ -2035,7 +2133,8 @@ long objsize;
         for (i = 0; i < nsyms; i++) {
             symtab[i].value = get_word(soff);
             symtab[i].type = get_byte(soff + 2);
-            memcpy(symtab[i].name, &filebuf[soff + 3], symlen);
+            for (k = 0; k < symlen; k++)
+                symtab[i].name[k] = get_byte(soff + 3 + k);
             symtab[i].name[symlen] = '\0';
             soff += symlen + 3;
         }
@@ -2599,10 +2698,12 @@ char *name;
         }
         if (bflag) {
             /* use textbuf directly for hexdump */
-            unsigned char *save_filebuf = filebuf;
-            filebuf = textbuf;
+            dis_buf = textbuf;
+            dis_base = 0;
+            dis_limit = 0;
             hexdump("text", 0, (int)textsize, 0);
-            filebuf = save_filebuf;
+            dis_buf = 0;
+        dis_limit = 0;
         }
     }
 
@@ -2808,6 +2909,7 @@ void
 processAr(filename)
 char *filename;
 {
+    int i;
     long off;
     char name[15];
     unsigned short len;
@@ -2818,7 +2920,8 @@ char *filename;
     while (off < filesize) {
         /* read 14-byte name */
         if (off + 16 > filesize) break;
-        memcpy(name, &filebuf[off], 14);
+        for (i = 0; i < 14; i++)
+            name[i] = get_byte(off + i);
         name[14] = '\0';
 
         /* null name marks end */
@@ -2852,20 +2955,11 @@ char *filename;
     fseek(fp, 0L, SEEK_SET);
 
     /*
-     * Read it whole.  The casts matter: filesize is a long because a
-     * host file can be, and malloc and fread take a size_t - which is
-     * two bytes on the z80 and four here.  There is no prototype for
-     * either in the guest's stdio, so K&R rules pass the long as four
-     * bytes, the callee reads two, and everything after it on the
-     * stack is off by two.  That is what "nm: read error" was: not a
-     * read that failed, a count that arrived as rubbish.
+     * Nothing is read here.  get_byte pulls what it needs through its
+     * buffer, so the file stays open until this one is finished with.
      */
-    filebuf = (unsigned char *)malloc((unsigned)filesize);
-    if (!filebuf)
-        error("out of memory");
-    if (fread(filebuf, 1, (unsigned)filesize, fp) != (unsigned)filesize)
-        error("read error");
-    fclose(fp);
+    iobase = -1;
+    iolen = 0;
 
     /* check for archive, HiTech, or Whitesmith object */
     magic16 = get_word(0);
@@ -2901,6 +2995,9 @@ char *filename;
 #endif
 
     free(filebuf);
+
+    fclose(fp);
+    fp = 0;
 }
 
 void
