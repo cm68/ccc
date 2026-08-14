@@ -72,9 +72,11 @@ any recursion, treads on it — `fputc` calls itself to put a carriage return
 before a newline — and it is silently wrong when it overflows. A `longjmp` past
 a frame midway through such a routine has the same problem.
 
-Where a routine's entry shuffle pops into BC before a save could happen, read
-the arguments where they lie (`ld hl,4` / `add hl,sp`) instead of popping them.
-`strcmp`, `strcpy`, `fgetc`, and `fputc` are the pattern.
+The first argument arrives **in HL** — in HL':HL when it is a long — and
+never on the stack (see HLARG.md).  Read the rest where they lie
+(`ld hl,2` / `add hl,sp`) instead of popping them, and make the save the
+first thing that happens when BC is needed.  `strcmp`, `strcpy`, `fgetc`,
+and `fputc` are the pattern.
 
 A routine that runs its body in the shadow set needs nothing — `exx` puts the
 caller's BC out of reach. `bmove` is the example.

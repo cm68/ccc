@@ -53,15 +53,24 @@ _foo::
 	ld	sp,hl
 ```
 
-The helper is chosen by what has to be saved:
+The helper is chosen by what has to be saved, crossed with what the
+first argument is - it arrives in HL (HL':HL when long, see below),
+and the `w`/`q` variants spill it into its `(iy+4)` slot as part of
+frame setup, so a function with parameters costs the same five bytes
+of prologue it always did:
 
-| Saves | Helper |
-|-------|--------|
-| BC and IX | `fentbx` |
-| IX only | `fentx` |
-| BC only | `fentb` |
-| neither, but a scalar area | `fentn` |
-| neither, and no scalar area | `fenter` (takes no word) |
+| Saves | no args | word first arg | long first arg |
+|-------|---------|----------------|----------------|
+| BC and IX | `fentbx` | `fentbxw` | `fentbxq` |
+| IX only | `fentx` | `fentxw` | `fentxq` |
+| BC only | `fentb` | `fentbw` | `fentbq` |
+| neither, but a scalar area | `fentn` | `fentnw` | `fentnq` |
+| neither, and no scalar area | `fenter` | `fenterw` | `fenterq` (no word) |
+
+The `w` family additionally promises that **HL reaches the body
+intact and equal to `(iy+4)`**, which is what lets peep's `r_hlarg`
+delete a reload of the first parameter.  See HLARG.md for the whole
+story.
 
 Even the bare frame-pointer case is **called** rather than written out: the
 inline sequence is eight bytes (`push iy` 2, `ld iy,0` 4, `add iy,sp` 2) against
@@ -94,26 +103,48 @@ Xfoo:
 	.dw	-4          ; offset of the LOWER save from IY
 ```
 
-| Restores | Helper |
-|----------|--------|
-| IX and BC | `fexbx` |
-| IX only | `fexx` |
-| BC only | `fexb` |
-| neither | `jp fexit` |
+| Restores | no args | word first arg | long first arg |
+|----------|---------|----------------|----------------|
+| IX and BC | `fexbx` | `fexbxw` | `fexbxq` |
+| IX only | `fexx` | `fexxw` | `fexxq` |
+| BC only | `fexb` | `fexbw` | `fexbq` |
+| neither | `jp fexit` | `jp fexitw` | `jp fexitq` |
 
 The `fex*` helpers end with the unwind themselves, so there is no `jp fexit`
-after them. None of them touch HL, the flags, DE, or the shadow set — so they
-are correct with a return value already in HL':HL and with a condition already
-set up.
+after them. The `w`/`q` variants discard the spilled first argument on the
+way out - it sits above the return address, in stack the caller does not
+know exists, so the exit is what drops it, carrying the return address
+over the slot through DE. DE is dead at every return - a long comes back
+in HL':HL - and none of these touch HL, A, or the shadow set, so a return
+value and a condition ride through.
 
 ## Argument Passing
 
-Arguments are pushed right-to-left before the call. A long is pushed **high word
-first**, so it lands on the stack the same way round as in memory.
+**The first argument travels in HL** - in HL':HL when it is a long - and
+every argument after it is pushed right-to-left before the call. The arg
+chain is built last-to-first, so the first argument is evaluated
+immediately before the call, exactly where its value is already sitting.
+A byte is promoted to a word (`ld l,a / ld h,0`, or a sign extension -
+never `push af`). A long on the stack is pushed low word first, so its
+high word lands at the lower address, the way a long lies in memory.
+
+The callee's prologue helper spills the first argument back into the
+`(iy+4)` slot the caller used to push it into, so the frame is laid out
+exactly as the stack convention's was, and `&arg1` arithmetic - walking
+included - sees the memory it always saw. The caller drops only what it
+pushed; the spill is the callee's, and the `fex*` w/q exit discards it.
+
+Calls through a pointer with arguments cannot carry the address in HL any
+more, so the address is worked out after the pushed arguments and parked
+on the stack while the first argument is evaluated, then popped into DE -
+dead at every call - and reached through `trampde` (`push de / ret`). A
+zero-argument indirect call still goes through `tramp` (`jp (hl)`).
 
 Register-variable parameters are **staged** in the prologue: pass1 assigns them
 a register, and pass2 emits the loads from their stack slots right after the
-frame is set up.
+frame is set up. When the staged parameter is the first one, peep's
+`r_hlarg` rewrites the load to come from HL (`ld c,l / ld b,h`) or deletes
+it outright - the w helpers guarantee HL still holds it. See HLARG.md.
 
 ```asm
 	ld	c,(iy+4)      ; a byte parameter into C
@@ -133,14 +164,13 @@ unprototyped calls widen to a full 16-bit value. A `push af` convention would
 put the value in the high byte. The two cannot share hand-written callees that
 take byte arguments.
 
-The `libsrc/libu` syscall wrappers implement the **ZC3** convention (low byte),
-because the running native toolchain is zc3-compiled — a `pop af` wrapper under
-zc3 reads the junk byte. This was a real bug: `close()` closed garbage
-descriptors and leaked fds. When ccc becomes the system compiler, the
-byte-argument wrappers (`close`, `dup`, `read`, `write`, `seek`, `gtty`,
-`fstat`, `stty`) need a ccc-convention variant tree. Keep the two conventions in
-separate source trees rather than conditional assembly — `asz` stays a minimal
-back-end assembler.
+The `src/libu` syscall wrappers implement the **ccc** convention now:
+the first argument — which is where every byte argument in the set sits —
+arrives promoted in HL, so the old question of which byte of a stack word
+to trust does not arise for it. The zc3 build of these wrappers is
+history along with the zc3 build area; if it ever comes back, keep the
+two conventions in separate source trees rather than conditional
+assembly — `asz` stays a minimal back-end assembler.
 
 ## Return Values
 
@@ -207,22 +237,21 @@ short main(int a, char *b)
 }
 ```
 
-`c` is allocated to BC, so there is no scalar area at all:
+`c` is allocated to BC, so there is no scalar area at all.  `a`
+arrives in HL; `fentbw` spills it to `(iy+4)` and hands HL through,
+and peep has deleted the reload the body used to open with:
 
 ```asm
 _main::
-	call	fentb
+	call	fentbw
 	.dw	0             ; no scalar area
-	ld	l,(iy+4)      ; a
-	ld	h,(iy+5)
-	ld	de,42
+	ld	de,42         ; a is already in HL
 	add	hl,de
 	ld	c,l           ; -> c, which lives in BC
 	ld	b,h
 	ld	l,c           ; return c
 	ld	h,b
-	jp	Xmain
 Xmain:
-	call	fexb
+	call	fexbw
 	.dw	-2            ; the saved BC, just under an empty scalar area
 ```

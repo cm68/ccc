@@ -23,9 +23,10 @@ divide, frame setup and teardown, and switch dispatch.
 
 **A long lives in HL':HL** — HL' is the high word, HL the low. The second
 operand lives in DE':DE the same way round. A function returning a long returns
-it in HL':HL. In memory the low word is at the lower address, and a long
-argument is pushed high word first so it lands on the stack the same way round
-as in memory.
+it in HL':HL. In memory the HIGH word is at the lower address — `qld` reads
+it first — and a long argument after the first is pushed low word first, so
+it lands on the stack the same way round as in memory. A long FIRST
+argument is not pushed at all: it rides to the callee in HL':HL (HLARG.md).
 
 The low halves are in the main bank because that is what makes the arithmetic
 cheap: one `exx` brings both high words into place at once, and `exx` touches
@@ -107,12 +108,24 @@ after the call:
 | `fentx` | + save IX |
 | `fentbx` | + save BC and IX |
 
+Each has a `w` and a `q` variant (`fentbw`, `fentbxq`, …) for a function
+whose first argument arrived in HL or HL':HL: the variant spills it into
+its `(iy+4)` slot as part of frame setup, so the frame comes out exactly
+as the stack convention's did.  The `w` family additionally guarantees HL
+reaches the body intact and equal to the slot, which peep's `r_hlarg`
+rule uses to delete first-parameter reloads.  See HLARG.md and the notes
+in csv.s.
+
 | Helper | Epilogue |
 |--------|----------|
 | `fexit` | `ld sp,iy` / `pop iy` / `ret` — the plain unwind |
 | `fexb` | restore BC, then unwind |
 | `fexx` | restore IX, then unwind |
 | `fexbx` | restore IX and BC, then unwind |
+
+The matching `w`/`q` exits (`fexbw`, `fexitq`, …) discard the spilled
+first argument — a slot the caller does not know exists — carrying the
+return address over it through DE, which is dead at every return.
 
 The `fex*` helpers take the offset of the **lower** save from the frame pointer
 in the word after the call, and the unwind is the same code, so there is no
@@ -164,7 +177,10 @@ dense enough and `swtab` when they are not.
 ## Indirect calls
 
 `tramp` (`tramp.s`) — a trampoline for calling through a computed address when
-no register is free to hold it.
+no register is free to hold it: `jp (hl)`, for the zero-argument call.
+
+`trampde` — the same borrowed-return trick when HL is carrying the first
+argument: the address arrives in DE, and the trampoline is `push de / ret`.
 
 ---
 
