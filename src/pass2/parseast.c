@@ -83,6 +83,13 @@ static char arg1w;		/* width of the first parameter: it arrives
 				 * variant that spills it is chosen by this */
 static char noframe;		/* this function needs no frame at all */
 static short savebase;		/* scalar area size: save slots below it */
+/*
+ * Set from the header: phase 1 saw the whole body and says nothing in
+ * it reaches through IY except possibly the single parameter that
+ * arrives in HL.  Whether that one reference can be served from HL is
+ * a question for the first expression, one pass later.
+ */
+static unsigned char framefree;
 static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
 
@@ -1135,6 +1142,13 @@ parse(void)
 			i = read1();		/* local count */
 			framesize = read2();	/* frame size */
 			savebase = read1();	/* scalar area size */
+			/*
+			 * Phase 1 walked the body before this header was
+			 * written, so this is a settled fact about code not
+			 * yet seen: nothing in it reaches through IY except
+			 * possibly the one parameter now arriving in HL.
+			 */
+			framefree = read1();
 			regsused = 0;
 			nstage = 0;
 			arg1w = 0;
@@ -1143,7 +1157,8 @@ parse(void)
 				fprintf(stderr, "parse: params=%d locals=%d frame=%d\n",
 					n, i, framesize);
 			out("; params="); outd(n); out(" locals="); outd(i);
-			out(" frame="); outd(framesize); outc('\n');
+			out(" frame="); outd(framesize);
+			out(" framefree="); outd(framefree); outc('\n');
 #endif
 			/* Scan params: may need staging to registers */
 			++n;

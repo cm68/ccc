@@ -107,9 +107,47 @@ emitAsmStmt(char *text)
 	emitRaw(text, len);
 }
 
+
+/*
+ * Can this function do without a frame pointer?
+ *
+ * Phase 1 has already walked the whole body - that is what fills in
+ * ref_count and addr_taken - so by the time phase 2 writes the header
+ * every fact below is settled.  That is the only reason a question
+ * about the body can be answered before a byte of it is emitted.
+ *
+ * The answer is deliberately conservative and means: NOTHING in this
+ * body reaches through IY except possibly the single parameter that
+ * now arrives in HL.  It says nothing about whether that parameter's
+ * one reference can be served out of HL - that depends on the
+ * Sethi-Ullman labelling in pass2, one pass later - so pass2 holds
+ * the prologue until it has emitted the first expression and can see.
+ *
+ *	frm_size	a scalar area is a frame by definition
+ *	param_count	the second parameter lives at (iy+6)
+ *	addr_taken	an address into the frame outlives any register
+ *	ref_count	a parameter read twice cannot live in HL alone
+ */
+static int
+frameFree(struct name *func, int frm_size, int param_count)
+{
+	struct local *l;
+
+	if (frm_size != 0 || param_count > 1)
+		return 0;
+	for (l = func->u.locals; l; l = l->next) {
+		if (l->addr_taken)
+			return 0;
+		if (l->kind == kfunarg && l->ref_count > 1)
+			return 0;
+	}
+	return 1;
+}
+
 /*
  * Output function header in AST format
  * Format: F rettype name param_count local_count frm_size(2) savebase
+ *         framefree
  *         params... locals...
  * savebase = scalar area size; the callee-save slots sit at
  * (iy-savebase-2)/(iy-savebase-4), with arrays below them.
@@ -156,6 +194,7 @@ emitFuncPre(struct name *func)
 	emit1(local_count);
 	emit2((unsigned short)frm_size);
 	emit1((unsigned char)frameSaveBase);
+	emit1((unsigned char)frameFree(func, frm_size, param_count));
 
 	/* Emit declarations */
 	emitPrmDecls(func->type, func->u.locals);
