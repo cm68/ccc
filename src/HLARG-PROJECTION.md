@@ -179,24 +179,26 @@ hl,sp / ld e,(hl) / inc hl / ld d,(hl)` where `ex de,hl` would do.
 | frames no longer needed, 102 functions | ~500-800 | ~200 T |
 | libu, 44 wrappers | ~250 | 42-127 T |
 | libc hand-written, 93 objects | ~400 | 42 T |
+| staging loads peep deletes, 283 functions | ~1,430 | 15-38 T |
 | entry helpers, once | +40 | |
-| | **~5,600-5,900** | |
+| | **~7,000-7,300** | |
 
-The time column is the caller's side only.  On the callee's, 177
-functions gain 30 T from a register move replacing a frame load, and
-196 pay 38 T for the helper's store against 21 saved.  Net time is a
-clear win for the frameless and register cases and a small loss for
-frame-resident ones; net size is a win everywhere.
+On the callee's side the helper's store costs 38 T, against 21 saved
+at the caller - but 190 of those functions immediately reload the
+value into HL, and the peephole deletes that reload for another 38.
+So the time is a clear win where the parameter goes to a register, has
+no frame, or is read back into HL at once, and a small loss only in
+what is left over.
 
-**4.6% of the corpus text**, and against the passes:
+**5.7% of the corpus text**, and against the passes:
 
 | | text | projected |
 |---|---|---|
-| c0 | 46,020 | ~2,100 |
-| c1 | 45,832 | ~2,100 |
-| cpp | 42,216 | ~1,950 |
-| asz | 30,007 | ~1,380 |
-| ld | 25,474 | ~1,170 |
+| c0 | 46,020 | ~2,600 |
+| c1 | 45,832 | ~2,600 |
+| cpp | 42,216 | ~2,400 |
+| asz | 30,007 | ~1,710 |
+| ld | 25,474 | ~1,450 |
 
 For scale, on the same machine: making `-O` the default bought c0 883
 bytes and was the difference between compiling declare.c and not;
@@ -209,10 +211,10 @@ lands on every input and cannot be handed back on a different one.
 **Whether the spill can be conditional.**  The caller saves 21 T; a
 helper that spills unconditionally spends 38 - `ld (iy+4),l` and `ld
 (iy+5),h` at 19 each.  For the 52.5% that are frame-resident that is
-17 T worse per call, and they are the majority.  This is the single
-biggest open question in the projection: it is the difference between
-a change that is smaller and faster, and one that is smaller and
-slightly slower on most calls.
+17 T worse per call, and they are the majority.  That was the single
+biggest open question in the projection until the peephole route above
+- which recovers the 38 T for the 190 functions that reload the value
+into HL immediately, without pass2 deciding anything.
 
 **Whether dropping the frame is cheap to decide.**  "This parameter
 has a register" is a byte pass1 already computed.  "This function
@@ -229,6 +231,61 @@ need a two-byte reload, which would cost that 205 back.
 single-use parameter can stay in HL.  That is register allocation
 rather than calling convention, and it is where the estimate could
 improve rather than erode.
+
+## The staging is peep-able, and that is where the budget goes
+
+pass2 need not decide any of this.  It can emit the general case -
+always spill - and let the peephole remove the redundancy, because the
+redundancy is visible in a window.
+
+What the first read of the first parameter actually is, across the
+corpus:
+
+| first instruction touching `iy+4` | functions |
+|---|---|
+| `ld l,(iy+4)` - into HL | **190** |
+| `ld c,(iy+4)` / `ld b,(iy+4)` - into BC | 53 |
+| `ld a,(iy+4)` - a byte parameter | 40 |
+| `ld e,(iy+4)` - into DE | 7 |
+
+**190 functions load the first parameter straight back into HL as
+their first act.**  With the argument arriving in HL that load, and its
+`ld h,(iy+5)` partner, are dead on arrival.
+
+The rule is peep's natural shape:
+
+> the entry stored HL into `(iy+4)`; if nothing has written HL since,
+> a load from `(iy+4)` back into HL is redundant.
+
+peep already has `isdead()` and register liveness, its window is
+sixteen lines, and 210 of the 359 first reads are within three
+instructions of entry.  The counts above split across tab and space
+spellings, which is what `normalise()` is for - one rule covers both.
+
+| pattern | functions | saving each |
+|---|---|---|
+| `ld l,(iy+4)`/`ld h,(iy+5)` deleted | 190 | 6 bytes, 38 T |
+| `ld c,(iy+4)`/`ld b,(iy+5)` becomes `ld c,l`/`ld b,h` | 53 | 4 bytes, 30 T |
+| `ld a,(iy+4)` becomes `ld a,l` | 40 | 2 bytes, 15 T |
+
+About **1,430 bytes and 9,000 T-states**, on top of the caller side.
+
+WHERE THE COST LANDS IS THE POINT.  The three-case entry selection
+becomes one case plus a peephole rule, and it is paid for out of the
+pass with the most room rather than the one with the largest image:
+
+| | image | headroom |
+|---|---|---|
+| c1, which would host the analysis | 56,426 | 5,225 |
+| peep, which hosts the rule instead | 33,203 | **21,241** |
+
+It also repairs the time result.  The frame-resident majority pay 38 T
+for the helper's store, and 190 of them get 38 T back at once by not
+reloading what is already in HL.
+
+One thing the rule must be told rather than work out: that `fent*`
+leaves HL intact and the slot equal to it.  That is a fixed property
+of five known names, not an analysis.
 
 ## The code budget for smart frame allocation
 
