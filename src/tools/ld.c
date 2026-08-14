@@ -907,6 +907,7 @@ struct infile *f;
     unsigned char hdr[12];
     unsigned short len;
     int count = 0;
+    int added;
     int v7;
     long base;
 
@@ -980,10 +981,29 @@ struct infile *f;
     count = ar_byindex(name, fp, v7);
     if (count >= 0)
         return count;
-    count = 0;
 
-    off = 2;  /* skip magic */
-    while (1) {
+    /*
+     * No index, so walk the members - and walk them again while the
+     * walk keeps taking, for the reason ar_byindex gives above: a
+     * member taken can want something defined by a member EARLIER in
+     * the file, which this pass has already gone by.
+     *
+     * The repeat is what finishes an archive before the caller moves
+     * on to the next one, and finishing it is what makes naming a
+     * library first mean anything.  It used to be the caller's job,
+     * in a loop around this function; both paths drain themselves
+     * now, so the caller has none.
+     *
+     * Unlike the indexed pass, a repeat here costs a full walk of the
+     * members and the reads that go with it.  Every library this
+     * toolchain builds carries an index and never reaches this code;
+     * what does are the archives off the 1.6 disk, which are small.
+     */
+    count = 0;
+    do {
+        added = 0;
+        off = 2;  /* skip magic */
+        while (1) {
         /* read 14-byte name */
         fseek(fp, (long)(off), SEEK_SET);
         if (fread(membername, 1, 14, fp) != 14)
@@ -1022,13 +1042,15 @@ struct infile *f;
                 printf("including %s(%s)\n", name, membername);
             }
             read_ar_obj(name, fp, base, membername);
-            count++;
+            added++;
         }
 
         off = base + len;
         if (v7 && (len & 1))
             off++;              /* v7 pads a member out to even */
-    }
+        }
+        count += added;
+    } while (added > 0 && has_undefined());
 
     /* the handle stays on the infile record; pass 2 still needs it */
     return count;
@@ -3150,28 +3172,20 @@ char **argv;
     }
 
     /*
-     * Now the archives, and EACH ONE IS READ UNTIL IT STOPS GIVING,
-     * before the next is looked at.
+     * Now the archives.  Each one drains itself - ar_byindex repeats
+     * while it keeps taking, and the walk it falls back to does the
+     * same - so this loop asks each once and is left only with
+     * genuine circularity BETWEEN two archives.
      *
-     * A member is only taken if something already undefined needs it
-     * when the scan arrives, so one pass over an archive misses
-     * anything that a LATER member asks for: lib/libc has malloc.o
-     * ahead of permaloc.o, and permalloc is what makes _malloc
-     * undefined, so malloc.o was walked straight past.
-     *
-     * The outer loop below was supposed to cover that, and did not.
-     * It finishes the whole list before coming back round, so by the
-     * time it returned to the first archive a later one had already
-     * answered - and with "-lc -lu -lc" naming two different libcs,
-     * what a program linked was the copy it reached second.  The
-     * tree's malloc was passed over on pass one and ccc's was taken
-     * on pass one, from an archive appended after it; the tree's
-     * never came up again because there was nothing left to want.
-     *
-     * Draining each archive in turn makes the first one that can
-     * answer a symbol the one that does, which is what naming it
-     * first is supposed to mean.  The outer loop stays for genuine
-     * circularity between two archives.
+     * That draining is what makes naming a library first mean
+     * something.  A member is only taken if something already
+     * undefined needs it when the scan arrives, so a single pass
+     * misses whatever a member taken late asks of one passed early;
+     * an archive that has not finished answering lets the next one
+     * answer instead.  With "-lc -lu -lc" naming two different libcs
+     * that decided which of them a program got, and it was the wrong
+     * one - see the commit that moved the driver's own libraries to
+     * the end of the link.
      */
     pass = 0;
     do {
@@ -3179,12 +3193,7 @@ char **argv;
         for (f = infiles; f; f = f->next) {
             if (f->is_archive == 1) {
                 /* Whitesmith or v7 archive */
-                int got;
-
-                do {
-                    got = read_archive(f);
-                    added += got;
-                } while (got > 0 && has_undefined());
+                added += read_archive(f);
 #ifdef DO_HITECH
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */
