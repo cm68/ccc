@@ -452,15 +452,32 @@ emitprolog(void)
 	 * are still cleaned up by the caller, so this is not a second
 	 * calling convention, just the same one with nothing to set up.
 	 *
-	 * regsused == 0 is what says there is no callee-save to make.
-	 * It cannot be otherwise here - a register variable is a
-	 * parameter or a local, and there are none - but it is the
-	 * condition that actually matters, so it is the one tested.
+	 * What settles it is whether anything lives in the frame, not
+	 * whether anything has to be saved.  A local with a register
+	 * home lives in BC or IX and never in the frame at all, so a
+	 * function can have two of them, owe both to its caller, and
+	 * still have no use for IY - which is what the prefix parser's
+	 * pfxStar, pfxAddr, pfxSizeof and pfxString all are, and
+	 * resetSwitch and kreset and drop_assigns beside them.  This
+	 * used to test regsused == 0 and send them all through a frame
+	 * to hold nothing.
+	 *
+	 * peep cannot take that back afterwards.  Its rewrite has to fit
+	 * the entry it replaces, and two pushes do not fit in the one
+	 * call line that fentbx occupies; it says so where the table is
+	 * declared.  The pass that knows there is nothing in the frame
+	 * is this one, and it is cheaper to never write the frame than
+	 * to write it and patch it out.
 	 */
-	noframe = (nparams == 0 && framesize == 0 && savebase == 0 &&
-	    regsused == 0);
-	if (noframe)
+	noframe = (nparams == 0 && framesize == 0 && savebase == 0);
+	if (noframe) {
+		/* the saves are still owed - just no frame around them */
+		if (savesbc())
+			out("\tpush\tbc\n");
+		if (regsused & REGBIT(R_IX))
+			out("\tpush\tix\n");
 		return;
+	}
 
 	{
 		short off, rest;
@@ -574,8 +591,15 @@ emitepilog(void)
 	out(funcname + 1);
 	out(":\n");
 
-	/* no frame was made, so there is nothing to unwind */
+	/*
+	 * No frame was made, so there is nothing to unwind - only the
+	 * saves to hand back, in the order that balances the entry.
+	 */
 	if (noframe) {
+		if (regsused & REGBIT(R_IX))
+			out("\tpop\tix\n");
+		if (savesbc())
+			out("\tpop\tbc\n");
 		out("\tret\n");
 		return;
 	}
@@ -776,8 +800,14 @@ parseStmt(void)
 		 * "jp cc,L / ret / L:" into "ret ncc", which is one byte
 		 * where the jump around was three, and there is no such
 		 * thing as a conditional jump to an epilogue.
+		 *
+		 * Frameless is not by itself enough to return here.  A
+		 * frameless function that saved BC or IX has those on the
+		 * stack and the epilogue is where they come back off; a
+		 * ret from the middle of one would return through the
+		 * saved register.
 		 */
-		if (noframe) {
+		if (noframe && !savesbc() && !(regsused & REGBIT(R_IX))) {
 			out("\tret\n");
 			return;
 		}
