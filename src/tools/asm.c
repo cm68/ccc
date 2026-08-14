@@ -277,59 +277,113 @@ char used_dollar;
 struct { struct symbol s; char pad[1]; } dollarsym[2];
 
 /*
- * permalloc - the permanent arena
+ * the arenas
  *
- * Symbols, relocations and jumps live from the moment they are made
- * until the assembler exits.  Not one of them is ever freed, and
- * paying malloc for that is what put asz over the side of a 64k
- * machine: the allocator in libc keeps a three-byte header per block
- * and rounds the payload up to a three-byte granule, so a seven-byte
- * relocation cost twelve and a ten-byte jump cost fifteen.  Assembling
- * cpp's norm.c wanted 633 symbols, 941 relocations and 568 jumps -
- * 26,826 bytes of structures that malloc turned into 36,903, against
- * a heap that stops around 31k.  It said "out of memory" and it was
- * right.
+ * Symbols, relocations and jumps are made and never individually
+ * given back, and paying malloc for that is what put asz over the
+ * side of a 64k machine: the allocator in libc keeps a three-byte
+ * header per block and rounds the payload up to a three-byte granule,
+ * so a seven-byte relocation cost twelve and a ten-byte jump cost
+ * fifteen.  Here the header is paid once per chunk.
  *
- * Here the header is paid once per chunk instead of once per node.
- * Nothing is freed because nothing was ever going to be.
+ * There are two of them, and which is which is the whole point.
+ *
+ * JUMPS AND RELOCATIONS ARE NEVER BOTH ALIVE.  add_jump records only
+ * in pass 0 - "if (pass != 0) return" - and add_reloc records only
+ * after it - "if (!pass) return" - and relax_jmp, the one thing that
+ * reads the jump list, runs once, at the seam between the two.  The
+ * jump list is dead from the moment it returns and used to be carried
+ * to the end of the assembly anyway, alongside a relocation list that
+ * had not existed when it was built.  For c1/lower.s that was 818
+ * jumps, 8,180 bytes, held for nothing.
+ *
+ * So jumps come out of their own arena and it is released whole when
+ * relaxation finishes.  The peak is max(symbols+jumps, symbols+relocs)
+ * rather than the sum of all three.
+ *
+ * This is also why the two structures are NOT unified into one record
+ * with the fields of both: they do not overlap in time, so a shared
+ * record would make every relocation carry a target offset, a
+ * condition and a jr flag it has no use for, and would keep the whole
+ * lot alive for the entire assembly.  It costs more, not less.
  *
  * PERMCHUNK is a multiple of the 129-byte granule libc's malloc grabs
- * from sbrk, so a chunk is a whole number of them and nothing is left
- * stranded on the end of each one.
+ * from sbrk, so a chunk is a whole number of them.
  */
 #define PERMCHUNK   (8 * 129)       /* 1032 */
 
 extern void gripe();
 
-static char *permp;                 /* next free byte */
-static unsigned short permleft;     /* how many are left there */
+/*
+ * A chunk begins with the link to the one before it, so an arena can
+ * be handed back without a record of what was put in it.
+ */
+struct arena {
+    char *chunk;                /* newest chunk, or 0 */
+    char *free;                 /* next free byte in it */
+    unsigned short left;        /* how many are left there */
+};
+
+static struct arena perm;       /* symbols and relocations: to the end */
+static struct arena jumparena;  /* jumps: dead after relax_jmp */
+
+static unsigned short *jrtab;   /* addresses that became jr */
+static unsigned short njr;
+
+void keep_relaxed();
 
 char *
-permalloc(n)
+arena_alloc(a, n)
+struct arena *a;
 unsigned short n;
 {
     char *p;
 
     /*
-     * Even, so that the shorts and pointers in what comes back are
-     * laid out the way the compiler expects them.
+     * Even, so the shorts and pointers in what comes back are laid
+     * out the way the compiler expects them.
      */
     n = (n + 1) & ~1;
 
-    if (n > permleft) {
-        /*
-         * The remainder of the old chunk is abandoned - at most one
-         * node's worth, and chasing it would cost more than it saves.
-         */
-        permleft = n > PERMCHUNK ? n : PERMCHUNK;
-        permp = malloc(permleft);
-        if (!permp)
+    if (n > a->left) {
+        unsigned short want = n + sizeof(char *);
+
+        if (want < PERMCHUNK)
+            want = PERMCHUNK;
+        p = malloc(want);
+        if (!p)
             gripe("out of memory");
+        *(char **)p = a->chunk;
+        a->chunk = p;
+        a->free = p + sizeof(char *);
+        a->left = want - sizeof(char *);
     }
-    p = permp;
-    permp += n;
-    permleft -= n;
+    p = a->free;
+    a->free += n;
+    a->left -= n;
     return p;
+}
+
+void
+arena_free(a)
+struct arena *a;
+{
+    char *c, *n;
+
+    for (c = a->chunk; c; c = n) {
+        n = *(char **)c;
+        free(c);
+    }
+    a->chunk = 0;
+    a->free = 0;
+    a->left = 0;
+}
+
+char *
+permalloc(n)
+unsigned short n;
+{
+    return arena_alloc(&perm, n);
 }
 
 /*
@@ -1025,28 +1079,22 @@ void
 freerelocs(rh)
 struct rhead *rh;
 {
-    struct reloc *r, *n;
-
-    for (r = rh->head; r;) {
-        n = r->next;
-        free(r);
-        r = n;
-    }
-
+    /*
+     * Arena memory: the nodes go when the arena does, in asm_reset.
+     * Dropping the list is all there is to do here.
+     */
     rh->tail = 0;
     rh->head = 0;
 }
 
+/*
+ * Hand the whole jump arena back.  Not a walk-and-free: these came
+ * out of an arena and are not malloc blocks.
+ */
 void
 freejumps()
 {
-    struct jump *j, *n;
-
-    for (j = jumps; j;) {
-        n = j->next;
-        free(j);
-        j = n;
-    }
+    arena_free(&jumparena);
     jumps = 0;
 }
 
@@ -1060,16 +1108,18 @@ extern void io_reset();
 void
 asm_reset()
 {
-    struct symbol *s, *n;
-
-    for (s = symbols; s;) {
-        n = s->next;
-        free(s);
-        s = n;
-    }
+    /*
+     * Everything below came out of an arena, so releasing the arena
+     * is what frees it; the lists just get dropped.
+     */
+    symbols = 0;
+    symbols_tail = 0;
     freerelocs(&textr);
     freerelocs(&datar);
     freejumps();
+    jrtab = 0;
+    njr = 0;
+    arena_free(&perm);
     io_reset();
 }
 
@@ -1143,7 +1193,7 @@ unsigned char cond;
     if (used_dollar)
         return;
 
-    j = (struct jump *)permalloc(sizeof(struct jump));
+    j = (struct jump *)arena_alloc(&jumparena, sizeof(struct jump));
     j->addr = addr;
     j->sym = sym;
     j->offset = offset;
@@ -1154,17 +1204,33 @@ unsigned char cond;
 }
 
 /*
- * find jump record for address
+ * WHAT PASS 1 STILL NEEDS TO KNOW, and it is one bit.
+ *
+ * The emitter asks, at every jp it reaches, whether that jp was
+ * relaxed to a jr - "j = find_jump(addr); if (j && j->is_jr)" - so the
+ * jump records could not simply be released when relax_jmp finished,
+ * which is what the first attempt at this did and what broke every
+ * object file it produced.
+ *
+ * But is_jr is all it asks.  The target, the offset, the condition and
+ * the list link are relaxation's own working state and mean nothing
+ * after it converges.  So relaxation ends by writing down the
+ * addresses that became jr, two bytes each, and gives the records
+ * back: for c1/lower.s that is 818 jumps at ten bytes replaced by the
+ * relaxed subset at two.
+ *
+ * The scan is shorter than the one it replaces, which walked every
+ * jump; this walks only the ones that changed.
  */
-struct jump *
-find_jump(addr)
+int
+is_relaxed(addr)
 unsigned short addr;
 {
-    struct jump *j;
+    register unsigned short i;
 
-    for (j = jumps; j; j = j->next) {
-        if (j->addr == addr)
-            return j;
+    for (i = 0; i < njr; i++) {
+        if (jrtab[i] == addr)
+            return 1;
     }
     return 0;
 }
@@ -1185,8 +1251,10 @@ relax_jmp()
     unsigned short conv_addr;
 
     /* -8 flag disables relaxation (8080 mode) */
-    if (no_relax)
+    if (no_relax) {
+        keep_relaxed();
         return;
+    }
 
 #ifdef DEBUG
     if (verbose > 1)
@@ -1277,6 +1345,38 @@ relax_jmp()
     if (verbose && saved)
         fprintf(stderr, "relaxation: %d bytes saved\n", saved);
 #endif
+
+    keep_relaxed();
+}
+
+/*
+ * Write down which addresses became jr and release the jump records.
+ * Called when relaxation has converged, and when it never ran at all:
+ * with -8 there is nothing relaxed and nothing to remember, and the
+ * records are just as dead.
+ */
+void
+keep_relaxed()
+{
+    struct jump *j;
+    unsigned short n;
+
+    n = 0;
+    for (j = jumps; j; j = j->next) {
+        if (j->is_jr)
+            n++;
+    }
+
+    if (n) {
+        jrtab = (unsigned short *)permalloc(n * sizeof(unsigned short));
+        njr = 0;
+        for (j = jumps; j; j = j->next) {
+            if (j->is_jr)
+                jrtab[njr++] = j->addr;
+        }
+    }
+
+    freejumps();
 }
 
 /*

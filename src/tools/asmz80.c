@@ -208,7 +208,7 @@ extern unsigned short cur_address;
 extern char pass;
 extern char no_relax;
 extern void add_jump();
-extern struct jump *find_jump();
+extern int is_relaxed();
 extern unsigned char peekchar();
 extern unsigned char skipwhite();
 
@@ -701,7 +701,6 @@ struct instruct *isr;
 {
 	unsigned char arg, cond;
 	struct expval value;
-	struct jump *j;
 	unsigned short addr;
 	int target, dist;
 
@@ -718,8 +717,7 @@ struct instruct *isr;
 		add_jump(addr, value.sym, value.num.w, cond);
 
 		/* check if relaxed to jr */
-		j = find_jump(addr);
-		if (j && j->is_jr) {
+		if (is_relaxed(addr)) {
 			/* emit jr cc, offset */
 			/* jr nz=20, z=28, nc=30, c=38 */
 			emitbyte(0x20 + ((cond - T_NZ) << 3));
@@ -739,8 +737,7 @@ struct instruct *isr;
 		addr = cur_address;
 		add_jump(addr, value.sym, value.num.w, 0);
 
-		j = find_jump(addr);
-		if (j && j->is_jr) {
+		if (is_relaxed(addr)) {
 			/* emit jr offset */
 			emitbyte(0x18);
 			if (value.sym)
