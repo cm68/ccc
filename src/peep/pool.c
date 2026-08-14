@@ -25,7 +25,21 @@
 #include <stdlib.h>
 #include "peep.h"
 
-#define POOLMAX	3072		/* rules.c holds ~1300 today */
+/*
+ * 1024, and it was 3072.  Four arrays are indexed by this - a long,
+ * an unsigned short and two shorts - so every entry costs ten bytes
+ * of bss, and 3072 of them were 30,720 of peep's 31,422.
+ *
+ * Measured over every assembly file cpp, c0 and c1 compile to: the
+ * high water mark is 586, in c1/rules.s, and the next largest is 141.
+ * The old comment here said rules.c holds ~1300, which counts rules
+ * and not pool entries.
+ *
+ * Overflow is the gentlest kind there is - "too rich for the table:
+ * no pooling", a missed optimisation and not an error - so this can
+ * be sized to what is seen rather than to what might arrive.
+ */
+#define POOLMAX	1024
 
 static long spos[POOLMAX];		/* file offset of the block's data */
 static unsigned short shash[POOLMAX];	/* quick signature */
