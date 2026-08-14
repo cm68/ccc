@@ -18,12 +18,12 @@
 
 .text:
 __signal:
+		ld		(func),hl	; the first argument, in the slot
+						; the old pop put it in (the two
+						; labels here are historic)
 		pop		de
 		pop		hl
-		ld		(func),hl
-		pop		hl
 		ld		(sig),hl
-		push	hl
 		push	hl
 		push	de
 		rst		08h
