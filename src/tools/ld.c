@@ -1689,6 +1689,33 @@ bss_merge()
     unsigned short base, shift;
     struct bssexc *e, **tail;
     int phase;
+    unsigned short maxsyms;
+
+    /*
+     * ONE SET OF SCRATCH BUFFERS FOR THE WHOLE FUNCTION, sized to the
+     * largest object.  These used to be allocated inside the loop, so
+     * once per object per phase - 126 allocations linking cpp - out of
+     * an allocator that never gives anything back.  They held 12,612
+     * bytes by the end, more than the symbols and more than twice the
+     * per-object index maps, and every one of them was dead the moment
+     * its object's iteration finished.
+     *
+     * They are working state for sorting one object's bss symbols by
+     * offset.  Nothing in them outlives the loop body, so nothing has
+     * to be kept: the buffers are reused, and only the largest object
+     * decides how big they are.
+     */
+    maxsyms = 0;
+    for (obj = objects; obj; obj = obj->next) {
+        if (obj->num_syms > maxsyms)
+            maxsyms = obj->num_syms;
+    }
+    if (maxsyms == 0)
+        return;
+
+    off = (unsigned short *)xalloc(maxsyms * sizeof(*off));
+    siz = (unsigned short *)xalloc(maxsyms * sizeof(*siz));
+    sym = (struct symbol **)xalloc(maxsyms * sizeof(*sym));
 
     /*
      * Two passes over the objects.  The first records, for every bss
@@ -1707,10 +1734,6 @@ bss_merge()
         if (obj->num_syms == 0)
             continue;
         base = obj->text_size + obj->data_size;   /* asz biases by this */
-
-        off = (unsigned short *)xalloc(obj->num_syms * sizeof(*off));
-        siz = (unsigned short *)xalloc(obj->num_syms * sizeof(*siz));
-        sym = (struct symbol **)xalloc(obj->num_syms * sizeof(*sym));
 
         n = 0;
         for (i = 0; i < obj->num_syms; i++) {
