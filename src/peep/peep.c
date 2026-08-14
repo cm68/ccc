@@ -158,29 +158,42 @@ readtext(void)
 	return p;			/* 0 at end of file with nothing read */
 }
 
-/* read one line into window slot i; returns 0 at end of file */
+/* read one line into window slot i; returns 0 at end of file.
+ *
+ * Blank and comment-only lines never enter the window: they go
+ * straight to the output here.  The window therefore holds sixteen
+ * SIGNIFICANT lines, and every rule sees the same sixteen whether the
+ * compiler was built with the DEBUG commentary or without it - which
+ * is what keeps the host build and the native build making identical
+ * decisions, a thing the selfhost gate checks by the byte.  The cost
+ * is that a comment can come out up to a window ahead of the code it
+ * sat beside, in DEBUG output only. */
 int
 readline(int i)
 {
 	char *s;
+	char kbuf[KLEN];
 
-	if (ateof)
-		return 0;
-	s = readtext();
-	if (!s) {
-		ateof = 1;
-		return 0;
-	}
-	freeline(i);
-	win[i].text = s;			/* readtext already allocated it */
-	{
-		char kbuf[KLEN];
-
+	for (;;) {
+		if (ateof)
+			return 0;
+		s = readtext();
+		if (!s) {
+			ateof = 1;
+			return 0;
+		}
 		normalise(s, kbuf);
+		if (!kbuf[0]) {
+			fputs(s, out);
+			free(s);
+			continue;
+		}
+		freeline(i);
+		win[i].text = s;		/* readtext already allocated it */
 		win[i].key = dup(kbuf);
+		win[i].kind = classify(win[i].key);
+		return 1;
 	}
-	win[i].kind = classify(win[i].key);
-	return 1;
 }
 
 /* top up the window */
