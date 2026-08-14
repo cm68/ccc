@@ -46,6 +46,7 @@ long n_m1cmp = 0;
 long n_ccall = 0;
 long n_cret = 0;
 long n_jpnext = 0;
+long n_hlarg = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -508,41 +509,139 @@ int
 r_outi(void)
 {
 	char buf[KLEN + 16];
-	int j1, j2, j3, j4;
+	int j1;
 
+	/*
+	 * The first argument travels in HL now, so the site is just the
+	 * load and the call - six bytes - and the inline form is five.
+	 * One byte rather than the four the stack convention gave up,
+	 * but it is still the most repeated call in the code generator.
+	 */
 	if (win[0].kind != L_INSN ||
 	    !starts(0, "ld hl,") || win[0].key[6] == '(')
 		return 0;
 	j1 = nextsig(0);
 	if (j1 < 0 || win[j1].kind != L_INSN ||
-	    strcmp(win[j1].key, "push hl") != 0)
-		return 0;
-	j2 = nextsig(j1);
-	if (j2 < 0 || win[j2].kind != L_INSN ||
-	    strcmp(win[j2].key, "call _out") != 0)
-		return 0;
-	j3 = nextsig(j2);
-	if (j3 < 0 || win[j3].kind != L_INSN ||
-	    strcmp(win[j3].key, "inc sp") != 0)
-		return 0;
-	j4 = nextsig(j3);
-	if (j4 < 0 || win[j4].kind != L_INSN ||
-	    strcmp(win[j4].key, "inc sp") != 0)
+	    strcmp(win[j1].key, "call _out") != 0)
 		return 0;
 
 	sprintf(buf, "\t.dw %s\n", win[0].key + 6);
 	/* back to front, so the indices stay true */
-	delline(j4, 1);
-	delline(j3, 1);
-	delline(j2, 1);
 	delline(j1, 1);
 	delline(0, 1);
 	insline(0, "\tcall oarg\n");
 	insline(1, buf);
 	n_outi++;
-	saved += 4;
+	saved += 1;
 	return 1;
 }
+
+/*
+ * The first argument arrives in HL, and the w-family entry helpers
+ * promise that HL reaches the body intact and EQUAL TO (iy+4) - see
+ * libc/csv.s.  So a read of (iy+4) made before anything writes H or
+ * L is a read of a value a register already holds:
+ *
+ *	ld l,(iy+4) / ld h,(iy+5)	deleted			6 bytes
+ *	ld c,(iy+4) / ld b,(iy+5)	ld c,l / ld b,h		4
+ *	ld a,(iy+4)			ld a,l			2
+ *
+ * Measured on the stock compiler over its own sources before the
+ * convention changed (HLARG-PROJECTION.md): 190 functions reload the
+ * first parameter into HL as their first act, 53 stage it into BC,
+ * 40 read it as a byte - about 1,430 bytes, and it hands back the
+ * time the helper's spill costs in exactly the common case.
+ *
+ * The property belongs to the five w names and is asserted here, not
+ * analysed.  The q family makes no such promise - a long's high word
+ * is in HL' and the helper does not reload it - and is not matched.
+ * The scan looks past anything that provably cannot disturb HL or
+ * the slot: no stores (a push is fine - the slot is above IY and SP
+ * stays below it), no branches, no calls, nothing that writes H, L
+ * or IY.  A label ends it: someone may arrive there another way.
+ */
+int
+r_hlarg(void)
+{
+	int j, k;
+
+	if (!is(0, "call fentbw") && !is(0, "call fentxw") &&
+	    !is(0, "call fentbxw") && !is(0, "call fentnw") &&
+	    !is(0, "call fenterw"))
+		return 0;
+
+	for (j = 1; j < nwin; j++) {
+		if (win[j].kind == L_BLANK || win[j].kind == L_DIRECT)
+			continue;	/* the .dw rides after the call */
+		if (win[j].kind != L_INSN)
+			return 0;
+
+		if (is(j, "ld l,(iy+4)")) {
+			k = nextsig(j);
+			if (k < 0 || !is(k, "ld h,(iy+5)"))
+				return 0;	/* half a load: leave it */
+			delline(k, 1);
+			delline(j, 1);
+			n_hlarg++;
+			saved += 6;
+			return 1;
+		}
+		if (is(j, "ld c,(iy+4)")) {
+			k = nextsig(j);
+			if (k > 0 && is(k, "ld b,(iy+5)")) {
+				delline(k, 1);
+				insline(k, "\tld b,h\n");
+				delline(j, 1);
+				insline(j, "\tld c,l\n");
+				saved += 4;
+			} else {
+				delline(j, 1);
+				insline(j, "\tld c,l\n");
+				saved += 2;
+			}
+			n_hlarg++;
+			return 1;
+		}
+		if (is(j, "ld e,(iy+4)")) {
+			k = nextsig(j);
+			if (k > 0 && is(k, "ld d,(iy+5)")) {
+				delline(k, 1);
+				insline(k, "\tld d,h\n");
+				delline(j, 1);
+				insline(j, "\tld e,l\n");
+				saved += 4;
+			} else {
+				delline(j, 1);
+				insline(j, "\tld e,l\n");
+				saved += 2;
+			}
+			n_hlarg++;
+			return 1;
+		}
+		if (is(j, "ld b,(iy+4)")) {
+			delline(j, 1);
+			insline(j, "\tld b,l\n");
+			n_hlarg++;
+			saved += 2;
+			return 1;
+		}
+		if (is(j, "ld a,(iy+4)")) {
+			delline(j, 1);
+			insline(j, "\tld a,l\n");
+			n_hlarg++;
+			saved += 2;
+			return 1;
+		}
+
+		if (starts(j, "ld (") || starts(j, "call") ||
+		    isbranch(win[j].key))
+			return 0;
+		if (writes(win[j].key) & (R_HL | R_IY))
+			return 0;
+	}
+	return 0;
+}
+
 
 /*
  * A 16-bit equality test against -1, which is how every failed system
@@ -668,6 +767,8 @@ applyrules(void)
 {
 	if (r_exx())
 		return 1;
+	if (r_hlarg())
+		return 1;
 	if (r_fenter())
 		return 1;
 	if (r_fexit())
@@ -709,8 +810,8 @@ report(void)
 		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
 		n_outi);
 	fprintf(stderr, "peep: exx %ld  m1cmp %ld  ccall %ld  cret %ld"
-		"  jpnext %ld  pool %ld = %ld bytes\n",
-		n_exx, n_m1cmp, n_ccall, n_cret, n_jpnext,
+		"  jpnext %ld  hlarg %ld  pool %ld = %ld bytes\n",
+		n_exx, n_m1cmp, n_ccall, n_cret, n_jpnext, n_hlarg,
 		poolmerged, saved);
 }
 
