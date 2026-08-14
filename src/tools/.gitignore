@@ -16,6 +16,7 @@ astpp
 # before the rename, and nothing builds those any more.
 #
 mxld
+mxar
 mxnm
 mxsize
 *.o
