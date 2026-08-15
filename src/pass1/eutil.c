@@ -457,6 +457,27 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
     value_type = unwrapDeref(&operand);
     e = mkexpr(inc_op, operand);
     e->type = value_type;
+    /*
+     * The step, settled here.  It used to be worked out at emission
+     * time from type->sub->size, which is right until something
+     * retypes the node first - and an ordered comparison does exactly
+     * that, cmpunsigned() replacing a pointer operand's type with
+     * unsigned short so the compare goes unsigned.  So
+     *
+     *		while (++p < lim)
+     *
+     * reached the emitter with no element type left to ask about and
+     * stepped the pointer by one byte.  No diagnostic; the loop ran
+     * the wrong number of times and the pointer walked through the
+     * middles of its elements.
+     *
+     * A step is a property of the operation and of the type it was
+     * written against, so it is recorded when that type is in hand
+     * and nobody downstream has to reconstruct it.
+     */
+    e->v = 1;
+    if (value_type && (value_type->flags & TF_POINTER) && value_type->sub)
+        e->v = value_type->sub->size;
     if (is_postfix)
         e->flags |= E_POSTFIX;
     return e;

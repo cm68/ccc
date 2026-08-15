@@ -306,14 +306,17 @@ emitExpr(struct expr *e)
 	case INCR:
 	case DECR:
 		/* Increment/decrement operators: emit with increment amount */
-		n = 1;
+		/*
+		 * mkIncDec settled the step when the node was built; the
+		 * type here may have been rewritten since - see the note
+		 * there, and cmpunsigned above.
+		 */
+		n = e->v;
 		c = typeSfx(type);
 		if (op == INCR)
 			uc = (e->flags & E_POSTFIX) ? POSTINC : PREINC;
 		else
 			uc = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
-		if (type && (type->flags & TF_POINTER) && type->sub)
-			n = type->sub->size;
 		emit1(uc);
 		emit1(c);
 		/*
