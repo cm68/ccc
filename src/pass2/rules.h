@@ -111,8 +111,13 @@ struct rule {
  * flag this comparison answers in", worked out from e->op and the
  * signedness by ccflag() below.
  */
-#define P_CMP    236    /* EQ, NEQ, LT or GE */
-#define P_CMPX   235    /* LE or GT: the same code, operands swapped */
+/*
+ * P_CMP and P_CMPX were here: 236 and 235, one row standing for the
+ * four comparisons that need no swap and the two that do.  They are
+ * gone, and the rows they saved are written out instead - see the
+ * note at the head of the table in rules.c.  Nothing matched them
+ * anywhere but at the root, and the root is what the scan indexes on.
+ */
 
 /* the suffix byte */
 #define SFX_W(s)   ((s) & 7)		/* width: 0 none, b s l p */
@@ -135,6 +140,7 @@ struct rule {
 
 /* Rule table (defined in rules.c) */
 extern struct rule rules[];
+extern void ruleindex(void);
 #ifdef DEBUG
 extern char *rulepat[];	/* the patterns as written, for the trace */
 #endif

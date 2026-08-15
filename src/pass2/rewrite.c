@@ -528,11 +528,6 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_ZERO) return e->op == NUMBER && e->u.val == 0;
 	if (pat == P_SMALL) return e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
 	if (pat == P_EIGHT) return e->op == NUMBER && e->u.val == 8;
-	if (pat == P_CMP)
-		return e->op == EQ || e->op == NEQ ||
-		    e->op == LT || e->op == GE;
-	if (pat == P_CMPX)
-		return e->op == LE || e->op == GT;
 	if (pat >= P_MUL40 && pat <= P_MUL3)
 		return e->op == NUMBER && e->u.val == multab[pat-238];
 	return e->op == pat;
@@ -1513,6 +1508,35 @@ matflag(unsigned char r)
 }
 
 /*
+ * Where each opcode's rules begin.  Built once from the table rather
+ * than written out beside it, because a table that says the same
+ * thing twice is a table that will one day disagree with itself; the
+ * pass over 760 rules costs nothing next to what it saves, and 512
+ * bytes of bss is a price this machine can pay - c1's worst file
+ * leaves eight kilobytes between the break and the stack.
+ */
+#define NORULE 0xffff
+static unsigned short ruleidx[256];
+
+void
+ruleindex(void)
+{
+	unsigned short i;
+
+	for (i = 0; i < 256; i++)
+		ruleidx[i] = NORULE;
+	/*
+	 * Backwards, so that the first rule of a run is what is left
+	 * standing - the table is sorted, so a run is contiguous, and
+	 * the earliest rule of an op has to be the one tried first.
+	 */
+	for (i = 0; rules[i].op; i++)
+		;
+	while (i--)
+		ruleidx[rules[i].op] = i;
+}
+
+/*
  * Apply one rewrite step to node (not children)
  * Returns new node if changed, NULL if no change
  */
@@ -1521,6 +1545,7 @@ step(Expr *e)
 {
 	struct rule *rp;
 	Expr *n;
+	unsigned short first;
 
 	if (!e) return NULL;
 
@@ -1691,22 +1716,24 @@ step(Expr *e)
 	}
 no_regconv:
 
-	for (rp = rules; rp->op; rp++) {
-		/*
-		 * A rule rooted at a plain opcode can only ever match a
-		 * node carrying that opcode - opmatch's last line is the
-		 * whole story - so ask here, where it costs a compare,
-		 * rather than in a call that sets up a frame to answer
-		 * the same question.  Every pattern that means something
-		 * looser is P_ANY or above, and the largest opcode any
-		 * rule is rooted at is well below it.
-		 *
-		 * Four and a half million of the four and three quarter
-		 * million calls this loop used to make were answered no
-		 * on their first line.
-		 */
-		if (rp->op < P_ANY && rp->op != e->op)
-			continue;
+	/*
+	 * The table is sorted by root op and every rule is rooted at a
+	 * real opcode, so the rules that can match this node are one
+	 * run of it, and ruleidx says where that run starts.  What used
+	 * to be a walk of all 760 rules asking each whether it was the
+	 * right kind is now a subscript and a run of the ones that are:
+	 * 11,996,703 rule examinations over nm.c became 454,914.
+	 *
+	 * Most of that is nodes with no rules at all - better than half
+	 * of what arrives here is an already-reduced form like CODE or
+	 * INBC, and each of those used to walk the whole table to learn
+	 * there was nothing for it.  Now it is one failed subscript.
+	 */
+	first = ruleidx[e->op];
+	if (first == NORULE)
+		return NULL;
+
+	for (rp = &rules[first]; rp->op == e->op; rp++) {
 		n = tryrule(rp, e);
 		if (n) {
 #ifdef DEBUG
