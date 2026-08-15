@@ -2654,6 +2654,25 @@ struct rule rules[] = {
 		F_LDDER "\tld (ix+0),e\n\tld (ix+1),d\n", R_DE),
 	R(ASSIGN,DEREF,INBC,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
+	/*
+	 * The same with the value in de, which is where it sits when the
+	 * store is one operand of a comparison: the other operand has
+	 * taken hl.  The hl, bc and constant forms were all here and
+	 * this was not, so
+	 *
+	 *	if ((rep->ad2 = p) > reend)
+	 *
+	 * left the whole condition unreduced - sed writes it that way,
+	 * and GT normalizes to LT by exchanging its operands, which is
+	 * what puts the store on the side that gets de.  Written the
+	 * other way round it compiled, which made it look like a
+	 * register-allocation quirk rather than a missing form.
+	 *
+	 * R_DE, not 0: the value of a store is what was stored, and
+	 * LT,INHL,INDE above takes it from there.
+	 */
+	R(ASSIGN,DEREF,INDE,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tld (ix+0),e\n\tld (ix+1),d\n", R_DE),
 	R(ASSIGN,DEREF,P_NUM,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
 	R(ASSIGN,DEREF,INA,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
 	/* a word in HL narrowed on its way through the index register */
