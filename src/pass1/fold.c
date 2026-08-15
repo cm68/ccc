@@ -95,6 +95,32 @@ foldNode(struct expr *e)
     op = e->op;
 
     /*
+     * x + (-y) is x - y, and saying so here saves pass2 from ever
+     * meeting the other shape.  It has rules for subtracting a
+     * register from another and none for adding a negated one, so
+     *
+     *	(-x) + (-y)
+     *
+     * was an expression it could not build - and in a longer sum,
+     * where the association put a plain term on the left, it built
+     * PART of it and dropped the negated term without a word:
+     * "(-x) + (-y) + (-(x+y))" compiled clean and came out three
+     * short.  Turning the add into a subtract costs nothing, removes
+     * the negation entirely, and is what the machine would want in
+     * any case: hl - de is one instruction sequence, hl + (0 - de)
+     * is two.
+     */
+    if (op == PLUS && right && right->op == NEG && right->left) {
+        struct expr *neg = right;
+
+        e->op = MINUS;
+        e->right = right = neg->left;
+        neg->left = NULL;
+        freeNode(neg);
+        op = MINUS;
+    }
+
+    /*
      * A conditional whose test is constant is one of its arms.  This
      * was missing entirely, and nothing said so: a static initializer
      * is required to be constant, so an unfolded ?: left the whole
