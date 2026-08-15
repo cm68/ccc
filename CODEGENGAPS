@@ -1,0 +1,475 @@
+CODEGENGAPS - expressions the compiler cannot build, with repro source
+
+Every case below was verified against the installed compiler on
+2026-08-15, compiled as:
+
+	/usr/local/bin/ccc -m micronix -O -c repro.c
+
+All of them came out of porting the 2.11BSD userland (cat tee cmp ln
+chmod chgrp du date dd mv pr od grep sed ...) - real code the PDP-11
+compiler swallowed and this one does not.  Each entry gives the
+smallest source that still fails, the exact diagnostic, and the
+workaround the port used, so the ported sources can be unwound when
+the rule is added.
+
+Three kinds, and the distinction is the point of the layout: WRONG
+CODE entries compile silently and compute the wrong thing - those
+are the ones that cost afternoons; "no rule" entries fail loudly on
+legitimate expressions; and the last section is refusals the
+compiler is entitled to, recorded only so the diagnostic is
+recognized on sight.
+
+FIXED entries keep their repro and their diagnosis: the repro is the
+regression test, and the diagnosis is why the next one like it will
+be found faster.  The workarounds noted in each can be unwound in the
+ported sources.
+
+===========================================================================
+c1: no rule to build code for
+===========================================================================
+
+The diagnostic in every c1 case is:
+
+	1 expression(s) that no rule could build code for - the output
+	is missing them
+	Error: c1 failed on <file>
+
+1. &= with a complemented bare variable  [FIXED]
+------------------------------------------------
+FIXED 2026-08-15, commit a6ac8a3.  NOT had forms for hl, bc and a and
+none for de.  The complement is done in place now, result staying in
+de where AND,INBC,INDE can take it.
+
+Found porting chmod (the `=` case of symbolic modes).  Any
+`x &= ~var` where the operand of ~ is a bare variable; parenthesized
+expression forms like `x &= ~(a & b)` compile fine.
+
+	f(a, m)
+	int a, m;
+	{
+		a &= ~m;
+		return a;
+	}
+
+Workaround in cmd/chmod: `nm ^= nm & m` computes the same value.
+
+2. pointer subtraction with a register variable on the right  [FIXED]
+---------------------------------------------------------------------
+FIXED 2026-08-15, commit 0c89980.  Every register form of MINUS
+carried the register on the left; here the address is.
+
+Found porting pr (nexbuf()'s "how much room is left" computation).
+
+	char buffer[512];
+	f()
+	{
+		register char *p;
+
+		p = buffer;
+		return &buffer[512] - p;
+	}
+
+Workaround in cmd/pr: take the difference from the global before
+copying it into the register:
+
+	n = &buffer[BUFS] - bufp;
+	rbufp = bufp;
+
+3. *p compared with an address, p a register char ** from &arr[i]  [FIXED]
+--------------------------------------------------------------------------
+FIXED 2026-08-15, commit 0c89980.  Needed ASSIGN,DEREF,SYMREF,REGVAR -
+a symbol's address stored through a register pointer.  The INHL and
+P_NUM forms were beside it.
+
+Found porting pr (tpgetc()'s column-pointer wraparound).  This one is
+an interaction: the failure needs BOTH the pointer-to-pointer loaded
+from an address-of-subscript AND the comparison, and small changes to
+either side make it compile.
+
+Fails:
+
+	char buffer[9000];
+	char *colp[72];
+	f(i)
+	int i;
+	{
+		register char **p;
+
+		p = &colp[i];
+		if (*p >= buffer)
+			*p = buffer;
+		return 0;
+	}
+
+Also fails with the comparison spelled `*p == &buffer[9000]`.
+
+Compiles, for calibration - each is the same function with one thing
+changed:
+
+	p = colp + i;   ... if (*p >= buffer)     same value, + not &[]
+	p = &colp[i];   ... if (*p == buffer)     equality vs bare array
+	p = colp;       ... if (*p >= buffer)     no index in the load
+
+Workaround in cmd/pr: go through a plain (non-register) temporary:
+
+	q = *p + 1;
+	if (q >= &buffer[BUFS])
+		q = buffer;
+	*p = q;
+
+4. pointer plus one constant minus another, register pointer LHS  [FIXED]
+-------------------------------------------------------------------------
+FIXED 2026-08-15, commit 911be51.  Not a rule: pass1 folds (x + c1) -
+c2 into one offset now, so the shape never reaches the table.
+
+Found porting grep (the -y buffer-overrun guard).  The unfolded
+constant arithmetic on the right needs a register pointer on the
+left to fail; with a plain parameter it compiles.
+
+	char ybuf[256];
+	f(a)
+	char *a;
+	{
+		register char *s;
+
+		s = a;
+		if (s >= ybuf+256-5)
+			return 1;
+		return 0;
+	}
+
+Compiles, for calibration: `s >= ybuf+251`, `s >= &ybuf[251]`,
+`s >= ybuf+256`, and the exact failing expression with `s` a plain
+(non-register) parameter.
+
+Workaround in cmd/grep: `&ybuf[ESIZE-5]` - the subscript form folds
+the integers before the address is formed.
+
+5. &= of the complement of a negate  [FIXED]
+--------------------------------------------
+FIXED 2026-08-15, commit a6ac8a3.  Needed AND,INBC,INHL: and is
+commutative but the matcher is not, and only the hl,bc spelling was
+there.
+
+Found porting od (the -w power-of-two clamp).  A cousin of entry 1.
+
+	f()
+	{
+		register int w;
+
+		w = 6;
+		while (w &= (~(-w)))
+			;
+		return w;
+	}
+
+Workaround in cmd/od: `w &= w - 1`, the same value in two's
+complement.
+
+6. WRONG CODE: long minus an inline address-of-subscript difference  [HALF FIXED]
+---------------------------------------------------------------------------------
+HALF FIXED 2026-08-15, commit a71fa8e - the pass1 half.  The scaling
+shortcut for byte-sized elements returned before typing the
+difference, so it kept its POINTER type; the enclosing subtraction
+then took the pointer-arithmetic path and narrowed the long operand
+to sixteen bits.  The tree is right now and char and int pointers
+behave alike.
+
+STILL WRONG: the answer is 65337 rather than 77, and it was 65337 for
+int pointers before any of this - the char case only reached the same
+bug.  Given
+
+	(SUB:long (DEREF:long nd)
+		  (SEXT:long (SUB:short (ADD buf 33) (REGVAR BC))))
+
+c1 emits the long subtraction and never computes the right operand -
+push hl with nothing loaded into hl - and reports no error.  Rules for
+SEXT to long from INHL, INBC and INA all exist, so something matches
+at the SUB:long and consumes the child without emitting it.  That is
+where the remaining wrong number lives.
+
+Found porting od (odcvt's digit-count arithmetic).  THIS ONE IS NOT
+AN ERROR - IT COMPILES AND RUNS AND PRODUCES THE WRONG NUMBER, the
+only silent-wrong-code case the 2.11 sweep found.  A pointer
+difference whose left side is an inline &arr[CONST], subtracted into
+a long, comes out zero.
+
+	char buf[33];
+	main()
+	{
+		char *b;
+		long t, nd;
+
+		b = &buf[10];
+		nd = 100;
+		t = nd - (&buf[33] - b);
+		printf("%ld\n", t);
+		return 0;
+	}
+
+Prints 0.  The answer is 77.  The compound form `t = nd;
+t -= &buf[33] - b;` also prints 0.  Verified by running both under
+usersim on 2026-08-15.
+
+Correct, for calibration - each prints 77:
+
+	e = &buf[33];  t = nd - (e - b);      named pointer, no inline &[]
+	d = &buf[33] - b;  t = nd;  t -= d;   difference into an int first
+
+In od's original function (many long locals, six register variables)
+the related shapes flipped between "no rule" errors and this silent
+zero as register allocation moved; cmd/od's odcvt is rewritten one
+plain statement a time with an emitted-digit counter instead of the
+closing pointer subtraction.  Until this is fixed, any pointer
+difference written against an inline &arr[CONST] and mixed into long
+arithmetic is suspect.
+
+7. WRONG CODE: pointer pre-increment inside a comparison scales by 1  [FIXED]
+---------------------------------------------------------------------------
+FIXED 2026-08-15, commit d5315d2.  cmpunsigned() retypes a pointer
+operand to unsigned short so ordered comparisons go unsigned, and the
+step was being recovered afterwards, at emission, from the type->sub
+it had just discarded.  mkIncDec records the step when the node is
+built, where the type is still the operand's own.
+
+Found porting sed (`if (++rep >= ptrend)` over struct pointers).
+The increment happens, but by one BYTE, not one element - no
+diagnostic, just a pointer walking through the middles of its
+elements.  `p++;` as a statement and the deref forms (`*++p`,
+`*p++ = v`) scale correctly.
+
+	int arr[10];
+	main()
+	{
+		register int *p, *lim;
+		int n;
+
+		p = arr;
+		lim = &arr[3];
+		n = 0;
+		while (++p < lim)
+			n++;
+		printf("%d\n", n);
+		return 0;
+	}
+
+Prints 5.  The answer is 2: six bytes of distance walked a byte at
+a time instead of an int at a time.  Verified under usersim on
+2026-08-15.  sed hit it on struct pointers, where the stride error
+is even larger.
+
+Workaround in cmd/sed: split it - `rep++; if (rep >= ptrend)`.
+
+8. WRONG CODE: table-copy loop with three register char pointers  [FIXED]
+-------------------------------------------------------------------------
+FIXED 2026-08-15, commit 6ac17c1.  Not the three pointers: the byte
+store through a pointer in a frame slot (ASSIGN,DEREF,INA,INDEX) gave
+destval 0, so the assignment's value came from e->tgt - the pointer
+stored through - instead of the byte stored.  The loop tested an
+address, which is never zero.  The third register variable only
+mattered because it decided whether the allocator spilled the pointer
+and so which of two rules fired.  destval is R_A now.
+
+Found porting sed (the y-command's translate loop).  The loop is
+correct with two register char pointers in the frame and an
+infinite loop with three - the third need not even appear in the
+loop.
+
+	char tab[256];
+	char line[20];
+	main()
+	{
+		register int i;
+		register char *p1, *p2, *p3;
+
+		for (i = 1; i < 256; i++)
+			tab[i] = i;
+		strcpy(line, "abc");
+		p1 = line;
+		p2 = tab;
+		p3 = tab;
+		while (*p1 = p2[*p1])
+			p1++;
+		printf("%s\n", line);
+		return 0;
+	}
+
+Hangs.  Delete `p3` (and its assignment) and it prints abc and
+exits.  Verified under usersim on 2026-08-15, 15-second timeout
+against the three-register build.
+
+Workaround in cmd/sed: the loop is hoisted into a translate(lp, tp)
+helper whose frame declares only two register pointers.
+
+9. assignment as the value of a pointer comparison, register struct  [FIXED]
+----------------------------------------------------------------------------
+FIXED 2026-08-15, commit fd41586.  Needed ASSIGN,DEREF,INDE,REGVAR: a
+word stored from de through a register pointer.  The store's VALUE is
+in de because the other operand of the comparison has taken hl, and
+the table had the hl, bc and constant forms and not that one.
+
+The register struct pointer is not the discriminator - a file-scope
+one fails identically.  Which SIDE the store lands on is:
+
+	(rep->ad2 = p) < reend		compiled
+	reend > (rep->ad2 = p)		compiled - GT swaps, store left
+	reend < (rep->ad2 = p)		failed - store right, value in de
+
+and the entry's own spelling is the third, GT normalizing to LT by
+exchanging its operands.
+
+Two wrong diagnoses on the way, recorded because the METHOD is the
+lesson.  cmpunsigned was blamed for installing an unsigned width no
+rule could match: pnode compares widths case-insensitively, so it
+cannot matter.  Then the store was said to be steered to de and
+unable to reduce: the store is targeted to hl, and it is its value
+that arrives in de.  Both came of reasoning about the source and the
+rule table.  Printing the tree where reduction stops - dumpexpr at
+the unreduced marker in lower.c - answered it in one look, and is
+what to do first next time.
+
+===========================================================================
+c0: front end
+===========================================================================
+
+Not codegen, but real bugs: maximal munch makes both of these legal
+source - `argc-->1` is `argc--  >  1` and nothing else - however
+much the spelling deserves what it gets.  The ports keep the spaces
+regardless.
+
+Both are ONE bug, in cpp's gettoken() (src/cpp/lex.c, the operator
+scan at the bottom): after the doubled-character branch builds `--`
+or `++`, the following suffix checks still run, and they test the
+ORIGINAL first character rather than the token built so far.  So
+the arrow check (`c == '-' && curchar == '>'`) rewrites a finished
+`--` into `->` when a `>` follows, and the `=`-suffix check
+(lookupc(eqChars, c)) rewrites a finished `++` into `+=` when a `=`
+follows - which is exactly what the two diagnostics below show the
+parser receiving.  `>>=`/`<<=` are already special-cased inside the
+doubled branch; the fix is for a doubled match to end the operator
+scan instead of falling through.
+
+10. --> is mis-tokenized  [FIXED]
+---------------------------------
+FIXED 2026-08-15, commit 9c78df2, with entry 11 - one bug.  A doubled
+match now ends the operator scan.
+
+Found porting tee, which counts arguments with `while(argc-->1)`.
+The lexer loses the parse; the statement never recovers.
+
+	f(argc)
+	int argc;
+	{
+		int n;
+
+		n = 0;
+		while (argc-->1)
+			n++;
+		return n;
+	}
+
+	arrow.c:8: expr paren
+	arrow.c:8: switch {
+	arrow.c:10: need }
+	bad op (member): 21
+
+Workaround: `argc-- > 1`.  The space is load-bearing and the ported
+source says so at the site.
+
+11. ++== is mis-tokenized the same way  [FIXED]
+-----------------------------------------------
+FIXED 2026-08-15, commit 9c78df2, with entry 10.
+
+Found porting od: `if (*p++=='.')`.  Same disease as entry 10, the
+other direction.  `*p++ == '.'` and `(*p++)=='.'` both scan fine;
+what follows the == is irrelevant (a constant fails too).
+
+	f(s)
+	char *s;
+	{
+		register char *p;
+
+		p = s;
+		if (*p++=='.')
+			return 1;
+		return 0;
+	}
+
+	bad op (expr): 80
+	plusplus.c:7: bad op
+	plusplus.c:7: need lvalue
+
+Workaround: the space before ==.
+
+===========================================================================
+limitations, not bugs - the source is what should change
+===========================================================================
+
+The compiler refuses these and is entitled to.  They are recorded so
+the next port recognizes the diagnostic and fixes the source without
+a diagnosis detour; nobody should teach c0 to like them.
+
+12. storage class after the type
+--------------------------------
+Found porting tee: `int register r, w, p;`.  K&R technically lets
+the storage class and type come in either order; c0 only accepts
+the class first, and the class-first spelling is the only one that
+should exist anyway.
+
+	f()
+	{
+		int register r;
+
+		r = 1;
+		return r;
+	}
+
+	regorder.c:3: bad decl token
+	...
+	regorder.c:5: undefined symbol
+
+Fix the source: `register int r`.
+
+13. static definition after an implicit-int call
+------------------------------------------------
+Found porting date.  Calling an undeclared function declares it
+extern int; a later definition that says static disagrees with that
+linkage, and c0 says so.  The PDP-11 compiler let it slide and 2.11
+code leans on the slack, but the complaint is on the source.
+
+	main()
+	{
+		return g();
+	}
+	static
+	g()
+	{
+		return 1;
+	}
+
+	staticg.c:8: redecl disagrees
+
+Fix the source: declare `static g();` before the first call, or
+drop the static.
+
+===========================================================================
+not the compiler, but found the same way
+===========================================================================
+
+libc's doprnt.c defines a GLOBAL icvt()  [NOT REPRODUCIBLE]
+-----------------------------------------------------------
+Checked 2026-08-15: icvt is already static in doprnt.c and no icvt
+symbol appears in libc.a.  Either it was fixed after this was written
+or the collision od hit came from somewhere else.  Left here with its
+reasoning because the link-order argument below is still sound and
+worth knowing if a duplicate ever does appear.
+
+src/libc/doprnt.c line 23: icvt() is the number formatter doprnt
+uses internally, and it is a global.  Any program that defines its
+own icvt() collides with it - od did, taken verbatim from 2.11, and
+its link failed on the duplicate (a minimal two-function repro links
+without complaint, so the failure depends on link order and what
+else the archive pulls in - which makes it worse, not better: when
+the link DOES succeed, one of the two functions has silently won).
+cmd/od renamed its copy odcvt.  The fix is `static` on doprnt's
+icvt, which frees the name and costs nothing.
