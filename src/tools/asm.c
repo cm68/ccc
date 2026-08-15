@@ -227,6 +227,34 @@ struct rhead {
     struct reloc *tail;
 };
 
+/*
+ * Relocations go to a scratch file, not into memory.
+ *
+ * There is one of these for every call, jump and 16-bit immediate
+ * that names a symbol, and nm.c makes about three thousand: twenty
+ * kilobytes of list on a machine with thirty-two to spend, on top of
+ * the symbol table, which is why the assembler ran out of memory on
+ * the largest source in the tree and the file simply did not build.
+ *
+ * They were only in memory to be held until the end.  The encoding
+ * needs sym->index, which is not settled until every symbol is known,
+ * so a relocation cannot be encoded where it is made - but it does
+ * not have to be kept in core to wait, and the encoded stream already
+ * goes to a scratch file of its own.  This is the same trick one step
+ * earlier.  The symbol pointer is written as-is: the symbols are
+ * permalloc'd and outlive the assembly, so the pointer read back is
+ * the pointer written.
+ */
+struct relrec {
+    struct rhead *tab;
+    unsigned short addr;
+    struct symbol *sym;
+    unsigned char hilo;
+};
+
+extern FILE *relfp;             /* the scratch file, opened in asz.c */
+long nrel;                      /* records written to it */
+
 extern unsigned char *lineptr;
 extern unsigned char linebuf[];
 
@@ -1096,6 +1124,9 @@ struct rhead *rh;
      */
     rh->tail = 0;
     rh->head = 0;
+    nrel = 0;
+    if (relfp)
+        fseek(relfp, 0L, SEEK_SET);
 }
 
 /*
@@ -1164,12 +1195,18 @@ unsigned char hilo;
     if (sym->seg == SEG_UNDEF)
         return;
 
-    r = (struct reloc *) permalloc(sizeof(struct reloc));
+    {
+        struct relrec rr;
 
-	r->addr = addr;
-    r->sym = sym;
-    r->hilo = hilo;
-	r->next = 0;
+        rr.tab = tab;
+        rr.addr = addr;
+        rr.sym = sym;
+        rr.hilo = hilo;
+        if (fwrite((char *)&rr, sizeof(rr), 1, relfp) != 1)
+            gripe("cannot write relocation scratch");
+        nrel++;
+        return;
+    }
 
 	if (!tab->head) {
 		tab->tail = tab->head = r;
@@ -1421,17 +1458,31 @@ segbase()
  */
 extern FILE *tmpfp;
 
+/*
+ * Walk the scratch file rather than a list, taking the records that
+ * belong to this table.  Read twice, once per segment, which costs a
+ * second pass over a file that is already written and is the whole
+ * price of not holding it in core.
+ */
 void
-reloc_out(r, base)
-struct reloc *r;
+reloc_out(tab, base)
+struct rhead *tab;
 unsigned short base;
 {
 	int last = base;
 	int bump;
 	int seg;
 	int size;
+	long i;
+	struct relrec rr;
+	struct relrec *r = &rr;
 
-	while (r) {
+	fseek(relfp, 0L, SEEK_SET);
+	for (i = 0; i < nrel; i++) {
+		if (fread((char *)&rr, sizeof(rr), 1, relfp) != 1)
+			gripe("cannot read relocation scratch");
+		if (rr.tab != tab)
+			continue;
 		seg = r->sym->seg;
 		size = (r->hilo == RELOC_WORD) ? 2 : 1;
 #ifdef DEBUG
@@ -1460,7 +1511,6 @@ unsigned short base;
 			wsEncReloc(tmpfp, -1, r->sym->index, r->hilo);
 		}
 		last += bump + size;
-		r = r->next;
 	}
 	wsEndReloc(tmpfp);
 }
@@ -2635,8 +2685,8 @@ assemble()
 		}
 	}
 
-	reloc_out(textr.head, 0);
-	reloc_out(datar.head, text_top);
+	reloc_out(&textr, 0);
+	reloc_out(&datar, text_top);
 
 	list_symbols();
 }

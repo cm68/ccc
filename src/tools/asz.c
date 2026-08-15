@@ -43,6 +43,7 @@ int lineNum;
 
 FILE *outfp;
 FILE *tmpfp;
+FILE *relfp;            /* relocation scratch - see add_reloc in asm.c */
 FILE *infp;
 FILE *inbuffp;
 
@@ -679,6 +680,13 @@ char **argv;
     }
     unlink(tmpbuf);
 
+    sprintf(tmpbuf, "/tmp/arl%d", getpid());
+    if ((relfp = fopen(tmpbuf, "w+b")) == NULL) {
+        printf("cannot open tmp file %s\n", tmpbuf);
+        exit(1);
+    }
+    unlink(tmpbuf);
+
     if ((outfp = fopen(outfile, "wb")) == NULL) {
         printf("cannot create output file %s\n", outfile);
         exit(1);
@@ -702,6 +710,7 @@ char **argv;
     if (infp != stdin)
         fclose(infp);
     fclose(tmpfp);
+    fclose(relfp);
     return 0;
 }
 
