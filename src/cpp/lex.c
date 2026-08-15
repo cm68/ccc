@@ -1462,7 +1462,21 @@ gettoken()
             /* else two dots is an error, but we'll let parser catch it */
         }
 
-        /* see if the character is doubled.  this can be an operator */
+        /*
+         * See if the character is doubled.  This can be an operator,
+         * and if it is, the token is FINISHED - the checks below test
+         * c, the first character, not the token built here, so
+         * falling into them let a following character rewrite a
+         * complete operator into a different one:
+         *
+         *      argc-->1        --  then >  became ->
+         *      *p++=='.'       ++  then =  became +=
+         *
+         * Both are legal source that the PDP-11 compiler took, both
+         * came out of porting 2.11BSD, and the parser received an
+         * operator nobody had written.  >>= and <<= are the only
+         * suffix a doubled operator takes, and that is settled here.
+         */
         if (curchar == c) {
             t = lookupc(dblChars, c);
             if (t != 0xff) {
@@ -1473,6 +1487,7 @@ gettoken()
                     next.type = (c == '>') ? RSHIFTEQ : LSHIFTEQ;
                     advance();
                 }
+                break;
             }
         }
 
