@@ -99,4 +99,3 @@ extern short verbose;
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
 
-extern void ruleindex(void);

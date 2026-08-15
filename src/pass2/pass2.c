@@ -74,7 +74,6 @@ main(int argc, char **argv)
 	progname = *argv++;
 	argc--;
 
-	ruleindex();		/* the rule table's index, from the table */
 
 	/* Parse options */
 	while (argc) {

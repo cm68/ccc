@@ -1102,6 +1102,7 @@ char *rulepat[] = {
 	"n(any,num)",
 	"n",
 	"=(O,I)",
+	0,		/* the end: this array is SHORTER than rules[] */
 };
 #endif
 

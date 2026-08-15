@@ -54,8 +54,22 @@ dumphits(void)
 
 	if (!path || !(f = fopen(path, "a")))
 		return;
+	/*
+	 * The rule's own fields, not rulepat[].  That array is a second
+	 * copy of what the table already says and it had drifted: 705
+	 * spellings against 765 rules, six short before this year's
+	 * additions, and once the table was sorted by root op the two
+	 * no longer described the same rule at any index - the dump
+	 * named a multiply for a program that has none.  Walking rules[]
+	 * while indexing it also ran off the end and dropped a core.
+	 *
+	 * Printed from the rule itself, this cannot drift.
+	 */
 	for (i = 0; rules[i].op && i < MAXRULES; i++)
-		fprintf(f, "%d\t%lu\t%s\n", i, rulehits[i], rulepat[i]);
+		fprintf(f, "%d\t%lu\top=%d lop=%d rop=%d sub=%d sfx=%d%s\n",
+		    i, rulehits[i], rules[i].op, rules[i].lop, rules[i].rop,
+		    rules[i].subop, rules[i].sfx,
+		    rules[i].asmtpl ? "" : " (transform)");
 	fclose(f);
 }
 #endif
@@ -1008,7 +1022,8 @@ tryrule(struct rule *rp, Expr *e)
 
 #ifdef DEBUG
 	if (VERBOSE(V_RULES))
-		fprintf(stderr, "rewrite: %s -> %c\n", rulepat[rp - rules], rp->rep);
+		fprintf(stderr, "rewrite: rule %d (op=%d) -> %c\n",
+		    (int)(rp - rules), rp->op, rp->rep);
 #endif
 
 	oldop = e->op;
@@ -1508,33 +1523,12 @@ matflag(unsigned char r)
 }
 
 /*
- * Where each opcode's rules begin.  Built once from the table rather
- * than written out beside it, because a table that says the same
- * thing twice is a table that will one day disagree with itself; the
- * pass over 760 rules costs nothing next to what it saves, and 512
- * bytes of bss is a price this machine can pay - c1's worst file
- * leaves eight kilobytes between the break and the stack.
+ * The index lives in ruleidx.c, which mkruleidx writes from the table
+ * at build time - see the note at the head of that program.  It was
+ * built here at startup once; a generated one cannot disagree with
+ * the table and cannot be filed wrong, because the same pass that
+ * writes it refuses a table whose runs are broken.
  */
-#define NORULE 0xffff
-static unsigned short ruleidx[256];
-
-void
-ruleindex(void)
-{
-	unsigned short i;
-
-	for (i = 0; i < 256; i++)
-		ruleidx[i] = NORULE;
-	/*
-	 * Backwards, so that the first rule of a run is what is left
-	 * standing - the table is sorted, so a run is contiguous, and
-	 * the earliest rule of an op has to be the one tried first.
-	 */
-	for (i = 0; rules[i].op; i++)
-		;
-	while (i--)
-		ruleidx[rules[i].op] = i;
-}
 
 /*
  * Apply one rewrite step to node (not children)

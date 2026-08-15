@@ -2,6 +2,8 @@
 c1
 debug.h
 dbgtags.c
+ruleidx.c
+mkruleidx
 *.o
 stage1/
 sizecheck/

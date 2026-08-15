@@ -60,7 +60,8 @@ ZCC_ASMEXT = s
 #
 SIZEDIR = sizecheck-$(ZCC)
 
-SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c lower.c rules.c
+SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c lower.c rules.c \
+	ruleidx.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = pass2.h expr.h opcodes.h rules.h
@@ -71,13 +72,32 @@ else
 DBGFILES =
 endif
 
-GENERATED = dbgtags.c debug.h
+GENERATED = dbgtags.c debug.h ruleidx.c mkruleidx
 
 all: c1
 
 # Generated file rules
 dbgtags.c debug.h: ./makedebug.sh $(SOURCES)
 	./makedebug.sh
+
+#
+# The rule index, written from the rule table by a program that links
+# against it.  Nothing here is maintained by hand: mkruleidx walks
+# rules[] and refuses to emit an index at all if any opcode's rules
+# are not one unbroken run, so a rule filed in the wrong place stops
+# the build instead of never being tried.
+#
+# ruleidx.c names rules.c as well as the generator.  Editing the table
+# does relink mkruleidx by way of rules.o and would regenerate the
+# index for that reason alone, but a build should say what it depends
+# on rather than arrive at it: the index is a function of the table,
+# and that is the edge worth writing down.
+#
+mkruleidx: mkruleidx.c rules.o $(HEADERS)
+	$(CC) $(CFLAGS) -I. -I../ccclib -o mkruleidx mkruleidx.c rules.o
+
+ruleidx.c: mkruleidx rules.c
+	./mkruleidx > ruleidx.c || (rm -f ruleidx.c; exit 1)
 
 # The compile itself is the default rule in GNUmakefile.inc; this
 # just says what every object here depends on besides its source.
