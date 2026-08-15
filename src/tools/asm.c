@@ -2429,8 +2429,41 @@ assemble()
 				}
 
 
+				/*
+				 * .error <text>
+				 *
+				 * How pass2 reports a fault it can only find
+				 * once it is emitting - a switch too wide for
+				 * the case table, a frame too large to restore
+				 * bc from, a dozen of them.  It has no channel
+				 * back to the driver except the file it is
+				 * writing, so it writes the complaint here and
+				 * this refuses to assemble.
+				 *
+				 * Until now there was no such directive, so
+				 * every one of those came out as "unkown
+				 * directive" with the real message visible
+				 * only because the offending line is echoed
+				 * after it.  The message is the point; print
+				 * it as one.
+				 */
+				if (match(token_buf, "error")) {
+					unsigned char *p = linebuf;
+
+					while (*p && *p != '.')
+						p++;
+					if (*p == '.')
+						p++;
+					while (*p && *p != ' ' && *p != '\t')
+						p++;
+					while (*p == ' ' || *p == '\t')
+						p++;
+					printf("%s:%d %s", infile, lineNum, p);
+					exit(1);
+				}
+
 				printf("%s\n", token_buf);
-				gripe("unkown directive");
+				gripe("unknown directive");
 				continue;
 			}
 
