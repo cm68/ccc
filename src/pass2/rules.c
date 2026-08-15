@@ -1697,6 +1697,15 @@ struct rule rules[] = {
 	 * do a few rules down.
 	 */
 	R(AND,INHL,INBC,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
+	/*
+	 * The same the other way round.  and is commutative and the
+	 * template does not care which operand it was handed, but the
+	 * matcher does: with only the hl,bc spelling here, "w &= ~(-w)"
+	 * - the register variable on the left and the reduced complement
+	 * in hl on the right - had nothing to match.  od's power-of-two
+	 * clamp is written that way.
+	 */
+	R(AND,INBC,INHL,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
 	R(AND,INBC,INDE,0,0,0, AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
 	R(OR,DEREF,P_NUM,INDEX,0,1, OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
 	R(OR,INA,DEREF,0,SYMREF,1, OR, P_L, P_R, P_NONE, 0, F_LDHLRL1 F_ORHL, R_A),
@@ -2967,6 +2976,24 @@ struct rule rules[] = {
 	/* the same of a register variable, brought over first */
 	R(NOT,INBC,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
+	/*
+	 * And of a word in de.  The hl and bc forms were here and this
+	 * was not, so "a &= ~m" - the complement of a plain variable the
+	 * allocator had put in de - reduced to nothing and c1 reported
+	 * an expression it could not build.  2.11BSD's chmod writes the
+	 * = case of symbolic modes that way.  A parenthesized operand
+	 * like ~(a & b) compiled, which is what made it look like a
+	 * quirk of the source rather than a missing rule.
+	 *
+	 * In place, and the result stays in de.  Six bytes, a the only
+	 * scratch, hl untouched - and it lands where AND,INBC,INDE below
+	 * can take it.  Going through ex de,hl instead would cost more,
+	 * clobber hl, and leave the operands in an order no AND rule
+	 * spells: there is an AND,INHL,INBC and no AND,INBC,INHL.
+	 */
+	R(NOT,INDE,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
+		"\tld a,d\n\tcpl\n\tld d,a\n\tld a,e\n\tcpl\n\tld e,a\n",
+		R_DE),
 	R(NOT,INA,0,0,0,1, NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
 
 	/*
