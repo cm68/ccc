@@ -2689,8 +2689,24 @@ struct rule rules[] = {
 		"\tld e,($LL)\n\tld d,($LL+)\n" F_EXDEHL F_LDHLE F_INCHL F_LDHLD, 0),
 	R(ASSIGN,DEREF,P_NUM,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 "\tld (hl),$R\n", 0),
+	/*
+	 * R_A, and not 0: the value of a store is what was stored, and
+	 * that is the byte in a.  With 0 the value came from e->tgt,
+	 * which here was hl - the pointer this stored THROUGH - so
+	 *
+	 *		while (*p1 = p2[*p1])
+	 *
+	 * tested the address instead of the byte, and an address is
+	 * never zero, so the loop never ended.  Silently: no diagnostic,
+	 * correct-looking code, a program that hangs.  The SYMREF form
+	 * of this store has always said R_A; this one did not, and which
+	 * of the two fired depended on whether the allocator had left
+	 * the pointer in a register or spilled it to the frame - so the
+	 * same loop was right or wrong according to how many register
+	 * variables the function declared.
+	 */
 	R(ASSIGN,DEREF,INA,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
-		F_LDLLL F_LDHLL1 F_LDHLA, 0),
+		F_LDLLL F_LDHLL1 F_LDHLA, R_A),
 	/*
 	 * The same with the value in HL, narrowing to its low byte.  The
 	 * word form above is here and the byte one was not, so storing a
