@@ -165,6 +165,22 @@ extern void tarr_reset(struct tokarray *a);
  * Text buffer - for file/macro buffer management and output diversions
  * Used for both input (includes/macros) and output (loop body buffering)
  */
+/*
+ * NOTE: advance() in io.c reads this struct from hand-written assembly
+ * when built for the Z80, by offset, because an asm block cannot see a
+ * C declaration.  It wants
+ *
+ *	storage  at 3	offset  at 5	valid  at 7
+ *
+ * and it relies on those three being adjacent, addressing storage once
+ * and walking to the other two with inc hl.  ccc packs this struct
+ * with no padding, so the offsets are just the widths above each field
+ * added up: char 1, pointer 2, short 2.
+ *
+ * Add a field above valid, widen one, or reorder them, and that code
+ * reads the wrong bytes and says nothing.  Move the asm with the
+ * struct, or take the fast path out.
+ */
 struct textbuf {
     char fd;                /* if == -1, memory buffer; else file descriptor */
     char *name;             /* filename or macro/buffer name */

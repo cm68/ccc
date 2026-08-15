@@ -470,8 +470,128 @@ insertmacro(char *name, char *macbuf)
  *   - May pop textbufs and free memory
  *   - Updates filename for error context
  */
+static void advslow();
+
+/*
+ * The common character, in assembly.
+ *
+ * advance() is called once per character - 279,245 times over rules.c,
+ * the top entry in the profile - and takes no arguments, all of its
+ * state being globals, so there is nothing to marshal and the block
+ * below can stand at the head of the function.
+ *
+ * It handles only the case that is nearly always true: a textbuf with
+ * another character already in its buffer, where that character needs
+ * none of the bookkeeping at done: beyond the column.  Anything else -
+ * end of buffer, end of file, a newline, a NUL, a backslash that might
+ * begin a continuation, a tab to fold - falls through to advslow(),
+ * which is the C this function used to be, unchanged.
+ *
+ * Nothing is written until every test has passed, so a fall-through
+ * leaves the state exactly as it was found.
+ *
+ * The offsets are struct textbuf's, by hand - storage 3, offset 5,
+ * valid 7 - which is the price of an asm block that cannot see a C
+ * declaration.  The note over the struct in cpp.h is what keeps them
+ * honest.  bc and ix are the compiler's to keep, so this uses only hl,
+ * de and a.
+ */
+#ifdef CCC
+
 void
 advance()
+{
+    /* storage, offset and valid are adjacent: address once, walk it */
+    asm {
+	ld	hl,(_tbtop)
+	ld	a,h
+	or	l
+	jr	z,advc9
+	ld	de,3
+	add	hl,de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	push	de
+	inc	hl
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	inc	de
+	inc	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	or	a
+	sbc	hl,de
+	jp	m,advc8a
+	ld	a,h
+	or	l
+	jr	z,advc8a
+    }
+    /* the character itself, and the four done: has work for */
+    asm {
+	pop	hl
+	ex	(sp),hl
+	add	hl,de
+	ld	a,(hl)
+	ld	l,a
+	ld	a,(_nextchar)
+	or	a
+	jr	z,advc8b
+	cp	10
+	jr	z,advc8b
+	cp	92
+	jr	z,advc8b
+	ld	h,a
+	ld	a,l
+	cp	9
+	jr	z,advc8b
+    }
+    /* nothing has been written until here */
+    asm {
+	ld	(_nextchar),a
+	ld	a,h
+	ld	(_curchar),a
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	ld	a,(_nextcol)
+	ld	(_column),a
+	cp	2
+	jr	nc,advc7
+	inc	a
+	ld	(_nextcol),a
+advc7:
+	ret
+advc8a:
+	pop	hl
+advc8b:
+	pop	hl
+advc9:
+    }
+    advslow();
+}
+
+#else
+
+/*
+ * The host build has no use for it - this binary is a cross tool, and
+ * gcc does not read ccc's asm blocks.
+ */
+void
+advance()
+{
+    advslow();
+}
+
+#endif
+
+static void
+advslow()
 {
 	struct textbuf *t;
 
