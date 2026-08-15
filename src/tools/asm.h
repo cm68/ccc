@@ -42,6 +42,7 @@ struct symbol {
 };
 
 struct jump {
+    unsigned short idx;         /* the jump's ordinal, its name in jrbits */
     unsigned short addr;        /* address of jp instruction */
     struct symbol *sym;         /* target symbol (NULL for absolute) */
     unsigned short offset;      /* target offset */

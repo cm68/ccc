@@ -355,8 +355,83 @@ struct arena {
 static struct arena perm;       /* symbols and relocations: to the end */
 static struct arena jumparena;  /* jumps: dead after relax_jmp */
 
-static unsigned short *jrtab;   /* addresses that became jr */
-static unsigned short njr;
+/*
+ * Which jumps became jr, one bit each, indexed by the jump's ordinal.
+ *
+ * Both passes read the same source and meet the same instructions in
+ * the same order, so the Nth jp of pass 0 is the Nth jp of pass 1 and
+ * the ordinal is a name both passes agree on without being told.  It
+ * costs nothing to compute - a counter - and nothing to store: 733
+ * jumps is 92 bytes, where the table of addresses this replaces was
+ * 642 and the search through it ran once per jump.
+ *
+ * Every jp is counted, including the ones that can never relax - an
+ * absolute target, a condition jr does not have.  Their bits are
+ * simply never set.  Counting them is what makes the ordinal purely
+ * syntactic: if either pass decided what to count by looking at a
+ * target or a condition, the two could disagree and every bit after
+ * the disagreement would name the wrong jump.
+ */
+/*
+ * The open jumps: the graph relaxation reasons over.
+ *
+ * A jump is only affected by conversions inside its own span, and jr
+ * reaches 128 back and 127 forward from the byte after it, so nothing
+ * outside a span of the location pointer can matter to it.  A span of
+ * D bytes holds at most D/3 jumps at a byte saved each, so D - D/3 <=
+ * 128 puts the ceiling at 192.  Once the location pointer is further
+ * than that beyond a jump, no conversion can reach it and its answer
+ * is final: the bit is written and the node goes.
+ *
+ * That is the memory argument.  The graph holds what is open, not
+ * what exists - nm.c has 733 jumps and a few dozen open at once - so
+ * it is bounded by the reach of the instruction, not by the program.
+ */
+/*
+ * Two different distances, and conflating them costs relaxations.
+ *
+ * JR_REACH is how far a jump can ever see: a span of D bytes holds at
+ * most D/3 jumps at a byte saved each, so D - D/3 <= 128 caps it at
+ * 192.  A target further than that can never be brought into range
+ * and is dismissed the moment it is known.
+ *
+ * JR_HOLD is how long a node must be kept, which is longer.  A node
+ * depends on the jumps inside its reach, and the last of those does
+ * not settle until its own reach has passed - so a node is only final
+ * once the location pointer is two reaches beyond it.  Held for one
+ * reach instead of two, three jumps in c0/tparse.c stayed jp that the
+ * whole-file fixpoint relaxes.
+ *
+ * MAXOPEN follows from JR_HOLD: a jp is 3 bytes, so that many bytes
+ * hold at most 128 of them.
+ */
+#define JR_REACH    192         /* a target beyond this is unreachable */
+#define JR_HOLD     384         /* a node is final two reaches back */
+#define MAXOPEN     128         /* 384/3 */
+
+struct open {
+    unsigned short idx;         /* the jump's ordinal, its name in jrbits */
+    unsigned short addr;        /* where the jp is */
+    struct symbol *sym;         /* target */
+    unsigned short offset;      /* added to the target */
+    unsigned char cond;         /* condition, 0 if unconditional */
+};
+
+static struct open opens[MAXOPEN];
+static unsigned char nopen;
+
+/*
+ * The answers, one bit per jump, written as the nodes retire - so it
+ * has to exist before pass 0 starts, when the jump count is not yet
+ * known.  A fixed 1K covers 8192 jumps; nm.c, the largest object in
+ * the tree, has 733.  Past that a jump simply keeps its bit clear and
+ * stays a jp, which is correct and a byte longer.
+ */
+#define JRBYTES 1024
+
+static unsigned char jrbits[JRBYTES];
+static unsigned short jrbytes = JRBYTES;
+static unsigned short jidx;     /* ordinal of the jump being handled */
 
 void keep_relaxed();
 
@@ -1159,8 +1234,10 @@ asm_reset()
     freerelocs(&textr);
     freerelocs(&datar);
     freejumps();
-    jrtab = 0;
-    njr = 0;
+    for (jidx = 0; jidx < JRBYTES; jidx++)
+        jrbits[jidx] = 0;
+    jidx = 0;
+    nopen = 0;
     arena_free(&perm);
     io_reset();
 }
@@ -1227,11 +1304,16 @@ struct symbol *sym;
 unsigned short offset;
 unsigned char cond;
 {
-    struct jump *j;
 
-    if (pass != 0)
-        return;
+    /*
+     * The segment test comes before the pass test so that both
+     * passes reach the counter on exactly the same instructions.
+     * A jp outside text is not indexed by either of them.
+     */
     if (segment != SEG_TEXT)
+        return;
+    jidx++;
+    if (pass != 0)
         return;
     /*
      * No record means no relaxation, in both passes alike - which is
@@ -1240,15 +1322,47 @@ unsigned char cond;
      */
     if (used_dollar)
         return;
+    /*
+     * The ones that can never be a jr get no node: jr has no PO, PE,
+     * P or M, and an absolute target's distance is not known until
+     * the linker places the segment.  Their bits stay clear.
+     */
+    if (cond != 0 && (cond < T_NZ || cond > T_CR))
+        return;
+    if (!sym)
+        return;
+    /*
+     * A target already known and already out of reach resolves here.
+     * Shrinking can only bring a jump closer by the conversions
+     * inside its own span - at most a third of it - so a distance
+     * past a span can never come back, and holding a node for it
+     * would occupy a slot for the next 192 bytes to no purpose.
+     *
+     * A target NOT yet known cannot be dismissed this way, and
+     * neither can one merely out of range today: a backward jump can
+     * have open forward jumps between it and its target, and their
+     * converting is exactly what brings it in.  Those keep their
+     * nodes and are retried until the location pointer leaves them.
+     */
+    if (sym->seg == SEG_TEXT) {
+        int d = (int)(sym->value + offset) - (int)(addr + 2);
 
-    j = (struct jump *)arena_alloc(&jumparena, sizeof(struct jump));
-    j->addr = addr;
-    j->sym = sym;
-    j->offset = offset;
-    j->cond = cond;
-    j->is_jr = 0;
-    j->next = jumps;
-    jumps = j;
+        if (d < -JR_REACH || d > JR_REACH)
+            return;
+    }
+    /*
+     * Out of room is not an error: a jump with no node stays a jp,
+     * which is always correct and one byte longer.
+     */
+    if (nopen >= MAXOPEN)
+        return;
+
+    opens[nopen].idx = jidx - 1;
+    opens[nopen].addr = addr;
+    opens[nopen].sym = sym;
+    opens[nopen].offset = offset;
+    opens[nopen].cond = cond;
+    nopen++;
 }
 
 /*
@@ -1270,161 +1384,143 @@ unsigned char cond;
  * The scan is shorter than the one it replaces, which walked every
  * jump; this walks only the ones that changed.
  */
-int
-is_relaxed(addr)
-unsigned short addr;
+static void
+jrset(i)
+unsigned short i;
 {
-    register unsigned short i;
-
-    for (i = 0; i < njr; i++) {
-        if (jrtab[i] == addr)
-            return 1;
-    }
-    return 0;
+    if ((i >> 3) < jrbytes)
+        jrbits[i >> 3] |= 1 << (i & 7);
 }
 
 /*
- * relax jp instructions to jr where possible
- * iterate until no more changes
- * jr only supports conditions NZ, Z, NC, C (not PO, PE, P, M)
+ * A node converted: it is a byte shorter, so what follows moves down.
+ * Both sets are bounded - the later open nodes, and the labels
+ * defined since, which are the text symbols above it.  cur_address
+ * moves too: pass 0 has emitted nothing and is free to.
+ */
+static void
+jrshrink(at)
+unsigned short at;
+{
+    struct symbol *s;
+    int i;
+
+    for (i = 0; i < nopen; i++)
+        if (opens[i].addr > at)
+            opens[i].addr--;
+    for (s = symbols; s; s = s->next)
+        if (s->seg == SEG_TEXT && s->value > at)
+            s->value--;
+    /*
+     * cur_address and nothing else.  change_seg derives text_top from
+     * it at the end of the segment, so decrementing text_top here as
+     * well takes the byte off twice: the header then claims a text
+     * shorter than the one that was emitted, everything after it in
+     * the object is misplaced, and ar reads code where the symbol
+     * table should be and indexes no symbols for the member at all.
+     *
+     * The loop this came from ran after the pass, when text_top was
+     * final and adjusting it was the only way to reach it.
+     */
+    if (cur_address > at)
+        cur_address--;
+}
+
+/*
+ * Drop node i by moving the last one onto it.  Written out field by
+ * field because ccc has no struct assignment - "opens[i] = opens[n]"
+ * is a struct value, which it says so about and refuses - and this
+ * file is compiled by the compiler it belongs to.
+ */
+static void
+opendrop(i)
+int i;
+{
+    nopen--;
+    opens[i].idx = opens[nopen].idx;
+    opens[i].addr = opens[nopen].addr;
+    opens[i].sym = opens[nopen].sym;
+    opens[i].offset = opens[nopen].offset;
+    opens[i].cond = opens[nopen].cond;
+}
+
+static int
+jrtry(i)
+int i;
+{
+    struct open *o = &opens[i];
+    int target, dist;
+
+    if (o->sym->seg != SEG_TEXT)
+        return 0;               /* undefined yet, extern, or not ours */
+    target = o->sym->value + o->offset;
+    dist = target - (o->addr + 2);
+    if (dist < -128 || dist > 127)
+        return 0;
+    jrset(o->idx);
+    jrshrink(o->addr);
+    return 1;
+}
+
+/*
+ * The location pointer has reached here.  Settle what can settle, and
+ * retire what it has left out of reach.  Iterated because the nodes
+ * are a graph - each conversion shortens the others - but it is a
+ * local fixpoint over at most MAXOPEN nodes, never over the file.
+ */
+void
+jrprune(here)
+unsigned short here;
+{
+    int i, changed;
+
+    do {
+        changed = 0;
+        for (i = 0; i < nopen; i++)
+            if (jrtry(i)) {
+                opendrop(i);
+                changed = 1;
+                i--;
+            }
+    } while (changed);
+
+    for (i = 0; i < nopen; i++)
+        if (here > opens[i].addr + JR_HOLD) {
+            opendrop(i);
+            i--;
+        }
+}
+
+int
+is_relaxed()
+{
+    unsigned short i = jidx - 1;    /* add_jump has already counted it */
+
+    if ((i >> 3) >= jrbytes)
+        return 0;
+    return (jrbits[i >> 3] >> (i & 7)) & 1;
+}
+
+/*
+ * End of pass 0.  Whatever is still open is within a span of the end
+ * of the segment, so give the graph a last chance to settle and let
+ * the rest retire unrelaxed.
+ *
+ * There is no iteration over the file here now, and no table to walk.
+ * The answers were decided as the location pointer passed them and
+ * written to jrbits on the way.  What stood here - a list of every
+ * jump in the program, iterated to a fixpoint, each conversion paying
+ * a walk of every symbol and every jump - is gone.
  */
 void
 relax_jmp()
 {
-    struct jump *j, *k;
-    struct symbol *s;
-    int changed;
-    int target, dist;
-    int saved = 0;
-    unsigned short conv_addr;
-
-    /* -8 flag disables relaxation (8080 mode) */
     if (no_relax) {
-        keep_relaxed();
+        nopen = 0;
         return;
     }
-
-#ifdef DEBUG
-    if (verbose > 1)
-        printf("relaxing jumps\n");
-#endif
-
-    do {
-        changed = 0;
-
-        for (j = jumps; j; j = j->next) {
-            if (j->is_jr)
-                continue;
-
-            /* jr only supports NZ, Z, NC, C (conditions 0-3) */
-            /* cond==0 means unconditional, T_NZ..T_CR are conditions 0-3 */
-            if (j->cond != 0 && (j->cond < T_NZ || j->cond > T_CR))
-                continue;
-
-            /* calculate target address */
-            if (j->sym) {
-                /* symbol must be defined and in text segment */
-                if (j->sym->seg == SEG_UNDEF || j->sym->seg == SEG_EXT)
-                    continue;
-                if (j->sym->seg != SEG_TEXT)
-                    continue;
-                target = j->sym->value + j->offset;
-            } else {
-                /*
-                 * No symbol means the target is a plain constant, and
-                 * a constant is an absolute address - it is not
-                 * relative to this text segment, so the distance to
-                 * it is not known until the linker places us.  This
-                 * measured it from the segment start anyway, which is
-                 * right only when text links at zero.  "jp 0", the
-                 * CP/M warm boot, sat close enough to the top of
-                 * crtcpm to be relaxed, and the jr it turned into
-                 * landed on the program's own entry point instead of
-                 * on the reboot vector.
-                 *
-                 * Leaving it as a jp costs a byte and is always
-                 * right.
-                 */
-                continue;
-            }
-
-            /* jr offset is from PC after the 2-byte jr instruction */
-            /* jp is 3 bytes, so the address field is at addr+1 */
-            /* if we convert to jr, offset is from addr+2 */
-            dist = target - (j->addr + 2);
-
-            if (dist >= -128 && dist <= 127) {
-                j->is_jr = 1;
-                changed = 1;
-                saved++;
-                conv_addr = j->addr;
-
-#ifdef DEBUG
-                if (verbose > 2)
-                    printf("  convert jp at %04x to jr (target %04x, dist %d)\n",
-                           j->addr, target, dist);
-#endif
-
-                /* adjust all symbols after this jp */
-                for (s = symbols; s; s = s->next) {
-                    if (s->seg == SEG_TEXT && s->value > conv_addr)
-                        s->value--;
-                }
-
-                /* adjust all jump addresses and targets after this jp */
-                for (k = jumps; k; k = k->next) {
-                    if (k->addr > conv_addr)
-                        k->addr--;
-                    /* if target is a symbol, it's already adjusted */
-                    /* if target is absolute and after this jp, adjust it */
-                    if (!k->sym && k->offset > conv_addr)
-                        k->offset--;
-                }
-
-                /* local labels are now symbols, adjusted in symbol loop above */
-
-                /* adjust segment size */
-                text_top--;
-            }
-        }
-    } while (changed);
-
-#ifdef DEBUG
-    if (verbose && saved)
-        fprintf(stderr, "relaxation: %d bytes saved\n", saved);
-#endif
-
-    keep_relaxed();
-}
-
-/*
- * Write down which addresses became jr and release the jump records.
- * Called when relaxation has converged, and when it never ran at all:
- * with -8 there is nothing relaxed and nothing to remember, and the
- * records are just as dead.
- */
-void
-keep_relaxed()
-{
-    struct jump *j;
-    unsigned short n;
-
-    n = 0;
-    for (j = jumps; j; j = j->next) {
-        if (j->is_jr)
-            n++;
-    }
-
-    if (n) {
-        jrtab = (unsigned short *)permalloc(n * sizeof(unsigned short));
-        njr = 0;
-        for (j = jumps; j; j = j->next) {
-            if (j->is_jr)
-                jrtab[njr++] = j->addr;
-        }
-    }
-
-    freejumps();
+    jrprune(0xffff);
+    nopen = 0;
 }
 
 /*
@@ -2211,6 +2307,13 @@ assemble()
             /* where this statement starts, for $ */
             insn_address = cur_address;
             used_dollar = 0;
+            /*
+             * The location pointer has moved: settle and retire.
+             * This is what keeps the graph bounded - without it the
+             * nodes would accumulate for the whole segment.
+             */
+            if (!pass)
+                jrprune(cur_address);
             get_token();
 
             if (cur_token == T_EOF) {
@@ -2467,6 +2570,13 @@ assemble()
 
 			/* relax jp->jr before finalizing sizes */
 			relax_jmp();
+
+			/*
+			 * The ordinals start again for the second pass, which
+			 * hands them out at the same instructions and so reads
+			 * back the bits relax_jmp has just written.
+			 */
+			jidx = 0;
 
 			mem_size = text_top + data_top + bss_top;
 			text_size = text_top;
