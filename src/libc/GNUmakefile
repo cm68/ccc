@@ -24,6 +24,23 @@
 
 ARCHIVE = libc.a
 
+# opendir.c IS here and is not built here.  It wants types.h,
+# dirent.h and sys/dir.h, which are the micronix tree's headers and
+# not this one's - sysinstall says as much about usr/include being
+# not ours to own.  The source lives here because there is one libc
+# now; the micronix build, which has those headers on its include
+# path, is the one that compiles it.  Nothing this compiler runs
+# reads a directory.
+#
+# sbrk is NOT here.  There was a libc/sbrk.s that kept the break in a
+# variable and never told the kernel it had moved - it carved memory
+# between __Hbss and sp on its own authority.  libc precedes libu in
+# every link, so that was the sbrk every Micronix binary got, and
+# libu's, which makes the break system call, was shadowed and never
+# used.  Under the hardware simulator that earns a segmentation
+# violation, the kernel having granted none of the memory malloc was
+# handing out.  libu owns sbrk; this does not.
+#
 # The .s files here are sources, so CRUFTASM is deliberately absent.
 include ../../GNUmakefile.inc
 
@@ -39,7 +56,7 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	longjmp.s lor.s lrelop.s lsub.s lushr.s lxor.s max.s swap.s  \
 	qadd.s qsub.s qand.s qor.s qxor.s qcom.s qcmp.s \
 	qshl.s qsar.s qshr.s qinc.s qldst.s qmul.s qdiv.s \
-	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s \
+	op16.s tramp.s rcsv.s rindex.s shar.s shl16.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s swdisp.s swdispw.s oarg.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
 	tolower.s toupper.s xtoi.s fputc.s fgetc.s memcpy.s
@@ -55,6 +72,7 @@ CSRCS = \
 	rand.c srand1.c mkstemp.c permaloc.c \
 	timezone.c ctime.c assert.c calloc.c malloc.c \
 	memcmp.c memset.c blkcpy.c ctype_.c cleanup.c \
+	isatty.c mkdir.c mktemp.c system.c \
 	fclose.c fflush.c filbuf.c flsbuf.c puts.c \
 	fopen.c fread.c freopen.c fwrite.c setbuf.c gets.c ungetc.c \
 	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c ftell.c \
