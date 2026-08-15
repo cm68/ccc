@@ -796,6 +796,25 @@ char *longhelper(unsigned char op, int sign);
  * A comparison is a byte wide whatever it compared, so it is the
  * operand that says whether this is 32-bit work.
  */
+/*
+ * Say so when a long helper's operand did not reduce.  Silence here
+ * is a wrong number: the helper is called regardless and reads
+ * whatever the registers held.
+ */
+static void
+longincomplete(Expr *e)
+{
+	if (!e || reduced(e))
+		return;
+	nincomplete++;
+	out("; XXXXXX incomplete: ");
+#ifdef DEBUG
+	dumpexpr(e);		/* ends the line */
+#else
+	outc('\n');
+#endif
+}
+
 int
 islongop(Expr *e)
 {
@@ -1158,14 +1177,17 @@ dolongbin(Expr *e)
 	if (r->op == NUMBER) {
 		if (l->op == NUMBER)
 			loadlongc(l->u.val);
-		else
+		else {
 			l = rewrite1(l);
+			longincomplete(l);
+		}
 		freeexpr(l);
 		loadlongd(r->u.val);
 		freeexpr(r);
 	} else {
 		assign(r, R_HL);
 		r = rewrite1(r);
+		longincomplete(r);	/* before the free: see the note there */
 		freeexpr(r);
 		pushlong();
 		if (l->op == NUMBER)
@@ -1173,6 +1195,7 @@ dolongbin(Expr *e)
 		else {
 			assign(l, R_HL);
 			l = rewrite1(l);
+			longincomplete(l);
 		}
 		freeexpr(l);
 		poplongd();
@@ -1862,10 +1885,29 @@ rewrite1(Expr *e)
 		}
 
 		if (helper) {
-			/* the right operand first, then out of the way */
+			/*
+			 * The right operand first, then out of the way.
+			 *
+			 * And each of them checked.  rewrite1 reduces what
+			 * it can and returns what it could not, and nothing
+			 * here used to look: an operand that did not reduce
+			 * emitted no code at all, pushlong pushed whatever
+			 * hl happened to hold, and the helper ran on it.
+			 *
+			 *	t = nd - (&buf[33] - b);
+			 *
+			 * came out 65337 instead of 77 for want of one rule,
+			 * and compiled without a word - the missing rule was
+			 * a bug, and the silence was this.  The same check
+			 * stands over the store path below, put there when a
+			 * multiply did the same thing; this path never got
+			 * it.
+			 */
 			e->right = rewrite1(e->right);
+			longincomplete(e->right);
 			pushlong();
 			e->left = rewrite1(e->left);
+			longincomplete(e->left);
 			poplongd();
 			outf("\tcall %s\n", helper);
 			/*
