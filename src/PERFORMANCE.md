@@ -68,6 +68,31 @@ quarter of a compile becomes a fifth.
 | asz   |  61,619,963 |       15.4 |   32,533 | 19.5% |
 | total | 316,742,952 |       79.2 |          |       |
 
+Then the same walk a third time, in operand: forty-three register
+names, walked for every named operand in the file.
+
+| pass  | cycles      | sec @ 4MHz | heap gap | share |
+|-------|------------:|-----------:|---------:|------:|
+| pass0 |  81,944,111 |       20.5 |   20,197 | 26.2% |
+| c0    |  19,144,419 |        4.8 |   17,064 |  6.1% |
+| c1    | 121,915,130 |       30.5 |    9,392 | 39.0% |
+| peep  |  32,119,329 |        8.0 |   29,098 | 10.3% |
+| asz   |  57,163,327 |       14.3 |   32,508 | 18.3% |
+| total | 312,286,316 |       78.1 |          |       |
+
+asz 90,913,885 -> 57,163,327 over the two, 37.1%, and 22.7 seconds to
+14.3.  The host said 4.9% for this second one and the machine gave
+7.2%, the same way round as the first: 17.8% predicted, 32.2% had.
+Twice is a bias, not an accident.  Host profiling picks the target and
+understates the prize whenever what goes is calls - so a change
+callgrind calls marginal may still be worth making.
+
+Three instances of one shape now - asm_instr's 69 entries, operand's
+43, and peep's nftab before them.  What is left in asz is not that:
+operand's own body is the top item and barely moved when its walk
+went, and behind it get_token and get_line are character-at-a-time
+lexing.  No more free scans there.
+
 Two changes, both output-identical over all 51 files:
 
 `match` folded a to lower case for every character it compared and

@@ -1896,7 +1896,14 @@ have_token:
 	 * maybe a register symbol? sometimes 'c' means carry
 	 */
 	if (cur_token == T_NAME) {
+		/*
+		 * The first character again, as in asm_instr.  This walked
+		 * all forty-three register names for every named operand in
+		 * the file, calling match on each to be told no.
+		 */
 		for (i = 0; op_table[i].token != 255; i++) {
+			if (token_buf[0] != op_table[i].mnem[0])
+				continue;
 			if (match(token_buf, op_table[i].mnem)) {
 				return op_table[i].token;
 			}
