@@ -48,3 +48,29 @@ DIR *dirp;
 	dirp->pad = '\0';
 	return &dirp->d;
 }
+
+/*
+ * where the scan is, and putting it back.  A micronix directory is a
+ * file of 16 byte entries read one at a time, so the position is the
+ * fd's offset and nothing more.  tar is why these exist: it closes a
+ * directory while it recurses into a subdirectory and seeks back to
+ * where it was, which on a system with 16 open file slots is the
+ * difference between depth costing one fd and costing one per level.
+ */
+long
+telldir(dirp)
+DIR *dirp;
+{
+	long lseek();
+
+	return lseek(dirp->fd, 0L, 1);
+}
+
+seekdir(dirp, pos)
+DIR *dirp;
+long pos;
+{
+	long lseek();
+
+	lseek(dirp->fd, pos, 0);
+}
