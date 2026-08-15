@@ -424,8 +424,27 @@ scaleptr(struct expr *e)
         return e;
     }
 
-    if (!pt->sub || (size = pt->sub->size) == 1)
+    if (!pt->sub || (size = pt->sub->size) == 1) {
+        /*
+         * A byte needs no scaling - but a difference is still an int
+         * and not a pointer, and saying so is not optional.  The next
+         * operator out asks whether its operands are pointers, and a
+         * difference that still claims to be one sends it down the
+         * pointer-arithmetic path: the long on the other side gets
+         * narrowed to sixteen bits, because that is what an index
+         * into an address ought to be.
+         *
+         *	t = nd - (&buf[33] - b);	char *b
+         *
+         * came out zero with nothing said.  char pointers only - any
+         * wider element leaves a real division behind, and the
+         * division carries the int type that this early return does
+         * not.
+         */
+        if (lp && rp && e->op == MINUS)
+            e->type = inttype;
         return e;                       /* a byte needs no scaling */
+    }
 
     if (lp && rp) {
         /*
