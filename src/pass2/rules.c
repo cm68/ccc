@@ -1383,6 +1383,16 @@ struct rule rules[] = {
 	 */
 	R(MINUS,REGVAR,P_NUM,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
 	R(MINUS,REGVAR,SYMREF,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
+	/*
+	 * And the other way about: a symbol's address less a register
+	 * variable.  The register forms above all carry the register on
+	 * the left, and "&buffer[512] - bufp" - pr's "how much room is
+	 * left" - has the address there instead, so it had no form at
+	 * all.  ix into de, the address into hl, subtract the way the
+	 * source wrote it.
+	 */
+	R(MINUS,SYMREF,REGVAR,0,0,0, MINUS, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n" F_POPDE F_LDHLL F_ORA F_SBCHLDE, R_HL),
 	/* and the difference, which is how a span is worked out when the
 	 * far end is a local rather than the other register home */
 	R(MINUS,REGVAR,INDE,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT186, R_HL),
@@ -2635,6 +2645,13 @@ struct rule rules[] = {
 	 * leaves it - which is what lets "head = p->next = q" chain */
 	R(ASSIGN,DEREF,INHL,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),l\n\tld (ix+1),h\n", R_HL),
+	/*
+	 * A symbol's address stored through a register pointer.  "*p =
+	 * buffer" with p a register char ** - pr's column-pointer reset
+	 * - had the INHL and P_NUM forms beside it and not this one.
+	 */
+	R(ASSIGN,DEREF,SYMREF,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
+		F_LDDER "\tld (ix+0),e\n\tld (ix+1),d\n", R_DE),
 	R(ASSIGN,DEREF,INBC,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
 	R(ASSIGN,DEREF,P_NUM,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
