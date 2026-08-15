@@ -480,6 +480,7 @@ static char chdr_path[1024];
 static char libc_path[1024];
 static char libu_path[1024];
 static char sysinc_path[1024];
+static char ldlib_path[1024];   /* -L for the system library directory */
 
 int
 main(int argc, char **argv)
@@ -1192,6 +1193,23 @@ main(int argc, char **argv)
 	    ld_args[ld_argc++] = "-Tdata=0x100";
 	    ld_args[ld_argc++] = "-Tbss=0x100";
 	}
+
+	/*
+	 * The system library directory, so that -l works at all.
+	 *
+	 * ld searches nothing by default: findlib walks the -L list and
+	 * that list came only from the command line, so "-lutil" found
+	 * nothing however plainly /lib/libutil.a was sitting there.  The
+	 * driver already works libdir out from its own path and hands ld
+	 * crt0.o, libc.a and libu.a out of it by full name; a library
+	 * asked for by name should come from the same place.  vi asks
+	 * for -lutil, is linked by this driver, and did not build.
+	 *
+	 * First, so that a -L on the command line still wins for a
+	 * library that exists in both.
+	 */
+	sprintf(ldlib_path, "-L%s", libdir);
+	ld_args[ld_argc++] = ldlib_path;
 
 	/* Add library search paths (-L options) */
 	for (i = 0; i < ld_path_count; i++)
