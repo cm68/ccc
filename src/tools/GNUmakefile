@@ -183,21 +183,39 @@ $(MXBUILD)/%.o: %.c $(CCDEP)
 # libc and the linker takes one pass over the list.
 MXLIBS = -L$(MXDIR)/lib -lccc -lc -lu -lc
 
+#
+# THE LIBRARIES ARE PREREQUISITES TOO.  These rules named the objects
+# and not the archives, so a changed libc.a relinked nothing: asz went
+# on being the binary linked against the libc of some earlier hour.
+# That is how it kept the sbrk that never called the kernel after that
+# sbrk had been deleted - the tool was simply never linked again, and
+# make had no reason to think it should be.
+#
+# The micronix tree's GNUmakefile.inc has carried a note under this
+# same heading for a while.  This tree had not had it.
+#
+# $^ would put the archives on the command line as well, and in the
+# wrong place, so the recipe takes the objects out of it.
+#
+MXLIBDEPS = $(MXDIR)/lib/crt0.o $(MXDIR)/lib/libccc.a \
+	    $(MXDIR)/lib/libc.a $(MXDIR)/lib/libu.a
+
 define mxlink
-$(LD) -s -o $@ -Ttext=0x100 $(MXDIR)/lib/crt0.o $^ $(MXLIBS)
+$(LD) -s -o $@ -Ttext=0x100 $(MXDIR)/lib/crt0.o \
+	$(filter-out $(MXLIBDEPS),$^) $(MXLIBS)
 endef
 
-$(MXBUILD)/asz:    $(addprefix $(MXBUILD)/,asz.o asm.o asmz80.o wsobj.o)
+$(MXBUILD)/asz:    $(addprefix $(MXBUILD)/,asz.o asm.o asmz80.o wsobj.o) $(MXLIBDEPS)
 	$(mxlink)
-$(MXBUILD)/ld:   $(addprefix $(MXBUILD)/,ld.o wsobj.o)
+$(MXBUILD)/ld:   $(addprefix $(MXBUILD)/,ld.o wsobj.o) $(MXLIBDEPS)
 	$(mxlink)
-$(MXBUILD)/nm:   $(addprefix $(MXBUILD)/,nm.o wsobj.o)
+$(MXBUILD)/nm:   $(addprefix $(MXBUILD)/,nm.o wsobj.o) $(MXLIBDEPS)
 	$(mxlink)
-$(MXBUILD)/wslib:  $(MXBUILD)/wslib.o
+$(MXBUILD)/wslib:  $(MXBUILD)/wslib.o $(MXLIBDEPS)
 	$(mxlink)
-$(MXBUILD)/size: $(MXBUILD)/size.o
+$(MXBUILD)/size: $(MXBUILD)/size.o $(MXLIBDEPS)
 	$(mxlink)
-$(MXBUILD)/ccc:    $(MXBUILD)/ccc.o
+$(MXBUILD)/ccc:    $(MXBUILD)/ccc.o $(MXLIBDEPS)
 	$(mxlink)
 
 # The driver needs no -D of its own.  DEFTARGET and DEFLIB already
