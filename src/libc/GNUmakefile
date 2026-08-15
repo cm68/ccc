@@ -42,7 +42,7 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s swdisp.s swdispw.s oarg.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
-	tolower.s toupper.s xtoi.s fputc.s fgetc.s
+	tolower.s toupper.s xtoi.s fputc.s fgetc.s memcpy.s
 #
 # asfloat.s fbcd.s finc.s float.s frelop.s frexp.s frndint.s ftol.s
 # ltof.s are not built.  pass2 no longer emits calls to any of them,
@@ -54,7 +54,7 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 CSRCS = \
 	rand.c srand1.c mkstemp.c permaloc.c \
 	timezone.c ctime.c assert.c calloc.c malloc.c \
-	memcmp.c memcpy.c memset.c blkcpy.c ctype_.c cleanup.c \
+	memcmp.c memset.c blkcpy.c ctype_.c cleanup.c \
 	fclose.c fflush.c filbuf.c flsbuf.c puts.c \
 	fopen.c fread.c freopen.c fwrite.c setbuf.c gets.c ungetc.c \
 	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c ftell.c \
