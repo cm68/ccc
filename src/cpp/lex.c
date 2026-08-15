@@ -1097,7 +1097,16 @@ gettoken()
     /* If pending asm text, return it as ASMSTR token */
     if (pendingAsm) {
         next.type = ASMSTR;
-        next.v.name = pendingAsm;  /* raw null-terminated string */
+        /*
+         * A copy, not the buffer.  This lexer reads one token ahead,
+         * so with a pointer into bigbuf a function holding two asm
+         * blocks emitted the second one's text for the first and the
+         * third one's for both of the others - the buffer had already
+         * been refilled by the lookahead before pass2 ever saw the
+         * statement.  One block per function hid it, which is all
+         * there was until now.
+         */
+        next.v.name = permdup(pendingAsm);
         pendingAsm = NULL;
         pendingSemi = 1;  /* emit SEMI on next call */
         return;
@@ -1312,6 +1321,7 @@ gettoken()
                     if (curchar == '{') {
                         int depth = 1;
                         char *p;
+                        char asmbig = 0;
                         bigbuflen = 0;
                         advance();  /* skip { */
                         /* Capture until matching } */
@@ -1323,6 +1333,8 @@ gettoken()
                             }
                             if (bigbuflen < BIGBUFSIZE - 1)
                                 bigbuf[bigbuflen++] = c;
+                            else
+                                asmbig = 1;
                             advance();
                         }
                         bigbuf[bigbuflen] = 0;
@@ -1339,6 +1351,15 @@ gettoken()
                             bigbuflen = strlen(p);
                             memcpy(bigbuf, p, bigbuflen + 1);
                         }
+                        /*
+                         * Saying so, rather than assembling whatever
+                         * fell inside 512 bytes.  It truncated mid
+                         * instruction and the assembler then failed
+                         * on a label it could not see the definition
+                         * of, which says nothing about the cause.
+                         */
+                        if (asmbig)
+                            error("asm block too long (limit 511)");
                         /* Point to bigbuf for next token */
                         pendingAsm = bigbuf;
                     }
