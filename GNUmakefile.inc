@@ -181,8 +181,15 @@ SIZE    = $(HOSTDIR)/bin/mxsize
 # DIRECTORY, or every target build asks for something no rule makes.
 # It has been wrong both ways now: first lib/cpp, then lib/pass0 after
 # the passes moved to libexec.
+# asz belongs here as much as the passes do: the driver runs it to
+# produce the .o, so a change to the assembler invalidates every
+# object exactly the way a change to c0 does.  Leaving it off cost a
+# day - stashing an asm.c change and rebuilding "proved" a bug was not
+# mine three times, because make had no reason to rebuild anything and
+# I relinked the same bad objects each time and read the unchanged
+# failure as an alibi.
 CCDEP   = $(HOSTLIBEXEC)/pass0 $(HOSTLIBEXEC)/c0 \
-	  $(HOSTLIBEXEC)/c1 $(HOSTLIBEXEC)/peep
+	  $(HOSTLIBEXEC)/c1 $(HOSTLIBEXEC)/peep $(HOSTLIBEXEC)/asz
 
 # ---------------------------------------------------------------
 # Default rules.
