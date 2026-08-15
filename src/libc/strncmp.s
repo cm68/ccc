@@ -1,3 +1,22 @@
+;	What this replaces.  The C is the reference: it says what
+;	the routine means, and the assembly below says how this
+;	machine does it.  Kept here rather than in a .c beside
+;	this file, because a .c of the same name is a source the
+;	makefile can pick up by accident, and did.
+;
+;	char *
+;	strncmp(s1, s2, n)
+;	char *s1;
+;	char *s2;
+;	int n;
+;	{
+;		while (--n >= 0 && *s1 == *s2++)
+;			if (*s1++ == '\0')
+;				return(0);
+;		return(n<0 ? 0 : *s1 - *--s2);
+;	}
+;
+
 	psect	text
 	global	_strncmp, rcsv, rcret
 ;

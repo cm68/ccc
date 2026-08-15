@@ -1,9 +1,29 @@
+;	What this replaces.  The C is the reference: it says what
+;	the routine means, and the assembly below says how this
+;	machine does it.  Kept here rather than in a .c beside
+;	this file, because a .c of the same name is a source the
+;	makefile can pick up by accident, and did.
+;
+;	/*
+;	 * copy n bytes from s to d
+;	 *
+;	 */
+;
+;	memcpy(d, s, n)
+;	register char *	d, * s;
+;	register int	n;
+;	{
+;		while(n--)
+;			*d++ = *s++;
+;	}
+;
+
 ;	memcpy(d, s, n)
 ;
-;	The C this replaces was "while (n--) *d++ = *s++;", a byte at a
-;	time through pointers the compiler reloaded on every pass.  A
-;	nine byte token cost several hundred cycles that way, and tokcpy
-;	does it two hundred and twenty thousand times over one source.
+;	A byte at a time, through pointers the compiler reloaded on every
+;	pass: a nine byte token cost several hundred cycles that way, and
+;	tokcpy does it two hundred and twenty thousand times over one
+;	source.
 ;
 ;	ldir is the instruction for this.  The shape below is bmove.s's,
 ;	which has been doing it correctly all along: cross to the shadow

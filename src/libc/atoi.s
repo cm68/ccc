@@ -1,3 +1,35 @@
+;	What this replaces.  The C is the reference: it says what
+;	the routine means, and the assembly below says how this
+;	machine does it.  Kept here rather than in a .c beside
+;	this file, because a .c of the same name is a source the
+;	makefile can pick up by accident, and did.
+;
+;	atoi(p)
+;	register char *p;
+;	{
+;		register int n;
+;		register int f;
+;
+;		n = 0;
+;		f = 0;
+;		for(;;p++) {
+;			switch(*p) {
+;			case ' ':
+;			case '\t':
+;				continue;
+;			case '-':
+;				f++;
+;			case '+':
+;				p++;
+;			}
+;			break;
+;		}
+;		while(*p >= '0' && *p <= '9')
+;			n = n*10 + *p++ - '0';
+;		return(f? -n: n);
+;	}
+;
+
 	psect	text
 digit:	sub	'0'
 	ret	c

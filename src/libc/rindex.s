@@ -1,3 +1,26 @@
+;	What this replaces.  The C is the reference: it says what
+;	the routine means, and the assembly below says how this
+;	machine does it.  Kept here rather than in a .c beside
+;	this file, because a .c of the same name is a source the
+;	makefile can pick up by accident, and did.
+;
+;	/*
+;	 * rightmost c in s
+;	 */
+;	char *
+;	rindex(s, c)
+;	char *s;
+;	char c;
+;	{
+;		char *ret = 0;
+;
+;		do {
+;			if (*s == c) ret = s;
+;		} while (*s++);
+;		return ret;	
+;	}
+;
+
 	psect	text
 	global	rcsv, rcret, _rindex
 

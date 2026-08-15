@@ -1,3 +1,30 @@
+;	What this replaces.  The C is the reference: it says what
+;	the routine means, and the assembly below says how this
+;	machine does it.  Kept here rather than in a .c beside
+;	this file, because a .c of the same name is a source the
+;	makefile can pick up by accident, and did.
+;
+;	char *
+;	strdup(s)
+;	{
+;	#ifdef LIBDEBUG
+;		char xx[100];
+;	#endif
+;		char *r;
+;		int n = strlen(s);
+;
+;		r = malloc(n + 1);
+;		if (r) {
+;			strcpy(r, s);
+;		}
+;	#ifdef LIBDEBUG
+;		sprintf(xx, "strdup %s ret %s", s, r);
+;		logmsg(xx);	
+;	#endif
+;		return r;	
+;	}
+;
+
 ;
 ; strdup - return a malloc'd copy of a string, 0 if out of memory
 ;
