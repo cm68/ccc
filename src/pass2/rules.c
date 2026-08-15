@@ -1105,141 +1105,69 @@ char *rulepat[] = {
 };
 #endif
 
+/*
+ * SORTED BY ROOT OPCODE, and it has to stay that way: step subscripts
+ * ruleidx by the node's op to find where this op's run begins, and
+ * walks it while the op holds.  Adding a rule means putting it with
+ * its op, not at the end.  ruleindex() builds the index from the
+ * table at startup, so the two cannot disagree, but a rule filed in
+ * the wrong place would simply never be tried.
+ *
+ * Within a run the order is the priority: first match wins, and
+ * tryrule can alter the node before it fails, so the order of a run
+ * is not to be disturbed.  Between runs there is no relationship -
+ * a rule rooted at one opcode can never match a node carrying
+ * another.
+ *
+ * Which is why nothing is rooted at a pattern any more.  There were
+ * 29 rows rooted at P_CMP and P_CMPX, one standing for four
+ * comparisons or for two; they are written out per opcode now, 49
+ * rows more, about 640 bytes.  A pattern at the root is a rule that
+ * cannot be filed under an opcode, and it kept the table from being
+ * an index - which is worth a great deal more than the rows it saved:
+ * 666 million cycles to 209 million on our worst file.  Patterns in
+ * the operand positions are untouched; only the root has to be
+ * literal.
+ */
 struct rule rules[] = {
-	/* LOCALVAR -> INDEX */
-	R(LOCALVAR,0,0,0,0,0, INDEX, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
-	/* LOCALVAR past the 7-bit (iy+d) window (big-array bases live
-	 * below the callee-save slots): form the address with 16-bit
-	 * arithmetic (special-cased in tryrule).  Only reached when the
-	 * INDEX rule above refuses. */
-	R(LOCALVAR,0,0,0,0,0, CODE, P_NONE, P_NONE, P_NONE, 0, 0, 0),
+	/*
+	 * Comma: both sides have already emitted their code, in order,
+	 * and the value is the right one - so there is nothing left to do
+	 * but say where it ended up.  ';' rather than ',' because the
+	 * pattern parser uses the comma to separate children.
+	 */
+	R(COMMA,P_ANY,INHL,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_HL),
+	R(COMMA,P_ANY,INDE,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_DE),
+	R(COMMA,P_ANY,INBC,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_BC),
+	R(COMMA,P_ANY,INA,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_A),
 
 	/* bare SYM -> SYMREF+0, so the address rules below can see it */
 	R(SYM,0,0,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
-
-
-	/* REGVAR -> IN* (value is in register) */
-	R(REGVAR,0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, 0, 0),
-	R(REGVAR,0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, 0, 0),
-	R(REGVAR,0,0,0,0,0, INHL, P_NONE, P_NONE, P_NONE, RF_HL, 0, 0),
-
-	/* REGVAR IX in flag context: test for zero */
-	R(REGVAR,0,0,0,0,8, REGVAR, P_NONE, P_NONE, P_NONE, RF_IX, RT443, F_NZ),
-
-	/* INBC in flag context: test for zero */
-	R(INBC,0,0,0,0,8, INBC, P_NONE, P_NONE, P_NONE, 0, RT426, F_NZ),
-
-	/* REGVAR byte C/B in flag context */
-	R(REGVAR,0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_C, RT226, F_NZ),
-	R(REGVAR,0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_B, RT219, F_NZ),
-
-	/* assign constant/A/HL to REGVAR C/B */
-	R(ASSIGN,REGVAR,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,$R\n", R_A),
-	R(ASSIGN,REGVAR,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,$R\n", R_A),
-	R(ASSIGN,REGVAR,INA,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,a\n", R_A),
-	R(ASSIGN,REGVAR,INA,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,a\n", R_A),
-	R(ASSIGN,REGVAR,INHL,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,l\n", R_HL),
-	R(ASSIGN,REGVAR,INHL,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,l\n", R_HL),
-
-	/* load REGVAR C/B to HL (zero-extended) */
-	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_C, F_LDLC F_LDH0, R_HL),
-	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_B, "\tld l,b\n" F_LDH0, R_HL),
-
-	/* REGVAR C/B -> INA (value in C/B, byte context) */
-	R(REGVAR,0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_C, RT221, R_A),
-	R(REGVAR,0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_B, F_LDAB, R_A),
-
 	/*
-	 * INHL/INDE/INA in flag context: test for zero.
+	 * The truth test.  "!x" is true when x is zero, so the answer is
+	 * the zero flag once the value has been tested - and testing is
+	 * all it takes, whatever the value is sitting in.
 	 *
-	 * The long has to come first.  "H:F" carries no width, so it
-	 * matches one too - and testing HL alone tests the high word,
-	 * which is zero for every long that fits in an int.  "if (v)"
-	 * on a long was false for 1 and true for 65536.
-	 */
-	R(INHL,0,0,0,0,11, INHL, P_NONE, P_NONE, P_NONE, 0, T_HLDE_TEST, F_NZ),
-	R(INHL,0,0,0,0,8, INHL, P_NONE, P_NONE, P_NONE, 0, RT429, F_NZ),
-	R(INDE,0,0,0,0,8, INDE, P_NONE, P_NONE, P_NONE, 0, RT427, F_NZ),
-	R(INA,0,0,0,0,8, INA, P_NONE, P_NONE, P_NONE, 0, RT358, F_NZ),
-	/*
-	 * The same for a value that ended up in IX.  HL, DE, BC, A and E
-	 * each become a typed node before the table is reached; IX does
-	 * not, so it arrives as CODE and matched nothing at all.  No rule
-	 * matching normally leaves a marker, but this is a condition
-	 * rather than a value - the caller wanted flags and took whatever
-	 * was in them:
+	 * A comparison already produces a flag and is handled before the
+	 * rules run, by inverting it; this is the other half, where the
+	 * operand is a value and nothing has set the flags.  It had no
+	 * rule at any width but long, so every "!x" on an ordinary value
+	 * reduced to nothing.
 	 *
-	 *	while ((top = fstack_top(&fs)) != NULL)
-	 *
-	 * with top in IX emitted push hl / pop ix, which sets no flags,
-	 * and then branched on what the call had left behind.  cpp's
-	 * filtbrace loops forever on any brace-less if, while or for.
+	 * The width that matters is the operand's: "!" yields an int
+	 * whatever it was applied to.
 	 */
-
-	/* copy IX to HL/BC/DE */
-	R(ASSIGN,INHL,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, RT174, R_HL),
-	R(ASSIGN,INBC,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld c,ixl\n\tld b,ixh\n", R_BC),
-	R(ASSIGN,INDE,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE),
-
-	/* Address rules: IX+offset -> INDEX */
-	R(PLUS,REGVAR,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
-
-	/*
-	 * The same, past the 7-bit (ix+d) window: form the address with
-	 * 16-bit arithmetic (special-cased in tryrule).  Only reached
-	 * when the INDEX rule above refuses.
-	 *
-	 * A struct big enough to need this is ordinary - v6's filsys is
-	 * 478 bytes and its later members are all past 127 - and before
-	 * this rule existed there was NOTHING for the shape: "p->hi = 2"
-	 * with p in IX matched no rule, left an XXXXXX comment, and the
-	 * assignment was simply gone from the output.  A comment is not
-	 * an instruction and asz never saw it.
-	 */
-	R(PLUS,REGVAR,P_NUM,0,0,0, CODE, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
-	R(PLUS,DEREF,P_NUM,REGVAR,0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, 0, 0),
-	R(PLUS,INDEX,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, 0, 0),
-	/*
-	 * Array element with a variable subscript: the base is a frame
-	 * slot and the scaled index is already in HL, so form the address
-	 * rather than let (ix+d) do it.  A constant subscript never gets
-	 * here - +(I,N) above folds it straight into the offset.
-	 */
-	R(PLUS,INDEX,INHL,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPDE F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
-	/* the same with the subscript already in DE, which is where the
-	 * reorder leaves it when the index is the costlier side */
-	R(PLUS,INDEX,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPHL F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
-	/* and in BC, which is where a register variable subscript sits */
-	R(PLUS,INDEX,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
-
-	/* symbol + constant offset folds into the SYMREF */
-	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
-	/*
-	 * And the same going down.  "tab - 1" had no rule, so it left a
-	 * marker and no instruction - rt_ixcmp2 has computed the right
-	 * answer all along only because the value it dropped was
-	 * reloaded by the comparison that followed.
-	 */
-	R(MINUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
-	/*
-	 * The same for a global array, where the base is a link-time
-	 * constant and the scaled subscript is in a register - one add,
-	 * with the base loaded into whichever half is free.  A constant
-	 * subscript never reaches here: +(O,N) above folds it away.
-	 */
-	R(PLUS,SYMREF,INHL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n" F_ADDHLDE, R_HL),
-	R(PLUS,SYMREF,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL F_ADDHLDE, R_HL),
-	/*
-	 * The same with the subscript in BC, which a register variable
-	 * puts it in - "buf[i]" over a global array with i in a register.
-	 * There were forms for HL and DE and not for BC, so the address
-	 * was never worked out and nothing was emitted for it.
-	 */
-	R(PLUS,SYMREF,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
+	R(BANG,INHL,0,0,0,96, BANG, P_L, P_NONE, P_NONE, 0,
+		F_LDAH "\tor l\n" F_EXX "\tor h\n\tor l\n" F_EXX, F_Z),
+	R(BANG,INHL,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT429, F_Z),
+	R(BANG,INHL,0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
+	R(BANG,INA,0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, RT358, F_Z),
+	R(BANG,INBC,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT426, F_Z),
+	R(BANG,INBC,0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, RT226, F_Z),
+	R(BANG,INDE,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT427, F_Z),
+	R(BANG,INE,0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, "\tld a,e\n" F_ORA, F_Z),
+	R(BANG,REGVAR,0,0,0,0, BANG, P_L, P_NONE, P_L, RF_IX, RT443, F_Z),
 
 	/* strength reduction */
 	R(STAR,P_ANY,P_POW2,0,0,0, LSHIFT, P_L, P_R, P_NONE, RF_POW2, 0, 0),
@@ -1314,6 +1242,233 @@ struct rule rules[] = {
 	 */
 	R(STAR,INBC,INDE,0,0,0, STAR, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tcall amul\n", R_HL),
+	R(STAR,INBC,P_NUM,0,0,0, STAR, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER "\tcall amul\n", R_HL),
+
+	/* Address rules: IX+offset -> INDEX */
+	R(PLUS,REGVAR,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
+
+	/*
+	 * The same, past the 7-bit (ix+d) window: form the address with
+	 * 16-bit arithmetic (special-cased in tryrule).  Only reached
+	 * when the INDEX rule above refuses.
+	 *
+	 * A struct big enough to need this is ordinary - v6's filsys is
+	 * 478 bytes and its later members are all past 127 - and before
+	 * this rule existed there was NOTHING for the shape: "p->hi = 2"
+	 * with p in IX matched no rule, left an XXXXXX comment, and the
+	 * assignment was simply gone from the output.  A comment is not
+	 * an instruction and asz never saw it.
+	 */
+	R(PLUS,REGVAR,P_NUM,0,0,0, CODE, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
+	R(PLUS,DEREF,P_NUM,REGVAR,0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, 0, 0),
+	R(PLUS,INDEX,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, 0, 0),
+	/*
+	 * Array element with a variable subscript: the base is a frame
+	 * slot and the scaled index is already in HL, so form the address
+	 * rather than let (ix+d) do it.  A constant subscript never gets
+	 * here - +(I,N) above folds it straight into the offset.
+	 */
+	R(PLUS,INDEX,INHL,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
+		F_PUSHLR F_POPDE F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
+	/* the same with the subscript already in DE, which is where the
+	 * reorder leaves it when the index is the costlier side */
+	R(PLUS,INDEX,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
+		F_PUSHLR F_POPHL F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
+	/* and in BC, which is where a register variable subscript sits */
+	R(PLUS,INDEX,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
+		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
+
+	/* symbol + constant offset folds into the SYMREF */
+	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
+	/*
+	 * The same for a global array, where the base is a link-time
+	 * constant and the scaled subscript is in a register - one add,
+	 * with the base loaded into whichever half is free.  A constant
+	 * subscript never reaches here: +(O,N) above folds it away.
+	 */
+	R(PLUS,SYMREF,INHL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n" F_ADDHLDE, R_HL),
+	R(PLUS,SYMREF,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL F_ADDHLDE, R_HL),
+	/*
+	 * The same with the subscript in BC, which a register variable
+	 * puts it in - "buf[i]" over a global array with i in a register.
+	 * There were forms for HL and DE and not for BC, so the address
+	 * was never worked out and nothing was emitted for it.
+	 */
+	R(PLUS,SYMREF,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
+	R(PLUS,REGVAR,SYMREF,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_LDDER F_ADDHLDE, R_HL),
+	/*
+	 * The index register plus a value rather than a constant or a
+	 * symbol - "p[i]" where p is a pointer register variable and i is
+	 * worked out.  A constant offset folds into an INDEX and never
+	 * reaches here, which is why this was missing: the shape only
+	 * turns up when the subscript is not known.  Eleven places in the
+	 * tools, counting the ones that then sign-extend the result.
+	 */
+	R(PLUS,REGVAR,INDE,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
+	R(PLUS,REGVAR,INBC,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tadd hl,bc\n", R_HL),
+	R(PLUS,INBC,REGVAR,0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
+	R(PLUS,INHL,REGVAR,0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
+
+	/* register base address calculations */
+	R(PLUS,INBC,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDDER F_ADDHLDE, R_HL),
+	R(PLUS,INBC,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "%(\tinc hl\n)", R_HL),
+	R(PLUS,INDE,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDDER F_ADDHLDE, R_HL),
+	R(PLUS,INDE,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL "%(\tinc hl\n)", R_HL),
+
+	/* 16-bit binary arithmetic */
+	R(PLUS,INHL,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
+	R(PLUS,INHL,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
+	R(PLUS,INBC,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
+	R(PLUS,INHL,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
+	R(PLUS,INA,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
+	R(PLUS,INHL,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER T_ADD_HL_DE, R_HL),
+	/*
+	 * A byte in A against a constant, once it is too big for the inc
+	 * and dec runs above.  Only at byte width: at word width A holds
+	 * the low half and the carry would have nowhere to go.
+	 */
+	R(PLUS,INA,P_NUM,0,0,1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,$R\n", R_A),
+	R(PLUS,DEREF,P_NUM,INDEX,0,1, PLUS, P_L, P_R, P_NONE, 0, F_LDALL "\tadd a,$R\n", R_A),
+	R(PLUS,INHL,SYMREF,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
+	/*
+	 * Byte arithmetic against a memory operand.  These match on the
+	 * parent so that A is known to hold the left operand, which makes
+	 * HL free to point at the right one - a rule matching the DEREF
+	 * alone cannot know that, and would clobber a word left operand.
+	 * The Z80 operates directly on (hl) and (iy+d), so no temporary
+	 * register is needed at all.
+	 */
+	R(PLUS,INA,DEREF,0,SYMREF,1, PLUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tadd a,(hl)\n", R_A),
+	R(PLUS,INA,DEREF,0,INDEX,1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,($RL)\n", R_A),
+
+	/* byte arithmetic with both operands live: left in A, right in E */
+	R(PLUS,INA,INE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
+	/*
+	 * The same five when the left operand is a WORD in HL and only
+	 * its low byte is wanted - a short loaded through a pointer,
+	 * meeting a byte at byte width.  The high byte never matters to
+	 * a truncated result, so the answer is one ld away.  Without
+	 * these, "np->flags |= e->flags & E_FUNARG" in the compiler's
+	 * own expr.c reduced both operands and then had nowhere to go:
+	 * the OR emitted nothing and the store above it was abandoned
+	 * with a marker.
+	 */
+	R(PLUS,INHL,INE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, F_LDAL "\tadd a,e\n", R_A),
+	/*
+	 * The same operators when the right operand arrived as a word in
+	 * DE - a call result moved aside, mostly.  A byte operation only
+	 * reads E, which is the low byte, which is the byte.  Without
+	 * these "cnt += rec(n)" on a byte counter had no rule, and c0's
+	 * cntCondLbls answered 0 under the self-build: every IF in the
+	 * stream was emitted claiming no short-circuit labels.
+	 */
+	R(PLUS,INA,INDE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
+	/*
+	 * And the same going down.  "tab - 1" had no rule, so it left a
+	 * marker and no instruction - rt_ixcmp2 has computed the right
+	 * answer all along only because the value it dropped was
+	 * reloaded by the comparison that followed.
+	 */
+	R(MINUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
+	/*
+	 * Arithmetic on it comes out in HL, which "=(V,H)" then puts
+	 * back.  Only addition of a constant folds into an indexed
+	 * location; subtraction has to be done.
+	 */
+	R(MINUS,REGVAR,P_NUM,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
+	R(MINUS,REGVAR,SYMREF,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
+	/* and the difference, which is how a span is worked out when the
+	 * far end is a local rather than the other register home */
+	R(MINUS,REGVAR,INDE,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT186, R_HL),
+	/*
+	 * And against the other register home: two pointers walking the
+	 * same buffer land one in IX and one in BC, and "p - q" is how a
+	 * span length is worked out - outf's literal spans first.
+	 */
+	R(MINUS,REGVAR,INBC,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT185, R_HL),
+	R(MINUS,INBC,REGVAR,0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT396, R_HL),
+	/*
+	 * And a value already worked out in HL against that home:
+	 * "((char *)q - (char *)p) / sizeof(struct store)" in realloc,
+	 * where the left side is a difference and only the right is a
+	 * register variable.  Missing for the same reason as the pair
+	 * above - the shape needs a left operand that is not itself a
+	 * home, so nothing in the tree had written one until now.
+	 */
+	R(MINUS,INHL,REGVAR,0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT193, R_HL),
+	R(MINUS,INHL,INBC,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT359, R_HL),
+	/* a constant less a register variable - "5 - n".  The subtraction
+	 * is not commutative, so normalize leaves the constant on the
+	 * left and there was no form with it there. */
+	R(MINUS,P_NUM,INBC,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_ORA F_SBCHLBC, R_HL),
+	/*
+	 * And with the value in DE or HL, which is what "0 - (n % 10)"
+	 * reduces to: the helper's answer moved aside, the constant on
+	 * the left where normalize keeps it.  outd() spells its digits
+	 * exactly that way, so the self-built c1 printed every operand
+	 * of every instruction as an empty string.
+	 */
+	R(MINUS,P_NUM,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	R(MINUS,P_NUM,INHL,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tex de,hl\n\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	R(MINUS,P_NUM,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld a,$L\n" F_SUBE, R_A),
+	R(MINUS,P_NUM,INA,0,0,1, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld e,a\n\tld a,$L\n" F_SUBE, R_A),
+	R(MINUS,INBC,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT415, R_HL),
+	/*
+	 * A pointer in BC less the address of an array - "s - buf", the
+	 * ordinary pointer difference, when the array is declared with no
+	 * size.  Given a size, pass1 puts a conversion over the symbol
+	 * and this arrives as -(B,E) above; an array of unknown size has
+	 * size zero, the conversion is not inserted because nothing looks
+	 * wider than nothing, and the symbol reaches here bare.
+	 */
+	R(MINUS,INBC,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
+	R(MINUS,INBC,P_NUM,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
+	R(MINUS,INHL,P_SMALL,0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
+	R(MINUS,INA,P_SMALL,0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)", R_A),
+	R(MINUS,INA,P_NUM,0,0,1, MINUS, P_L, P_R, P_NONE, 0, F_SUBR, R_A),
+	R(MINUS,DEREF,P_NUM,INDEX,0,1, MINUS, P_L, P_R, P_NONE, 0, F_LDALL F_SUBR, R_A),
+	R(MINUS,INHL,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT360, R_HL),
+	/*
+	 * An address expression minus a pointer fetched from memory -
+	 * "&v[3] - p" - reaches here as SYMREF minus INDE, and the
+	 * SYMREF side is one immediate load.
+	 */
+	R(MINUS,SYMREF,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	/*
+	 * And BOTH sides a symbol's address, which is how a program
+	 * measures the gap between two things it was linked with.  The
+	 * kernel sizes its buffer pool that way:
+	 *
+	 *	space = (UINT) (&usrtop) - (UINT) (blist);
+	 *
+	 * in main.c's binit.  Either half alone had a rule - SYMREF
+	 * minus INDE above, INHL minus SYMREF below - and the pair had
+	 * none, so the subtraction left a marker and the size came out
+	 * as whatever was in HL.
+	 */
+	R(MINUS,SYMREF,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_LDDER F_ORA F_SBCHLDE, R_HL),
+	/* less a symbol's address, which is one half of a pointer
+	 * difference once the other half is in HL */
+	R(MINUS,INHL,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
+	R(MINUS,INHL,P_NUM,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
+	R(MINUS,INA,DEREF,0,SYMREF,1, MINUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tsub (hl)\n", R_A),
+	R(MINUS,INA,DEREF,0,INDEX,1, MINUS, P_L, P_R, P_NONE, 0, "\tsub ($RL)\n", R_A),
+	R(MINUS,INA,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
+	R(MINUS,INHL,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, F_LDAL F_SUBE, R_A),
+	R(MINUS,INA,INDE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
 	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL, "\tcall adiv\n", R_HL),
 	R(DIV,INHL,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0, "\tcall ldiv\n", R_HL),
 	/* and with the left operand in BC, as a register variable puts it */
@@ -1321,22 +1476,12 @@ struct rule rules[] = {
 		T_BC_HL "\tcall adiv\n", R_HL),
 	R(DIV,INBC,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tcall ldiv\n", R_HL),
-	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL "\tcall amod\n", R_HL),
-	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		T_BC_HL "\tcall lmod\n", R_HL),
 	/* by a constant, which is what dividing a pointer difference by
 	 * the element size looks like */
 	R(DIV,INHL,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER "\tcall adiv\n", R_HL),
 	R(DIV,INHL,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		F_LDDER "\tcall ldiv\n", R_HL),
-	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER "\tcall amod\n", R_HL),
-	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		F_LDDER "\tcall lmod\n", R_HL),
-	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
-	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
 	/*
 	 * A constant dividend never got loaded - constants are left for
 	 * the fused rules, and division had no fused form - and a
@@ -1347,18 +1492,670 @@ struct rule rules[] = {
 		"\tld hl,$L\n$[\tcall adiv\n$]", R_HL),
 	R(DIV,P_NUM,INDE,0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n$[\tcall ldiv\n$]", R_HL),
-	R(MOD,P_NUM,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		"\tld hl,$L\n$[\tcall amod\n$]", R_HL),
-	R(MOD,P_NUM,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		"\tld hl,$L\n$[\tcall lmod\n$]", R_HL),
 	R(DIV,INHL,INBC,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDEC F_LDDB "\tcall adiv\n", R_HL),
 	R(DIV,INHL,INBC,0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		F_LDEC F_LDDB "\tcall ldiv\n", R_HL),
+	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL F_LDDER "\tcall adiv\n", R_HL),
+	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER "\tcall ldiv\n", R_HL),
+	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tcall amod\n", R_HL),
+	R(MOD,INBC,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tcall lmod\n", R_HL),
+	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER "\tcall amod\n", R_HL),
+	R(MOD,INHL,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tcall lmod\n", R_HL),
+	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
+	R(MOD,INHL,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
+	R(MOD,P_NUM,INDE,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld hl,$L\n$[\tcall amod\n$]", R_HL),
+	R(MOD,P_NUM,INDE,0,0,0, MOD, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n$[\tcall lmod\n$]", R_HL),
 	R(MOD,INHL,INBC,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDEC F_LDDB "\tcall amod\n", R_HL),
 	R(MOD,INHL,INBC,0,0,0, MOD, P_L, P_R, P_NONE, 0,
 		F_LDEC F_LDDB "\tcall lmod\n", R_HL),
+	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL F_LDDER "\tcall amod\n", R_HL),
+	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER "\tcall lmod\n", R_HL),
+	R(RSHIFT,INA,INE,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
+	R(RSHIFT,INA,INDE,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
+	R(RSHIFT,INA,INHL,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
+	R(RSHIFT,INA,INE,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
+	R(RSHIFT,INA,INDE,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
+	R(RSHIFT,INA,INHL,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
+	/*
+	 * A signed right shift keeps the sign: sra copies bit 7 back into
+	 * itself where srl feeds in a zero.  The signed rule has to come
+	 * first, since the unsigned pattern matches either width.
+	 */
+	R(RSHIFT,INA,P_NUM,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra a\n)", R_A),
+	R(RSHIFT,INA,P_NUM,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
+	/*
+	 * A shift by a whole byte is a register move, not a loop - two
+	 * bytes against the thirty-two the repeated form would emit.  The
+	 * signed right shift has to put the sign back, since the byte
+	 * that moved down carries it.
+	 */
+	R(RSHIFT,INHL,P_EIGHT,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld l,h\n" F_LDAH F_RLA F_SBCAA F_LDHA, R_HL),
+	R(RSHIFT,INHL,P_EIGHT,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n" F_LDH0, R_HL),
+	R(RSHIFT,INHL,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
+	R(RSHIFT,INHL,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
+	R(RSHIFT,INBC,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
+	R(RSHIFT,INBC,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
+	/*
+	 * By any other count.  M is one to four and 8 has a form of its
+	 * own, so a shift by five, six, seven or more than eight matched
+	 * nothing at all - the left shifts have taken any count all
+	 * along, and these stopped at four.
+	 */
+	R(RSHIFT,INHL,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
+	R(RSHIFT,INHL,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
+	R(RSHIFT,INHL,INDE,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,e\n\tinc b\n\tjr $$+6\n\tsra h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
+	R(RSHIFT,INHL,INDE,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n\tjr $$+6\n\tsrl h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
+	R(RSHIFT,INHL,INBC,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,c\n\tinc b\n\tjr $$+6\n\tsra h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
+	R(RSHIFT,INHL,INBC,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,c\n\tinc b\n\tjr $$+6\n\tsrl h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
+	R(RSHIFT,INBC,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
+	R(RSHIFT,INBC,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
+	R(LSHIFT,INBC,P_NUM,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
+	/* and against a frame slot, which the other four widths of this
+	 * had and the subtraction did not */
+	/*
+	 * No -(H,I).  It read the two bytes at the frame slot, but a bare
+	 * INDEX operand is an address, not a value: a scalar's contents
+	 * come through as D(I) and are loaded by the rules above long
+	 * before a binary operator sees them.  The only thing that reaches
+	 * here as a bare INDEX is a local array's name, whose value IS its
+	 * address - so "q - buf" subtracted buf[0] and buf[1] from q.
+	 * rewrite1 forms the address instead, at children_done.
+	 */
+
+	/* shifts */
+	R(LSHIFT,INHL,P_NUM,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
+	R(LSHIFT,INA,P_NUM,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
+	/*
+	 * A byte shifted by a count only known at runtime - "1 << n",
+	 * the ordinary way to make a mask.  Every other shift here
+	 * spells itself out, which only works for a constant count.
+	 *
+	 * The count is in E and the value in A, so B does the counting
+	 * and djnz walks it: one more than the count, then a jump
+	 * straight to the djnz, so a count of nought runs the body no
+	 * times rather than once.  Displacements are from each jump
+	 * itself - sla a is two bytes, so the entry jump clears it and
+	 * the djnz reaches back over it.
+	 */
+	R(LSHIFT,P_NUM,INE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
+	/*
+	 * The same count arriving as a word, which is what an expression
+	 * count reduces to: "1 << (idx & 7)" works the AND out in HL and
+	 * the target machinery may swap it to DE.  Only the low byte
+	 * counts - a shift past eight of a byte is zero anyway, and the
+	 * loop delivers exactly that.  Without these two forms the shift
+	 * matched nothing, and matched nothing SILENTLY: the compound
+	 * assignment above it stored the count itself through the
+	 * address, so "map[i] |= 1 << (n & 7)" wrote n's low byte into
+	 * the bitmap and pass1's else-if bookkeeping read garbage.
+	 */
+	R(LSHIFT,P_NUM,INDE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
+	R(LSHIFT,P_NUM,INHL,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tld a,$L\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	/*
+	 * A byte VARIABLE shifted by a runtime count - the value already
+	 * reduced into A, the count into E, DE or HL.  The docompound
+	 * marker found these missing: "m[i++] >>= n" reduced its value
+	 * and its count and then had no rule to put them together.
+	 * Right shifts come in two kinds and the signed one must be
+	 * first, RF_SIGNL deciding: sra copies the sign bit back in
+	 * where srl feeds zero.
+	 */
+	R(LSHIFT,INA,INE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
+	R(LSHIFT,INA,INDE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
+	R(LSHIFT,INA,INHL,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	R(LSHIFT,INHL,P_EIGHT,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
+	/*
+	 * By a count that is not a constant: djnz over the one-shift
+	 * body, entered at the test so a count of nought runs it not at
+	 * all - the same shape the byte forms use.  The count arrives in
+	 * E, or sits in C when it lives in the register home; B is the
+	 * loop counter either way, safe under the $[ $] guard.
+	 */
+	R(LSHIFT,INHL,INDE,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n\tjr $$+3\n" T_ADD_HL_HL "\tdjnz $$-1\n$]", R_HL),
+	R(LSHIFT,INHL,INBC,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,c\n\tinc b\n\tjr $$+3\n" T_ADD_HL_HL "\tdjnz $$-1\n$]", R_HL),
+
+	/*
+	 * Bit testing.  A single bit out of a byte is what bit does, in
+	 * two bytes and without touching A or the carry - against and,
+	 * which needs the byte in A first, costs two bytes itself and
+	 * then a third to set the flags, because and leaves Z meaning
+	 * the whole result rather than the bit.
+	 *
+	 * Only for a mask that is one bit: P matches a power of two, and
+	 * RF_POW2 turns the mask into the bit number the instruction
+	 * wants.  Neither admits 1, so bit 0 is still tested the long
+	 * way - ispow2 answers 0 for it and both guards read that as no.
+	 *
+	 * The first two test the byte where it lies, through an index
+	 * register or through HL, and are a byte shorter again than
+	 * loading it into A first.  Reaching them takes more than a rule:
+	 * an AND reduces its left operand before it is itself looked at,
+	 * which loads the byte into A and leaves the address nowhere to
+	 * be seen, so rewrite1 has a case that reduces the address and
+	 * leaves the DEREF standing.  Without it the indexed rule sat
+	 * here for a long time matching nothing at all.
+	 *
+	 * A global keeps the third form.  "ld a,(nn)" is the only direct
+	 * absolute load the Z80 has and bit has no absolute form, so
+	 * pointing HL at it first would cost what it saved.
+	 */
+	R(AND,DEREF,P_POW2,INDEX,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
+	R(AND,DEREF,P_POW2,REGVAR,0,9, AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
+		"\tbit $R,(ix+0)\n", F_NZ),
+	R(AND,DEREF,P_POW2,INHL,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
+	R(AND,INA,P_POW2,0,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
+	R(AND,DEREF,P_NUM,INDEX,0,1, AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
+	R(AND,INA,DEREF,0,SYMREF,1, AND, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tand (hl)\n", R_A),
+	R(AND,INA,DEREF,0,INDEX,1, AND, P_L, P_R, P_NONE, 0, "\tand ($RL)\n", R_A),
+	R(AND,INA,INE,0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
+	R(AND,INHL,INE,0,0,1, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n", R_A),
+	R(AND,INA,INDE,0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
+	/* the flag form first: and sets Z itself, so a test that only
+	 * wants the flag must not pay for a result register */
+	R(AND,INA,P_NUM,0,0,9, AND, P_L, P_R, P_NONE, 0, RT33, F_NZ),
+	R(AND,INA,P_NUM,0,0,1, AND, P_L, P_R, P_NONE, 0, RT33, R_A),
+	R(AND,INA,INE,0,0,9, AND, P_L, P_R, P_NONE, 0, RT35, F_NZ),
+	/* no 16-bit and/or/xor on the Z80 - do it a byte at a time */
+	R(AND,INHL,P_NUM,0,0,0, AND, P_L, P_R, P_NONE, 0,
+		F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
+	R(AND,INBC,P_NUM,0,0,0, AND, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
+	R(AND,INHL,INDE,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
+	/*
+	 * The same with BC on one side or the other.  A word bitwise
+	 * operator had a form for HL against DE and no other, so one of
+	 * these on a register variable emitted nothing.  Against BC the
+	 * accumulator can take b and c directly; with the value in BC it
+	 * comes over to HL first, which is what the constant-count shifts
+	 * do a few rules down.
+	 */
+	R(AND,INHL,INBC,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
+	R(AND,INBC,INDE,0,0,0, AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
+	R(OR,DEREF,P_NUM,INDEX,0,1, OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
+	R(OR,INA,DEREF,0,SYMREF,1, OR, P_L, P_R, P_NONE, 0, F_LDHLRL1 F_ORHL, R_A),
+	R(OR,INA,DEREF,0,INDEX,1, OR, P_L, P_R, P_NONE, 0, "\tor ($RL)\n", R_A),
+	R(OR,INA,INE,0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
+	R(OR,INHL,INE,0,0,1, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n", R_A),
+	R(OR,INA,INDE,0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
+	R(OR,INA,P_NUM,0,0,1, OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),
+	R(OR,INHL,P_NUM,0,0,0, OR, P_L, P_R, P_NONE, 0,
+		F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
+	R(OR,INBC,P_NUM,0,0,0, OR, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
+	R(OR,INHL,INDE,0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
+	R(OR,INHL,INBC,0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor c\n" F_LDLA F_LDAH "\tor b\n" F_LDHA, R_HL),
+	R(OR,INBC,INDE,0,0,0, OR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
+	R(XOR,DEREF,P_NUM,INDEX,0,1, XOR, P_L, P_R, P_NONE, 0, F_LDALL "\txor $R\n", R_A),
+	R(XOR,INA,DEREF,0,SYMREF,1, XOR, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\txor (hl)\n", R_A),
+	R(XOR,INA,DEREF,0,INDEX,1, XOR, P_L, P_R, P_NONE, 0, "\txor ($RL)\n", R_A),
+	R(XOR,INA,INE,0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
+	R(XOR,INHL,INE,0,0,1, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n", R_A),
+	R(XOR,INA,INDE,0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
+	R(XOR,INA,P_NUM,0,0,1, XOR, P_L, P_R, P_NONE, 0, "\txor $R\n", R_A),
+	R(XOR,INHL,P_NUM,0,0,0, XOR, P_L, P_R, P_NONE, 0,
+		F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
+	R(XOR,INBC,P_NUM,0,0,0, XOR, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
+	R(XOR,INHL,INDE,0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
+	R(XOR,INHL,INBC,0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor c\n" F_LDLA F_LDAH "\txor b\n" F_LDHA, R_HL),
+	R(XOR,INBC,INDE,0,0,0, XOR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
+	/*
+	 * Against zero, which is what "p == 0" on a pointer register
+	 * variable comes to and had no form: testing the halves is
+	 * shorter than loading nought into DE to subtract it.
+	 */
+	R(EQ,REGVAR,P_ZERO,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT187, F_Z),
+	/*
+	 * And against any other constant, or a symbol, which come to the
+	 * same thing.  The whole comparison family, not just equality:
+	 * "(unsigned)p < 0x100" asks an ordering question of a pointer
+	 * and had no form, so it fell to the marker and branched on
+	 * whatever flags were standing.  Unsigned, because IX holds
+	 * pointers by allocation policy.
+	 */
+	R(EQ,REGVAR,P_NUM,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(EQ,REGVAR,SYMREF,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(EQ,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT184, F_Z),
+	R(EQ,REGVAR,INHL,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT193, F_Z),
+	/*
+	 * And against DE, which had no form at all.  A pointer register
+	 * variable compared with a local pointer emitted no code and the
+	 * branch after it went wherever the flags happened to point.
+	 */
+	R(EQ,REGVAR,INDE,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
+	/* the same with the index register on the other side, which
+	 * normalize does not swap because equality is not a relation it
+	 * reorders by operand kind */
+	R(EQ,INHL,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
+
+	/*
+	 * Both operands in register homes: BC against IX, which two
+	 * register pointers walking the same buffer produce - outf's
+	 * literal spans were the first ("p > q" with p in IX, q in BC).
+	 * There was no rule at all, the comparison emitted NOTHING, and
+	 * the branch went on whatever flags were lying around.
+	 */
+	R(EQ,INBC,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
+	/* and mirrored, the IX pointer on the left */
+	R(EQ,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
+
+	/* comparisons */
+	/*
+	 * An ADDRESS compared, rather than the thing at it.  "p->c" is
+	 * an INDEX and the (ix+d) rules read through it, but "&p->c ==
+	 * g" wants the address itself worked out, and until these rules
+	 * existed CODE appeared in the table only as the source of an
+	 * assignment.  So the conversion that forms an effective address
+	 * in a register was never even attempted for a comparison: the
+	 * left operand stayed an INDEX, nothing matched, and the test
+	 * emitted a marker and then branched on whatever flags the
+	 * preceding load happened to leave.
+	 *
+	 * The sequence is the one the INHL form uses - by the time these
+	 * match, the address is in HL exactly as a loaded value would be.
+	 */
+	R(EQ,CODE,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
+	R(EQ,CODE,SYMREF,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
+
+	R(EQ,INHL,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
+	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
+	R(EQ,INHL,INBC,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
+	R(EQ,INBC,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT415, F_Z),
+	R(EQ,INBC,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT411, F_Z),
+
+	/* against a symbol's address, which is what comparing a pointer
+	 * with "&thing" comes to */
+	R(EQ,INHL,SYMREF,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
+	R(EQ,INHL,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
+
+	/* byte comparisons */
+	/* byte comparison against another byte, in E */
+	R(EQ,INA,INE,0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
+	R(EQ,INA,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT200, F_Z),
+	/*
+	 * Against a byte register variable, which lives in B or C.  cp
+	 * takes either directly; there were forms for E and for a
+	 * constant and none for these.
+	 */
+	R(EQ,INA,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_B, RT41, F_Z),
+	R(EQ,INA,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_C, RT42, F_Z),
+	R(EQ,DEREF,P_NUM,INDEX,0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
+	R(NEQ,REGVAR,P_ZERO,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT187, F_NZ),
+	R(NEQ,REGVAR,P_NUM,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(NEQ,REGVAR,SYMREF,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(NEQ,REGVAR,INBC,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT184, F_NZ),
+	R(NEQ,REGVAR,INHL,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT193, F_NZ),
+	R(NEQ,REGVAR,INDE,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
+	R(NEQ,INHL,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
+	R(NEQ,INBC,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
+	R(NEQ,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
+	R(NEQ,CODE,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
+	R(NEQ,CODE,SYMREF,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
+	R(NEQ,INHL,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
+	R(NEQ,INHL,INBC,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
+	R(NEQ,INBC,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT415, F_NZ),
+	R(NEQ,INBC,P_NUM,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT411, F_NZ),
+	R(NEQ,INHL,SYMREF,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
+	R(NEQ,INHL,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
+	R(NEQ,INA,INE,0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
+	R(NEQ,INA,P_NUM,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT200, F_NZ),
+	R(NEQ,INA,REGVAR,0,0,0, NEQ, P_L, P_R, P_R, RF_B, RT41, F_NZ),
+	R(NEQ,INA,REGVAR,0,0,0, NEQ, P_L, P_R, P_R, RF_C, RT42, F_NZ),
+	R(NEQ,DEREF,P_NUM,INDEX,0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
+
+	/* NEQ -> BANG(EQ) */
+	R(NEQ,P_ANY,P_NUM,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
+	R(NEQ,0,0,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
+	R(LE,REGVAR,P_NUM,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
+		F_CC),
+	R(LE,REGVAR,SYMREF,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
+		F_CC),
+	R(LE,REGVAR,INDE,0,0,0, LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LE,INHL,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LE,INBC,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LE,REGVAR,INBC,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT396, F_CC),
+	R(LE,INHL,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_Z),
+	R(LE,INBC,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_Z),
+	R(LE,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,SYMREF,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	R(LE,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	/* LE/GT have no cheap flag of their own: swap the operands so the
+	 * borrow from sbc answers the reversed question. */
+	R(LE,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	/* the same four with a symbol on the left - see the signed set */
+	R(LE,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LE,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	/*
+	 * LE and GT answer the reversed question, and there is no
+	 * ex bc,hl - so copy BC into DE and swap that instead.
+	 */
+	R(LE,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LE,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,INBC,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(LE,INA,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_Z),
+	R(LE,INA,INE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_Z),
+	R(LE,INA,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_Z),
+	R(LE,DEREF,P_NUM,INDEX,0,1, LE, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_Z),
+	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_SIGNL|RF_B,
+		"\tsub b\n" T_SXORA T_SZTAIL, F_Z),
+	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_SIGNL|RF_C,
+		"\tsub c\n" T_SXORA T_SZTAIL, F_Z),
+	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_B,
+		"\tcp b\n\tjr nz,$$+3\n\tscf\n", F_C),
+	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_C,
+		"\tcp c\n\tjr nz,$$+3\n\tscf\n", F_C),
+	R(LE,INA,INE,0,0,0, LE, P_L, P_R, P_NONE, 0, RT199, F_C),
+	R(LE,INA,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT201, F_C),
+	R(LE,DEREF,P_NUM,INDEX,0,1, LE, P_L, P_R, P_NONE, 0, RT269, F_C),
+	R(LE,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT288, F_C),
+	R(LE,INBC,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT412, F_C),
+	R(LE,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(LT,REGVAR,P_NUM,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(LT,REGVAR,SYMREF,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(LT,REGVAR,INDE,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
+	R(LT,INHL,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
+	R(LT,INBC,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
+	R(LT,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
+
+	/*
+	 * Signed compare against zero is just the sign bit, and it has to
+	 * be: sbc hl,de sets carry on an unsigned borrow, so the generic
+	 * form below says "x < 0" is false for every x.  Must precede the
+	 * T/Y(H,N) rules - zero is a subset of NUMBER and first match wins.
+	 */
+	R(LT,INHL,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_M),
+	R(LT,INBC,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_M),
+
+	/*
+	 * Signed relational comparison.  Carry answers the unsigned
+	 * question, so it cannot be used here: with a = -1 and b = 1 the
+	 * subtraction does not borrow, and carry would report that -1 is
+	 * not less than 1.
+	 *
+	 * The signed answer is sign exclusive-or overflow.  sbc hl,de
+	 * leaves the sign in bit 7 of H and the overflow in P/V, so take
+	 * the high byte, flip its top bit when the subtraction overflowed,
+	 * and let or a set the sign from the result.  M is then "less
+	 * than" and P is "greater or equal".
+	 *
+	 * Ten bytes against the three carry costs, which is why the
+	 * unsigned forms below keep using it, and why comparing against
+	 * zero stays on the sign-bit rules above - those are exact and
+	 * cheaper.
+	 */
+	R(LT,INHL,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_M),
+	/*
+	 * A symbol compared against a register.  A SYMREF is left
+	 * unreduced so the store and load rules can use it as an
+	 * address, so where its *value* is wanted it has to be loaded -
+	 * and here that is the whole difference.
+	 *
+	 * It only shows up on the left because "a > b" is canonicalised
+	 * to "b < a", which is what puts the symbol there.  "s == buf"
+	 * kept the symbol on the right, where it becomes DE and the
+	 * ordinary rules match, so equality worked and ordering did not:
+	 *
+	 *	while (s > macbuffer && ...)	never ran
+	 *
+	 * which is macro.c's trailing-whitespace trim, so a macro body
+	 * kept its trailing blanks - and an empty one walked off the end
+	 * of the definition and ate the next line.
+	 */
+	R(LT,SYMREF,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_M),
+
+	/*
+	 * The same symbol-on-the-left shapes with the register operand
+	 * living in BC - a register variable compared against a global
+	 * array's address arrives exactly here, and the table stopping
+	 * at (O,E) left "if (s > buf)" unreduced.
+	 */
+	R(LT,SYMREF,INBC,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_M),
+
+	/* and with the symbol on the other side, where it becomes DE */
+	R(LT,INHL,SYMREF,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
+
+	R(LT,INHL,INBC,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_M),
+	R(LT,INHL,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
+	R(LT,INHL,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT360, F_C),
+	R(LT,SYMREF,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT312, F_C),
+	R(LT,INHL,SYMREF,0,0,0, LT, P_L, P_R, P_NONE, 0, RT287, F_C),
+	R(LT,INHL,INBC,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
+	/*
+	 * A register variable compared, signed.  The rules below answer
+	 * with carry, which is the unsigned question - the same fault the
+	 * HL forms had, in the register that fix did not reach.  A
+	 * variable that lives in BC and goes negative compared as though
+	 * it were large: "i < 2" was false for i = -1.
+	 *
+	 * Greater-than and at-or-below have no flag of their own, so the
+	 * operands are handed over the other way round, which is what the
+	 * ex de,hl is doing.
+	 */
+	R(LT,INBC,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_M),
+	R(LT,INBC,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT415, F_C),
+	R(LT,INBC,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_M),
+	R(LT,INBC,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, 0, RT411, F_C),
+	R(LT,INHL,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
+
+	/*
+	 * Signed byte comparisons.  These have to come before the
+	 * unsigned forms below, which match either signedness and answer
+	 * the unsigned question: cp sets carry on a borrow, and nothing
+	 * borrows against zero, so "c < 0" was false for every char in
+	 * the language.  Equality needs no signed form - the bits are
+	 * either equal or they are not.
+	 *
+	 * Against zero the sign bit is the whole answer, and or a puts it
+	 * in S for free.  Zero is a subset of NUMBER, so these must also
+	 * precede the T/Y(A,N) rules: first match wins.
+	 *
+	 * None of these ask for flag context, unlike the unsigned rules
+	 * below, which is what let a byte comparison used for its value
+	 * fall through to no rule at all.  A flag becomes a number by the
+	 * same path a word comparison uses.
+	 */
+	R(LT,INA,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_M),
+	/*
+	 * Against anything else, the same sign-exclusive-or-overflow the
+	 * word rules use.  Seven bytes against cp's two, which is why the
+	 * unsigned forms below keep cp and why zero stays on the rules
+	 * above.
+	 *
+	 * > and <= go the long way round rather than becoming >= and <
+	 * against the constant plus one, the way the unsigned rules do.
+	 * That trick has nowhere to go at 127, where the increment wraps
+	 * to -128 and turns a test that is always false into one that is
+	 * always true.
+	 */
+	R(LT,INA,INE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_M),
+	R(LT,INA,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_M),
+	R(LT,DEREF,P_NUM,INDEX,0,1, LT, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_M),
+	R(LT,INA,INE,0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
+	/*
+	 * The ordered relationals against the same homes.  Signed first:
+	 * the sign gate stops the search there, and an unsigned rule
+	 * reached by a signed compare answers with the wrong flag.  Only
+	 * LT and LE, because pass1 normalises GT and GE away by swapping.
+	 */
+	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_SIGNL|RF_B,
+		"\tsub b\n" T_SXORA, F_M),
+	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_SIGNL|RF_C,
+		"\tsub c\n" T_SXORA, F_M),
+	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_B, RT41, F_C),
+	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_C, RT42, F_C),
+	R(LT,INA,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, 0, RT200, F_C),
+	R(LT,DEREF,P_NUM,INDEX,0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
+	R(GE,REGVAR,P_NUM,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(GE,REGVAR,SYMREF,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R(GE,REGVAR,INDE,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
+	R(GE,INHL,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
+	R(GE,INBC,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
+	R(GE,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
+	R(GE,INHL,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_P),
+	R(GE,INBC,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_P),
+	R(GE,INHL,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_P),
+	R(GE,SYMREF,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_P),
+	R(GE,SYMREF,INBC,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_P),
+	R(GE,INHL,SYMREF,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
+	R(GE,INHL,INBC,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_P),
+	R(GE,INHL,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
+	R(GE,INHL,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT360, F_NC),
+	R(GE,SYMREF,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT312, F_NC),
+	R(GE,INHL,SYMREF,0,0,0, GE, P_L, P_R, P_NONE, 0, RT287, F_NC),
+	R(GE,INHL,INBC,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
+	R(GE,INBC,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_P),
+	R(GE,INBC,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT415, F_NC),
+	R(GE,INBC,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_P),
+	R(GE,INBC,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, 0, RT411, F_NC),
+	R(GE,INHL,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
+	R(GE,INA,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_P),
+	R(GE,INA,INE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_P),
+	R(GE,INA,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_P),
+	R(GE,DEREF,P_NUM,INDEX,0,1, GE, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_P),
+	R(GE,INA,INE,0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
+	R(GE,INA,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, 0, RT200, F_NC),
+	R(GE,DEREF,P_NUM,INDEX,0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
+	R(GT,REGVAR,P_NUM,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
+		F_CC),
+	R(GT,REGVAR,SYMREF,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
+		F_CC),
+	R(GT,REGVAR,INDE,0,0,0, LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,INHL,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,INBC,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,REGVAR,INBC,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT396, F_CC),
+	/*
+	 * "> 0" and "<= 0" are not a single flag the way "< 0" is - they
+	 * need the value to be non-negative AND non-zero.  Test the sign,
+	 * and on the negative side fall into an xor a that forces Z, so
+	 * both paths arrive with Z meaning false:
+	 *
+	 *   J+0  ld a,h   1
+	 *   J+1  or a     1   sign of the high byte
+	 *   J+2  jp m     3   negative, so false
+	 *   J+5  ld a,h   1
+	 *   J+6  or l     1   Z here means the whole value was zero
+	 *   J+7  jr       2   past the forced-false
+	 *   J+9  xor a    1
+	 *   J+10
+	 */
+	R(GT,INHL,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_NZ),
+	R(GT,INBC,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_NZ),
+	R(GT,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(GT,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(GT,SYMREF,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(GT,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	R(GT,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(GT,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	R(GT,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R(GT,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R(GT,INBC,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	/* or a sets S and Z together, which is what > 0 and <= 0 need */
+	R(GT,INA,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_NZ),
+	R(GT,INA,INE,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_NZ),
+	R(GT,INA,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_NZ),
+	R(GT,DEREF,P_NUM,INDEX,0,1, GT, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_NZ),
+
+	/*
+	 * Unsigned > and <=.  cp leaves the answer spread over two flags -
+	 * carry says below, zero says equal - and "at or below" wants
+	 * both.  Rather than branch twice, fold equality into the carry:
+	 * when the two were equal, set it.  Carry then means "at or
+	 * below" on its own, and its complement means "above".
+	 *
+	 *   J+0  cp     1   C = below, Z = equal
+	 *   J+1  jr nz  2   not equal, so carry already answers
+	 *   J+3  scf    1   equal, so make carry say so
+	 *   J+4
+	 *
+	 * This replaces turning "> n" into ">= n+1", which has nowhere to
+	 * go at 255: the increment wraps to zero and a test that is never
+	 * true becomes one that always is.  Two bytes more, and right at
+	 * both ends of the range.
+	 */
+	R(GT,INA,INE,0,0,0, GT, P_L, P_R, P_NONE, 0, RT199, F_NC),
+	R(GT,INA,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT201, F_NC),
+	R(GT,DEREF,P_NUM,INDEX,0,1, GT, P_L, P_R, P_NONE, 0, RT269, F_NC),
+
+	/*
+	 * The same fold at word width.  These turned "> n" into ">= n+1"
+	 * until now, which the note above says has nowhere to go at the
+	 * top of the range - it was fixed for bytes at 255 and left here,
+	 * where the increment wraps at 65535 instead.  "u <= 0xffff" is
+	 * true of every unsigned short and came out false for all of
+	 * them.
+	 */
+	R(GT,INHL,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT288, F_NC),
+	/* the same for a register variable, which had neither */
+	R(GT,INBC,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT412, F_NC),
+	R(GT,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+
+	/* arithmetic/logical on indexed */
+	R(OREQ,INHL,P_NUM,0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAHL "\tor $R\n" F_LDHLA, R_A),
+	R(OREQ,INDEX,INE,0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAL1 "\tor e\n" F_LDLA1, R_A),
+
+	/* assign constant/A/HL to REGVAR C/B */
+	R(ASSIGN,REGVAR,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,$R\n", R_A),
+	R(ASSIGN,REGVAR,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,$R\n", R_A),
+	R(ASSIGN,REGVAR,INA,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,a\n", R_A),
+	R(ASSIGN,REGVAR,INA,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,a\n", R_A),
+	R(ASSIGN,REGVAR,INHL,0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,l\n", R_HL),
+	R(ASSIGN,REGVAR,INHL,0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,l\n", R_HL),
+
+	/* load REGVAR C/B to HL (zero-extended) */
+	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_C, F_LDLC F_LDH0, R_HL),
+	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_B, "\tld l,b\n" F_LDH0, R_HL),
+	/*
+	 * The same for a value that ended up in IX.  HL, DE, BC, A and E
+	 * each become a typed node before the table is reached; IX does
+	 * not, so it arrives as CODE and matched nothing at all.  No rule
+	 * matching normally leaves a marker, but this is a condition
+	 * rather than a value - the caller wanted flags and took whatever
+	 * was in them:
+	 *
+	 *	while ((top = fstack_top(&fs)) != NULL)
+	 *
+	 * with top in IX emitted push hl / pop ix, which sets no flags,
+	 * and then branched on what the call had left behind.  cpp's
+	 * filtbrace loops forever on any brace-less if, while or for.
+	 */
+
+	/* copy IX to HL/BC/DE */
+	R(ASSIGN,INHL,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, RT174, R_HL),
+	R(ASSIGN,INBC,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld c,ixl\n\tld b,ixh\n", R_BC),
+	R(ASSIGN,INDE,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE),
 
 	/*
 	 * Store to a frame slot.  A constant goes straight into the slot
@@ -1554,100 +2351,6 @@ struct rule rules[] = {
 	R(ASSIGN,REGVAR,INDEX,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX,
 		"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
 		F_PUSHHL "\tpop ix\n", R_IX),
-	/*
-	 * Arithmetic on it comes out in HL, which "=(V,H)" then puts
-	 * back.  Only addition of a constant folds into an indexed
-	 * location; subtraction has to be done.
-	 */
-	R(MINUS,REGVAR,P_NUM,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
-	R(MINUS,REGVAR,SYMREF,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
-	R(PLUS,REGVAR,SYMREF,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_LDDER F_ADDHLDE, R_HL),
-	/*
-	 * The index register plus a value rather than a constant or a
-	 * symbol - "p[i]" where p is a pointer register variable and i is
-	 * worked out.  A constant offset folds into an INDEX and never
-	 * reaches here, which is why this was missing: the shape only
-	 * turns up when the subscript is not known.  Eleven places in the
-	 * tools, counting the ones that then sign-extend the result.
-	 */
-	R(PLUS,REGVAR,INDE,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
-	/* and the difference, which is how a span is worked out when the
-	 * far end is a local rather than the other register home */
-	R(MINUS,REGVAR,INDE,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT186, R_HL),
-	/*
-	 * And against the other register home: two pointers walking the
-	 * same buffer land one in IX and one in BC, and "p - q" is how a
-	 * span length is worked out - outf's literal spans first.
-	 */
-	R(MINUS,REGVAR,INBC,0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT185, R_HL),
-	R(PLUS,REGVAR,INBC,0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tadd hl,bc\n", R_HL),
-	R(MINUS,INBC,REGVAR,0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT396, R_HL),
-	R(PLUS,INBC,REGVAR,0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
-	/*
-	 * And a value already worked out in HL against that home:
-	 * "((char *)q - (char *)p) / sizeof(struct store)" in realloc,
-	 * where the left side is a difference and only the right is a
-	 * register variable.  Missing for the same reason as the pair
-	 * above - the shape needs a left operand that is not itself a
-	 * home, so nothing in the tree had written one until now.
-	 */
-	R(MINUS,INHL,REGVAR,0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT193, R_HL),
-	R(PLUS,INHL,REGVAR,0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
-	/*
-	 * Against zero, which is what "p == 0" on a pointer register
-	 * variable comes to and had no form: testing the halves is
-	 * shorter than loading nought into DE to subtract it.
-	 */
-	R(EQ,REGVAR,P_ZERO,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT187, F_Z),
-	R(NEQ,REGVAR,P_ZERO,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT187, F_NZ),
-	/*
-	 * And against any other constant, or a symbol, which come to the
-	 * same thing.  The whole comparison family, not just equality:
-	 * "(unsigned)p < 0x100" asks an ordering question of a pointer
-	 * and had no form, so it fell to the marker and branched on
-	 * whatever flags were standing.  Unsigned, because IX holds
-	 * pointers by allocation policy.
-	 */
-	R(P_CMP,REGVAR,P_NUM,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
-	R(P_CMPX,REGVAR,P_NUM,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
-		F_CC),
-	R(P_CMP,REGVAR,SYMREF,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
-	R(P_CMPX,REGVAR,SYMREF,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
-		F_CC),
-	R(EQ,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT184, F_Z),
-	R(NEQ,REGVAR,INBC,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT184, F_NZ),
-	R(EQ,REGVAR,INHL,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT193, F_Z),
-	R(NEQ,REGVAR,INHL,0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT193, F_NZ),
-	/*
-	 * And against DE, which had no form at all.  A pointer register
-	 * variable compared with a local pointer emitted no code and the
-	 * branch after it went wherever the flags happened to point.
-	 */
-	R(P_CMP,REGVAR,INDE,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
-	R(P_CMPX,REGVAR,INDE,0,0,0, LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	/* the same with the index register on the other side, which
-	 * normalize does not swap because equality is not a relation it
-	 * reorders by operand kind */
-	R(P_CMP,INHL,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
-	R(P_CMPX,INHL,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-
-	/*
-	 * Both operands in register homes: BC against IX, which two
-	 * register pointers walking the same buffer produce - outf's
-	 * literal spans were the first ("p > q" with p in IX, q in BC).
-	 * There was no rule at all, the comparison emitted NOTHING, and
-	 * the branch went on whatever flags were lying around.
-	 */
-	R(P_CMP,INBC,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
-	R(P_CMPX,INBC,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	/* and mirrored, the IX pointer on the left */
-	R(P_CMP,REGVAR,INBC,0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
-	R(P_CMPX,REGVAR,INBC,0,0,0, LE, P_L, P_R, P_L, RF_IX, RT396, F_CC),
 
 	R(ASSIGN,REGVAR,INHL,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R(ASSIGN,REGVAR,INDE,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
@@ -1664,121 +2367,11 @@ struct rule rules[] = {
 	R(ASSIGN,INDE,INDE,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
 	R(ASSIGN,INHL,INHL,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
 
-	/*
-	 * Comma: both sides have already emitted their code, in order,
-	 * and the value is the right one - so there is nothing left to do
-	 * but say where it ended up.  ';' rather than ',' because the
-	 * pattern parser uses the comma to separate children.
-	 */
-	R(COMMA,P_ANY,INHL,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_HL),
-	R(COMMA,P_ANY,INDE,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_DE),
-	R(COMMA,P_ANY,INBC,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_BC),
-	R(COMMA,P_ANY,INA,0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_A),
-
 	/* assign to CODE result */
 	R(ASSIGN,CODE,INHL,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
 	R(ASSIGN,CODE,INDE,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
 	R(ASSIGN,CODE,INBC,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_BC),
 	R(ASSIGN,CODE,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
-
-	/*
-	 * Widening a byte to a word.  Unsigned zero-extends; signed puts
-	 * bit 7 into carry with rla, then sbc a,a turns that into 00 or
-	 * ff.  Both honour the target, since the widened value is as
-	 * often the right operand (DE) as the left (HL).
-	 */
-	R(WIDEN,INA,0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
-	/*
-	 * A byte that is already in HL rather than in A - which is where
-	 * a ternary leaves its value, both arms having been landed in the
-	 * one register so the expression has a value whichever way the
-	 * branch went.  Only the low half is meaningful, so the high half
-	 * is cleared or filled with the sign.
-	 *
-	 * The width has to be pinned on the operand, not just the result:
-	 * a SEXT to short whose operand is already a short is a widening
-	 * of a pointer, and filling H with the sign of L destroys it.
-	 */
-	R(WIDEN,INHL,0,0,0,34, WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
-	/* widening a word to a word, which the usual conversions ask for
-	 * between two pointers of the same size: nothing to do, except
-	 * where the word is in the index register and has to come out */
-	R(SEXT,REGVAR,0,0,0,2, SEXT, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
-	R(WIDEN,REGVAR,0,0,0,2, WIDEN, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
-	R(SEXT,INHL,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
-	/*
-	 * The same for a word already in BC, where there is still nothing
-	 * to extend but it does have to come over.  Without these, a
-	 * pointer difference or a subscript on a register variable ran
-	 * into a sign extension from short to short that no rule named,
-	 * and stopped there.
-	 */
-	R(SEXT,INBC,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
-	R(WIDEN,INBC,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
-	/* and from a frame slot, where it is the same load D(I):s makes */
-	R(SEXT,INDEX,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT71, 0),
-	R(WIDEN,INDEX,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT71, 0),
-	/* a symbol's address widened to a word, which is what taking a
-	 * function's address for a function pointer comes to */
-	R(SEXT,SYMREF,0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0, RT69, 0),
-	R(WIDEN,SYMREF,0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, RT69, 0),
-	R(WIDEN,INHL,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
-	R(SEXT,INHL,0,0,0,34, SEXT, P_L, P_NONE, P_NONE, 0,
-		F_LDAL F_RLA F_SBCAA F_LDHA, R_HL),
-	R(SEXT,INA,0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0,
-		"\tld $t,a\n" F_RLA F_SBCAA "\tld $u,a\n", 0),
-
-	/*
-	 * Narrowing, which is the other direction and is only ever a
-	 * question of where the low half already is.
-	 *
-	 * Under HL':HL it is in HL, which is where a narrower reader
-	 * looks anyway, so narrowing a long emits nothing at all - the
-	 * high word is simply abandoned in HL'.  It used to be an
-	 * ex de,hl, the low word having been in DE.  Same for everything
-	 * else: the rule is here so that the cast emits nothing rather
-	 * than matching nothing.
-	 *
-	 * pass1 used to write the cast's type over the node and leave no
-	 * trace, so "(int)f()" on a long-returning f read HL - which was
-	 * then the high word.  Every numeric escape in cpp came back
-	 * zero, because escint() is "(int)getint(base)".
-	 */
-	R(NARROW,INHL,0,0,0,98, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
-	R(NARROW,INHL,0,0,0,97, NARROW, P_L, P_NONE, P_NONE, 0, F_LDAL, R_A),
-	R(NARROW,INHL,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT235, R_A),
-	R(NARROW,INBC,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT221, R_A),
-	R(NARROW,INDE,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT121, R_A),
-	R(NARROW,INA,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_A),
-	R(NARROW,INE,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_E),
-	R(NARROW,INHL,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
-
-	/*
-	 * 32-bit values live in HL':HL, high word in HL'.
-	 *
-	 * Widening is where the layout earns its keep.  A word that is
-	 * already in HL is already the low half of the long, so nothing
-	 * has to move: the whole of the work is filling HL' in.  Under
-	 * HL:DE the value had to be shifted into DE first, which is the
-	 * ex de,hl these used to open with.
-	 *
-	 * Sign-extending fills the high word with sign bits - rla puts
-	 * bit 15 (or bit 7 for a byte) into carry and sbc a,a spreads it.
-	 */
-	R(SEXT,INHL,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		F_LDAH F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
-	R(SEXT,INBC,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_LDAB F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
-	R(SEXT,INA,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		F_LDLA F_RLA F_SBCAA F_LDHA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
-	/* an unsigned word widened: the high half is nothing, which is
-	 * the whole difference from X(H) */
-	R(WIDEN,INHL,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		F_EXX "\tld hl,0\n" F_EXX, R_HL),
-	R(WIDEN,INBC,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_EXX "\tld hl,0\n" F_EXX, R_HL),
-	R(WIDEN,INA,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		F_LDLA F_LDH0 F_EXX "\tld hl,0\n" F_EXX, R_HL),
 
 	/* storing one: a pair at a time to a global, a byte at a time to
 	 * a local, since only (hl) takes an immediate */
@@ -1836,95 +2429,6 @@ struct rule rules[] = {
 		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	/* a long already in HL:DE is the return value as it stands */
 	R(ASSIGN,INHL,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
-
-	/* test a long in memory for zero */
-	R(DEREF,SYMREF,0,0,0,11, DEREF, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_LDAHL F_INCHL F_ORHL F_INCHL
-		F_ORHL F_INCHL F_ORHL, F_NZ),
-
-	/*
-	 * Loading one, the mirror of the stores above: the low word lives
-	 * at the lower address, so it comes back in HL and the high word
-	 * in HL'.  A global can move a pair at a time; a frame slot goes a
-	 * byte at a time, since (iy+d) is all that reaches it - and (iy+d)
-	 * reads the same in either bank, IY not being one of the three.
-	 */
-	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-		F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
-	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IXIY,
-		"\tcall qld$Lr\n\t.db $Lo\n", R_HL),
-	/* through a pointer already in HL */
-	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall qld\n", R_HL),
-	/* and through the other register home - doprnt reads its long
-	 * argument through the pointer it walks the list with */
-	R(DEREF,INBC,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall qld\n", R_HL),
-
-	/*
-	 * Stepping a long in memory.  The helper takes the address in HL,
-	 * updates the value in place and hands back what was there before
-	 * - which is what a postfix wants and a prefix does not, so a
-	 * prefix that is used for its value reads the new one back.  As a
-	 * statement, which is nearly always, there is nothing to read.
-	 */
-	R(POSTINC,SYMREF,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
-	R(POSTDEC,SYMREF,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
-	R(PREINC,SYMREF,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
-	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
-	R(PREINC,SYMREF,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLAINC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
-	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLADEC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
-	/*
-	 * The same for a frame slot, where the address has to be worked
-	 * out: (iy+d) reaches a byte at a time, and the helper wants the
-	 * whole address in HL.
-	 */
-	R(POSTINC,INDEX,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
-	R(POSTDEC,INDEX,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
-	R(PREINC,INDEX,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
-	R(PREDEC,INDEX,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
-	R(PREINC,INDEX,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		T_IDX_ADDR F_CALLLAINC T_IDX_ADDR "\tcall qld\n", R_HL),
-	R(PREDEC,INDEX,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		T_IDX_ADDR F_CALLLADEC T_IDX_ADDR "\tcall qld\n", R_HL),
-	/*
-	 * And through a pointer, where the address is in HL already and
-	 * there is nothing to work out - "(*lp)++", which the short forms
-	 * had and these did not, so stepping a long through a pointer
-	 * emitted nothing at all.
-	 *
-	 * A prefix used for its value has to read the long back, and the
-	 * helper leaves the old one in HL:DE with the address gone, so the
-	 * address is kept on the stack under the saved BC.  lld preserves
-	 * BC, which is why it can come after the pop.
-	 */
-	R(POSTINC,INHL,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
-	R(POSTDEC,INHL,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
-	R(PREINC,INHL,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
-	R(PREDEC,INHL,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
-	R(PREINC,INHL,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL F_CALLLAINC F_POPHL
-		"\tcall qld\n", R_HL),
-	R(PREDEC,INHL,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL F_CALLLADEC F_POPHL
-		"\tcall qld\n", R_HL),
-	/*
-	 * And through a pointer kept in a register, where the DEREF is
-	 * still standing because rewrite1 left it there - see the step
-	 * branch that explains why.  The address is in BC and the helper
-	 * wants it in HL, which is the only difference from the forms
-	 * above.
-	 */
-	R(POSTINC,DEREF,0,INBC,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
-	R(POSTDEC,DEREF,0,INBC,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
-	R(PREINC,DEREF,0,INBC,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
-	R(PREDEC,DEREF,0,INBC,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
-	R(PREINC,DEREF,0,INBC,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_CALLLAINC T_BC_HL
-		"\tcall qld\n", R_HL),
-	R(PREDEC,DEREF,0,INBC,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_CALLLADEC T_BC_HL
-		"\tcall qld\n", R_HL),
 
 	/*
 	 * Storing a long constant through an address, which the four
@@ -2094,330 +2598,16 @@ struct rule rules[] = {
 	R(ASSIGN,DEREF,INHL,INBC,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall qst\n", R_HL),
 
-	/* complement of a word; the long form is handled in rewrite.c,
-	 * beside the long negation it shares its shape with */
-	R(NOT,INHL,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
-		F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
-	/* the same of a register variable, brought over first */
-	R(NOT,INBC,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
-	R(NOT,INA,0,0,0,1, NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
-	/*
-	 * The truth test.  "!x" is true when x is zero, so the answer is
-	 * the zero flag once the value has been tested - and testing is
-	 * all it takes, whatever the value is sitting in.
-	 *
-	 * A comparison already produces a flag and is handled before the
-	 * rules run, by inverting it; this is the other half, where the
-	 * operand is a value and nothing has set the flags.  It had no
-	 * rule at any width but long, so every "!x" on an ordinary value
-	 * reduced to nothing.
-	 *
-	 * The width that matters is the operand's: "!" yields an int
-	 * whatever it was applied to.
-	 */
-	R(BANG,INHL,0,0,0,96, BANG, P_L, P_NONE, P_NONE, 0,
-		F_LDAH "\tor l\n" F_EXX "\tor h\n\tor l\n" F_EXX, F_Z),
-	R(BANG,INHL,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT429, F_Z),
-	R(BANG,INHL,0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
-	R(BANG,INA,0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, RT358, F_Z),
-	R(BANG,INBC,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT426, F_Z),
-	R(BANG,INBC,0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, RT226, F_Z),
-	R(BANG,INDE,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT427, F_Z),
-	R(BANG,INE,0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, "\tld a,e\n" F_ORA, F_Z),
-	R(BANG,REGVAR,0,0,0,0, BANG, P_L, P_NONE, P_L, RF_IX, RT443, F_Z),
-
 	/* zero-extended loads */
 	R(ASSIGN,INBC,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
 	R(ASSIGN,INHL,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA F_LDH0, R_HL),
 	R(ASSIGN,INDE,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld e,a\n\tld d,0\n", R_DE),
-
-	/* register base address calculations */
-	R(PLUS,INBC,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDDER F_ADDHLDE, R_HL),
-	R(PLUS,INBC,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "%(\tinc hl\n)", R_HL),
-	R(PLUS,INDE,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDDER F_ADDHLDE, R_HL),
-	R(PLUS,INDE,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL "%(\tinc hl\n)", R_HL),
-
-	/* negation */
-	/* a byte in A negates in place - the Z80 has the instruction */
-	R(NEG,INA,0,0,0,1, NEG, P_L, P_NONE, P_NONE, 0, "\tneg\n", R_A),
-	R(NEG,INBC,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n" F_LDLA F_LDA0 "\tsbc a,b\n" F_LDHA, R_HL),
-	R(NEG,INHL,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
-	R(NEG,INDE,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
-
-	/*
-	 * Steps whose value nobody reads, for everything register-homed.
-	 * The forms below materialise the answer in HL or A, and a bare
-	 * "p++;" was paying those bytes to throw the answer away.  These
-	 * must sit above the context-less forms: first match wins, and a
-	 * pattern with no context suffix matches statement context too.
-	 */
-	R(PREINC,INBC,0,0,0,24, PREINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
-	R(PREDEC,INBC,0,0,0,24, PREDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
-	R(POSTINC,INBC,0,0,0,24, POSTINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
-	R(POSTDEC,INBC,0,0,0,24, POSTDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
-	R(PREINC,REGVAR,0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
-	R(PREINC,REGVAR,0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
-	R(PREDEC,REGVAR,0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
-	R(PREDEC,REGVAR,0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
-	R(POSTINC,REGVAR,0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
-	R(POSTINC,REGVAR,0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
-	R(POSTDEC,REGVAR,0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
-	R(POSTDEC,REGVAR,0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
-
-	/* pre-inc/dec */
-	R(PREINC,INBC,0,0,0,0, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n" F_LDLC F_LDHB, R_HL),
-	R(PREDEC,INBC,0,0,0,0, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n" F_LDLC F_LDHB, R_HL),
-	/* inc/dec a word global in place */
-	R(PREINC,SYMREF,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL2 F_INCHL F_LDLHL, R_HL),
-	R(PREDEC,SYMREF,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL2 F_DECHL F_LDLHL, R_HL),
-	R(POSTINC,SYMREF,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL2 F_INCHL F_LDLHL F_DECHL, R_HL),
-	R(POSTDEC,SYMREF,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL2 F_DECHL F_LDLHL F_INCHL, R_HL),
-
-	/*
-	 * inc/dec through an address in HL.  Reading the word costs the
-	 * pointer, so it goes on the stack first and comes back to do the
-	 * store.  Postfix then undoes the update to get its old value,
-	 * the same trick the memory forms use.
-	 */
-	R(PREINC,INHL,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R(PREDEC,INHL,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R(POSTINC,INHL,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
-		F_DECHL, R_HL),
-	R(POSTDEC,INHL,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
-		F_INCHL, R_HL),
-	/*
-	 * The same through a pointer kept in a register, where the DEREF
-	 * survives reduction and the address is in BC.  Without these,
-	 * "(*p)++" on a register pointer loaded the pointer, took that
-	 * for an address and stepped what it pointed at.
-	 */
-	/*
-	 * The byte forms, which had never existed: "(*p)++" on a byte
-	 * through a register pointer emitted a marker, and through a
-	 * frame pointer too.  ld a,(bc) is one of the Z80's two
-	 * one-byte indirect loads, so the BC forms cost nothing extra;
-	 * the HL forms read and write through (hl) directly.  Postfix
-	 * parks the old value in E, which nothing owns here.
-	 */
-	R(PREINC,DEREF,0,INBC,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(bc)\n\tinc a\n\tld (bc),a\n", R_A),
-	R(PREDEC,DEREF,0,INBC,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(bc)\n\tdec a\n\tld (bc),a\n", R_A),
-	R(POSTINC,DEREF,0,INBC,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(bc)\n\tld e,a\n\tinc a\n\tld (bc),a\n\tld a,e\n", R_A),
-	R(POSTDEC,DEREF,0,INBC,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(bc)\n\tld e,a\n\tdec a\n\tld (bc),a\n\tld a,e\n", R_A),
-	R(PREINC,DEREF,0,INHL,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
-		"\tinc (hl)\n\tld a,(hl)\n", R_A),
-	R(PREDEC,DEREF,0,INHL,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
-		"\tdec (hl)\n\tld a,(hl)\n", R_A),
-	R(POSTINC,DEREF,0,INHL,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
-	R(POSTDEC,DEREF,0,INHL,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
-	R(PREINC,DEREF,0,INBC,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R(PREDEC,DEREF,0,INBC,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R(POSTINC,DEREF,0,INBC,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
-		F_DECHL, R_HL),
-	R(POSTDEC,DEREF,0,INBC,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
-		F_INCHL, R_HL),
-
-	/* postfix yields the old value, so read before updating */
-	R(POSTINC,INBC,0,0,0,0, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tinc bc\n", R_HL),
-	R(POSTDEC,INBC,0,0,0,0, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tdec bc\n", R_HL),
-	/*
-	 * Stepping a pointer the allocator homed in IX.  The BC pointer
-	 * has had these all along; through-IX steps existed only fused
-	 * with a deref, so "p++" standing alone matched nothing, and a
-	 * scan loop over a register pointer read one byte forever - a
-	 * marker in the listing, an infinite loop on the machine.  The
-	 * statement forms come first: a step nobody wants the value of
-	 * is inc ix and not a byte more.
-	 */
-	R(PREINC,REGVAR,0,0,0,24, PREINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
-	R(PREDEC,REGVAR,0,0,0,24, PREDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
-	R(POSTINC,REGVAR,0,0,0,24, POSTINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
-	R(POSTDEC,REGVAR,0,0,0,24, POSTDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
-	R(PREINC,REGVAR,0,0,0,0, PREINC, P_L, P_NONE, P_L, RF_IX,
-		"\tinc ix\n\tpush ix\n" F_POPHL, R_HL),
-	R(PREDEC,REGVAR,0,0,0,0, PREDEC, P_L, P_NONE, P_L, RF_IX,
-		"\tdec ix\n\tpush ix\n" F_POPHL, R_HL),
-	R(POSTINC,REGVAR,0,0,0,0, POSTINC, P_L, P_NONE, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tinc ix\n", R_HL),
-	R(POSTDEC,REGVAR,0,0,0,0, POSTDEC, P_L, P_NONE, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
-	/*
-	 * And stepping the pointer that IX POINTS AT, which is the whole
-	 * of stdio's idiom: "*f->_ptr++" and "*--f->_ptr" with the FILE
-	 * homed in IX.  The rewriter leaves the DEREF standing for these
-	 * so a load rule cannot turn the step into a fetch, and the shape
-	 * it leaves is i(D(V)) - the ?(D(B)) forms name the same thing
-	 * for a pointer in BC and were the only ones written.  filbuf,
-	 * ungetc and fclose stepped nothing at all.
-	 *
-	 * At offset zero the member is (ix+0), so this needs no address
-	 * arithmetic and no stack: read the pair, step it, put it back.
-	 * A postfix wants the value from before, and undoing the step in
-	 * HL afterwards is a byte against holding both.
-	 */
-	R(PREINC,DEREF,0,REGVAR,0,2, PREINC, P_L, P_NONE, P_LL, RF_IX,
-		T_IXP_LD F_INCHL T_IXP_ST, R_HL),
-	R(PREDEC,DEREF,0,REGVAR,0,2, PREDEC, P_L, P_NONE, P_LL, RF_IX,
-		T_IXP_LD F_DECHL T_IXP_ST, R_HL),
-	R(POSTINC,DEREF,0,REGVAR,0,2, POSTINC, P_L, P_NONE, P_LL, RF_IX,
-		T_IXP_LD F_INCHL T_IXP_ST F_DECHL, R_HL),
-	R(POSTDEC,DEREF,0,REGVAR,0,2, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
-		T_IXP_LD F_DECHL T_IXP_ST F_INCHL, R_HL),
-	/*
-	 * Postfix on a word in memory.  The old value is wanted as the
-	 * result and the new one in store, and rather than hold both, the
-	 * update is undone afterwards - one byte, against a push/pop pair
-	 * or a shuffle through DE.
-	 */
-	R(POSTINC,INDEX,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
-	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
-	  "\tld ($L),$t\n\tld ($L+),$u\n\tdec $T\n", 0),
-	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
-	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
-	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
-	/*
-	 * Prefix on a word in a frame slot.  Load, step, store - and the
-	 * new value is the answer, so unlike the postfix forms above
-	 * there is nothing to undo.
-	 *
-	 * Written through $t and $T so it lands wherever it was asked
-	 * to.  Naming l and h outright, as this did, meant there was no
-	 * rule at all when the answer was wanted in DE - which is what a
-	 * relational asks for its right operand.  "if (++i >= n)" then
-	 * had no reduction: pass2 loaded n into HL, loaded i on top of
-	 * it, and jumped on whatever flags inc hl had left.  See
-	 * PREINCBUG.
-	 */
-	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
-	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
-	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
-	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
-	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
-	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
-	/*
-	 * A byte step on a frame slot needs no register at all: inc/dec
-	 * (iy+d) is one read-modify-write and it sets Z itself.  Where
-	 * the value is thrown away that is the whole job, and where only
-	 * the flags are wanted the prefix forms answer in NZ directly -
-	 * "while (--n)" on a frame byte is dec (iy+d) / jp z, not the
-	 * eleven-byte load, dec a, store, or a dance the value rules
-	 * make.  A postfix in flag context answers with the value from
-	 * before the step, so the load still happens and or a asks it.
-	 */
-	R(PREINC,INDEX,0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
-	R(PREDEC,INDEX,0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
-	R(POSTINC,INDEX,0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
-	R(POSTDEC,INDEX,0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
-	R(PREINC,INDEX,0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT57, F_NZ),
-	R(PREDEC,INDEX,0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, F_NZ),
-	R(POSTINC,INDEX,0,0,0,9, POSTINC, P_L, P_NONE, P_NONE, 0,
-	  F_LDAL1 "\tinc ($L)\n" F_ORA, F_NZ),
-	R(POSTDEC,INDEX,0,0,0,9, POSTDEC, P_L, P_NONE, P_NONE, 0,
-	  F_LDAL1 "\tdec ($L)\n" F_ORA, F_NZ),
-	R(PREINC,INDEX,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
-	R(PREDEC,INDEX,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
-	/* a postfix wants the value from before, so the step happens in
-	 * memory and the load beats it there */
-	R(POSTINC,INDEX,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc ($L)\n", R_A),
-	R(POSTDEC,INDEX,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
-
-	/*
-	 * The same through a pointer held in IX, where the member is the
-	 * first one and so needs no offset to add - "m->parmcount++"
-	 * with m in IX.  A member further in becomes +(D(V),N) and folds
-	 * to an INDEX, which the two rules above already take; only the
-	 * offset-free one arrived as a bare DEREF and matched nothing.
-	 *
-	 * It emitted no code and no marker, because the store above it
-	 * matched anyway - which is how cpp's macdefine came to write a
-	 * macro parameter through a stale HL.
-	 */
-	R(POSTINC,DEREF,0,REGVAR,0,1, POSTINC, P_L, P_NONE, P_LL, RF_IX,
-		"\tld a,(ix+0)\n\tinc (ix+0)\n", R_A),
-	R(POSTDEC,DEREF,0,REGVAR,0,1, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
-		"\tld a,(ix+0)\n\tdec (ix+0)\n", R_A),
-	R(PREINC,DEREF,0,REGVAR,0,1, PREINC, P_L, P_NONE, P_LL, RF_IX,
-		"\tinc (ix+0)\n\tld a,(ix+0)\n", R_A),
-	R(PREDEC,DEREF,0,REGVAR,0,1, PREDEC, P_L, P_NONE, P_LL, RF_IX,
-		"\tdec (ix+0)\n\tld a,(ix+0)\n", R_A),
-
-	/*
-	 * Stepping a byte at a global.  There is no inc (nn), but there
-	 * is inc (hl), so the address goes in HL and the step happens in
-	 * memory - four bytes against the seven that loading, adding and
-	 * storing would take.
-	 *
-	 * Which side of the step the load falls on is the whole
-	 * difference between prefix and postfix, and a statement wants
-	 * neither: it is only the step.
-	 */
-	R(PREINC,SYMREF,0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT302, F_NZ),
-	R(PREDEC,SYMREF,0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, F_NZ),
-	R(PREINC,SYMREF,0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
-	R(PREDEC,SYMREF,0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
-	R(POSTINC,SYMREF,0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
-	R(POSTDEC,SYMREF,0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
-	R(POSTINC,SYMREF,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_LDAHL "\tinc (hl)\n", R_A),
-	R(POSTDEC,SYMREF,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_LDAHL "\tdec (hl)\n", R_A),
-	R(PREINC,SYMREF,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL "\tinc (hl)\n" F_LDAHL, R_A),
-	R(PREDEC,SYMREF,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL "\tdec (hl)\n" F_LDAHL, R_A),
 
 	/* byte stores */
 	R(ASSIGN,INDEX,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
 	R(ASSIGN,INHL,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, 0, 0),
 	R(ASSIGN,INHL,INA,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA, R_HL),
 	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_BC, "\tld (hl),c\n", 0),
-
-	/* loads from register addresses */
-	R(DEREF,INHL,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL, R_A),
-	/*
-	 * Load a word through HL.  Where the result is wanted in DE it
-	 * can go straight there - three bytes instead of four, no
-	 * exchange, and A is left alone.  Only when it has to land back
-	 * in HL does A get used as the carrier, because then the pointer
-	 * and the result are the same register.
-	 */
-	R(DEREF,INHL,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE, RT143, R_DE),
-	R(DEREF,INHL,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
-	R(DEREF,INBC,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL, R_A),
-	/*
-	 * Reading through BC when the answer is wanted in DE, which is
-	 * where the right operand of a binary node is asked to go.  The
-	 * rule below moves the pointer into HL to read through it and
-	 * lands there, whatever it was asked for - so as the right
-	 * operand of a comparison it overwrote the left one, and then
-	 * nothing matched a comparison of HL against HL.  The label was
-	 * right all along; the rule simply could not do as it was told.
-	 *
-	 * ld a,(bc) reads without HL at all.  BC steps forward for the
-	 * high byte and back again, so the pointer is as it was.
-	 */
-	R(DEREF,INBC,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE,
-		"\tld a,(bc)\n\tld e,a\n\tinc bc\n"
-		"\tld a,(bc)\n\tld d,a\n\tdec bc\n", R_DE),
-	R(DEREF,INBC,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
-	R(DEREF,INDE,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAHL, R_A),
-	R(DEREF,INDE,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL "\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n" F_EXDEHL, R_HL),
 
 	/* indirect stores via registers */
 	R(ASSIGN,DEREF,INA,INBC,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDHLA, 0),
@@ -2562,27 +2752,6 @@ struct rule rules[] = {
 	/* a word narrowed to a byte on its way through an address */
 	R(ASSIGN,DEREF,INBC,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDHLA, R_A),
 	R(ASSIGN,DEREF,INHL,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDHLA, R_A),
-	/*
-	 * Stepping what an address in HL points at - "p[i]++" once the
-	 * subscript has been worked out.  A postfix wants the value from
-	 * before, which is what is already in A after the load, so it can
-	 * step memory directly and is a byte shorter.
-	 */
-	R(POSTINC,INHL,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
-	R(POSTDEC,INHL,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
-	R(PREINC,INHL,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(hl)\n\tinc a\n" F_LDHLA, R_A),
-	R(PREDEC,INHL,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(hl)\n\tdec a\n" F_LDHLA, R_A),
-	/*
-	 * The word forms carry between the halves, so they go through A
-	 * rather than inc (hl) and a branch.  They leave HL on the high
-	 * byte and so say nothing about the value: statements only.
-	 */
-	R(PREINC,INHL,0,0,0,26, PREINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
-	R(PREDEC,INHL,0,0,0,26, PREDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
-	R(POSTINC,INHL,0,0,0,26, POSTINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
-	R(POSTDEC,INHL,0,0,0,26, POSTDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
 	R(ASSIGN,DEREF,P_NUM,INBC,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "\tld (hl),$R\n", 0),
 	/* the value in HL, which has to be taken out of the way before the
 	 * pointer comes over on top of it */
@@ -2596,9 +2765,6 @@ struct rule rules[] = {
 		F_LDHLRL F_INCHL F_LDHLRH F_LDHLR, R_HL),
 	R(ASSIGN,DEREF,P_NUM,INHL,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLRL F_INCHL F_LDHLRH, 0),
 	R(ASSIGN,DEREF,INBC,INHL,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
-
-	/* pointer testing */
-	R(DEREF,INHL,0,0,0,12, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor (hl)\n", F_NZ),
 
 	/* structured loads to BC/DE/HL */
 	R(ASSIGN,INBC,DEREF,0,INHL,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n" F_INCHL "\tld b,(hl)\n", R_BC),
@@ -2625,9 +2791,94 @@ struct rule rules[] = {
 	R(ASSIGN,INHL,DEREF,0,INHL,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
 	R(ASSIGN,INDEX,DEREF,0,INHL,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_LDLA1 F_INCHL F_LDAHL "\tld ($L+),a\n", 0),
 
-	/* arithmetic/logical on indexed */
-	R(OREQ,INHL,P_NUM,0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAHL "\tor $R\n" F_LDHLA, R_A),
-	R(OREQ,INDEX,INE,0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAL1 "\tor e\n" F_LDLA1, R_A),
+	/* stores/loads with indexed/symref */
+	R(ASSIGN,INA,DEREF,0,INDEX,1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
+	R(ASSIGN,INA,DEREF,0,SYMREF,1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
+	R(ASSIGN,INA,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
+	R(ASSIGN,INA,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
+	/*
+	 * A byte wanted in A that came back in HL, which is where the
+	 * wrapper that lands a value puts it.  Only the low half is
+	 * meaningful at this width, so it is one instruction - and it
+	 * was the single most repeated thing the compiler could not do.
+	 */
+	R(ASSIGN,INA,INHL,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT235, R_A),
+	R(ASSIGN,INA,INBC,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT221, R_A),
+	R(ASSIGN,INA,INDE,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT121, R_A),
+	/* storing a word already in DE to a global, so a nested
+	 * assignment can be used for its value */
+	R(ASSIGN,SYMREF,INDE,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
+
+	/*
+	 * Storing a register-relative address to a global: the INDEX
+	 * form the address-combining rules mint is the value here, not
+	 * a location - "g = a + 2" with a in IX.  Every other context
+	 * (frame store, argument push, comparison) materializes it on
+	 * some other path; this one had no rule at all, fell to the
+	 * incomplete-rewrite marker, and the store was silently
+	 * dropped - which is how cpp's -I list vanished on the Z80.
+	 * add hl takes only bc/de/hl/sp, so the register goes through
+	 * the stack.
+	 */
+	R(ASSIGN,SYMREF,INDEX,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tpush $Rr\n\tpop hl\n\tld de,$Ro\n\tadd hl,de\n\tld ($L),hl\n",
+		R_HL),
+
+	/* test a long in memory for zero */
+	R(DEREF,SYMREF,0,0,0,11, DEREF, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_LDAHL F_INCHL F_ORHL F_INCHL
+		F_ORHL F_INCHL F_ORHL, F_NZ),
+
+	/*
+	 * Loading one, the mirror of the stores above: the low word lives
+	 * at the lower address, so it comes back in HL and the high word
+	 * in HL'.  A global can move a pair at a time; a frame slot goes a
+	 * byte at a time, since (iy+d) is all that reaches it - and (iy+d)
+	 * reads the same in either bank, IY not being one of the three.
+	 */
+	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
+		F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
+	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IXIY,
+		"\tcall qld$Lr\n\t.db $Lo\n", R_HL),
+	/* through a pointer already in HL */
+	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall qld\n", R_HL),
+	/* and through the other register home - doprnt reads its long
+	 * argument through the pointer it walks the list with */
+	R(DEREF,INBC,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall qld\n", R_HL),
+
+	/* loads from register addresses */
+	R(DEREF,INHL,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL, R_A),
+	/*
+	 * Load a word through HL.  Where the result is wanted in DE it
+	 * can go straight there - three bytes instead of four, no
+	 * exchange, and A is left alone.  Only when it has to land back
+	 * in HL does A get used as the carrier, because then the pointer
+	 * and the result are the same register.
+	 */
+	R(DEREF,INHL,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE, RT143, R_DE),
+	R(DEREF,INHL,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
+	R(DEREF,INBC,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL, R_A),
+	/*
+	 * Reading through BC when the answer is wanted in DE, which is
+	 * where the right operand of a binary node is asked to go.  The
+	 * rule below moves the pointer into HL to read through it and
+	 * lands there, whatever it was asked for - so as the right
+	 * operand of a comparison it overwrote the left one, and then
+	 * nothing matched a comparison of HL against HL.  The label was
+	 * right all along; the rule simply could not do as it was told.
+	 *
+	 * ld a,(bc) reads without HL at all.  BC steps forward for the
+	 * high byte and back again, so the pointer is as it was.
+	 */
+	R(DEREF,INBC,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE,
+		"\tld a,(bc)\n\tld e,a\n\tinc bc\n"
+		"\tld a,(bc)\n\tld d,a\n\tdec bc\n", R_DE),
+	R(DEREF,INBC,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
+	R(DEREF,INDE,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAHL, R_A),
+	R(DEREF,INDE,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL "\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n" F_EXDEHL, R_HL),
+
+	/* pointer testing */
+	R(DEREF,INHL,0,0,0,12, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor (hl)\n", F_NZ),
 	/*
 	 * A frame variable as a truth value.  The flag named here is the
 	 * one that means true, and true is "not zero" - these said Z, so
@@ -2686,226 +2937,262 @@ struct rule rules[] = {
 	 * land in DE, or it overwrites the left operand in HL */
 	R(DEREF,SYMREF,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
 
-	/* 16-bit binary arithmetic */
-	R(PLUS,INHL,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
-	R(PLUS,INHL,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
-	R(MINUS,INHL,INBC,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT359, R_HL),
-	/* a constant less a register variable - "5 - n".  The subtraction
-	 * is not commutative, so normalize leaves the constant on the
-	 * left and there was no form with it there. */
-	R(MINUS,P_NUM,INBC,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld hl,$L\n" F_ORA F_SBCHLBC, R_HL),
-	/*
-	 * And with the value in DE or HL, which is what "0 - (n % 10)"
-	 * reduces to: the helper's answer moved aside, the constant on
-	 * the left where normalize keeps it.  outd() spells its digits
-	 * exactly that way, so the self-built c1 printed every operand
-	 * of every instruction as an empty string.
-	 */
-	R(MINUS,P_NUM,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
-	R(MINUS,P_NUM,INHL,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
-		"\tex de,hl\n\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
-	R(MINUS,P_NUM,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld a,$L\n" F_SUBE, R_A),
-	R(MINUS,P_NUM,INA,0,0,1, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld e,a\n\tld a,$L\n" F_SUBE, R_A),
-	R(PLUS,INBC,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
-	R(MINUS,INBC,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT415, R_HL),
-	/*
-	 * A pointer in BC less the address of an array - "s - buf", the
-	 * ordinary pointer difference, when the array is declared with no
-	 * size.  Given a size, pass1 puts a conversion over the symbol
-	 * and this arrives as -(B,E) above; an array of unknown size has
-	 * size zero, the conversion is not inserted because nothing looks
-	 * wider than nothing, and the symbol reaches here bare.
-	 */
-	R(MINUS,INBC,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
-	R(MINUS,INBC,P_NUM,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
-	R(LSHIFT,INBC,P_NUM,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
-	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "\tcall adiv\n", R_HL),
-	R(DIV,INBC,P_NUM,0,0,0, DIV, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall ldiv\n", R_HL),
-	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "\tcall amod\n", R_HL),
-	R(MOD,INBC,P_NUM,0,0,0, MOD, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall lmod\n", R_HL),
-	R(STAR,INBC,P_NUM,0,0,0, STAR, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall amul\n", R_HL),
-	R(PLUS,INHL,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
-	R(MINUS,INHL,P_SMALL,0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
-	R(PLUS,INA,P_SMALL,0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
-	R(MINUS,INA,P_SMALL,0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)", R_A),
-	R(PLUS,INHL,P_NUM,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER T_ADD_HL_DE, R_HL),
-	/*
-	 * A byte in A against a constant, once it is too big for the inc
-	 * and dec runs above.  Only at byte width: at word width A holds
-	 * the low half and the carry would have nowhere to go.
-	 */
-	R(PLUS,INA,P_NUM,0,0,1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,$R\n", R_A),
-	R(PLUS,DEREF,P_NUM,INDEX,0,1, PLUS, P_L, P_R, P_NONE, 0, F_LDALL "\tadd a,$R\n", R_A),
-	R(MINUS,INA,P_NUM,0,0,1, MINUS, P_L, P_R, P_NONE, 0, F_SUBR, R_A),
-	R(MINUS,DEREF,P_NUM,INDEX,0,1, MINUS, P_L, P_R, P_NONE, 0, F_LDALL F_SUBR, R_A),
-	R(MINUS,INHL,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT360, R_HL),
-	/*
-	 * An address expression minus a pointer fetched from memory -
-	 * "&v[3] - p" - reaches here as SYMREF minus INDE, and the
-	 * SYMREF side is one immediate load.
-	 */
-	R(MINUS,SYMREF,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
-	/*
-	 * And BOTH sides a symbol's address, which is how a program
-	 * measures the gap between two things it was linked with.  The
-	 * kernel sizes its buffer pool that way:
-	 *
-	 *	space = (UINT) (&usrtop) - (UINT) (blist);
-	 *
-	 * in main.c's binit.  Either half alone had a rule - SYMREF
-	 * minus INDE above, INHL minus SYMREF below - and the pair had
-	 * none, so the subtraction left a marker and the size came out
-	 * as whatever was in HL.
-	 */
-	R(MINUS,SYMREF,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
-		"\tld hl,$L\n" F_LDDER F_ORA F_SBCHLDE, R_HL),
-	/* less a symbol's address, which is one half of a pointer
-	 * difference once the other half is in HL */
-	R(MINUS,INHL,SYMREF,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
-	R(PLUS,INHL,SYMREF,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
-	R(MINUS,INHL,P_NUM,0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
-	/* and against a frame slot, which the other four widths of this
-	 * had and the subtraction did not */
-	/*
-	 * No -(H,I).  It read the two bytes at the frame slot, but a bare
-	 * INDEX operand is an address, not a value: a scalar's contents
-	 * come through as D(I) and are loaded by the rules above long
-	 * before a binary operator sees them.  The only thing that reaches
-	 * here as a bare INDEX is a local array's name, whose value IS its
-	 * address - so "q - buf" subtracted buf[0] and buf[1] from q.
-	 * rewrite1 forms the address instead, at children_done.
-	 */
+	/* negation */
+	/* a byte in A negates in place - the Z80 has the instruction */
+	R(NEG,INA,0,0,0,1, NEG, P_L, P_NONE, P_NONE, 0, "\tneg\n", R_A),
+	R(NEG,INBC,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n" F_LDLA F_LDA0 "\tsbc a,b\n" F_LDHA, R_HL),
+	R(NEG,INHL,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
+	R(NEG,INDE,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
 
-	/* shifts */
-	R(LSHIFT,INHL,P_NUM,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
-	R(LSHIFT,INA,P_NUM,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
-	/*
-	 * A byte shifted by a count only known at runtime - "1 << n",
-	 * the ordinary way to make a mask.  Every other shift here
-	 * spells itself out, which only works for a constant count.
-	 *
-	 * The count is in E and the value in A, so B does the counting
-	 * and djnz walks it: one more than the count, then a jump
-	 * straight to the djnz, so a count of nought runs the body no
-	 * times rather than once.  Displacements are from each jump
-	 * itself - sla a is two bytes, so the entry jump clears it and
-	 * the djnz reaches back over it.
-	 */
-	R(LSHIFT,P_NUM,INE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
-	/*
-	 * The same count arriving as a word, which is what an expression
-	 * count reduces to: "1 << (idx & 7)" works the AND out in HL and
-	 * the target machinery may swap it to DE.  Only the low byte
-	 * counts - a shift past eight of a byte is zero anyway, and the
-	 * loop delivers exactly that.  Without these two forms the shift
-	 * matched nothing, and matched nothing SILENTLY: the compound
-	 * assignment above it stored the count itself through the
-	 * address, so "map[i] |= 1 << (n & 7)" wrote n's low byte into
-	 * the bitmap and pass1's else-if bookkeeping read garbage.
-	 */
-	R(LSHIFT,P_NUM,INDE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
-	R(LSHIFT,P_NUM,INHL,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,l\n\tld a,$L\n\tinc b\n"
-		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
-	/*
-	 * A byte VARIABLE shifted by a runtime count - the value already
-	 * reduced into A, the count into E, DE or HL.  The docompound
-	 * marker found these missing: "m[i++] >>= n" reduced its value
-	 * and its count and then had no rule to put them together.
-	 * Right shifts come in two kinds and the signed one must be
-	 * first, RF_SIGNL deciding: sra copies the sign bit back in
-	 * where srl feeds zero.
-	 */
-	R(LSHIFT,INA,INE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
-	R(LSHIFT,INA,INDE,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
-	R(LSHIFT,INA,INHL,0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,l\n\tinc b\n"
-		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
-	R(RSHIFT,INA,INE,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
-	R(RSHIFT,INA,INDE,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
-	R(RSHIFT,INA,INHL,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
-		"$[\tld b,l\n\tinc b\n"
-		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
-	R(RSHIFT,INA,INE,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
-	R(RSHIFT,INA,INDE,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
-	R(RSHIFT,INA,INHL,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,l\n\tinc b\n"
-		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
-	/*
-	 * A signed right shift keeps the sign: sra copies bit 7 back into
-	 * itself where srl feeds in a zero.  The signed rule has to come
-	 * first, since the unsigned pattern matches either width.
-	 */
-	R(RSHIFT,INA,P_NUM,0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra a\n)", R_A),
-	R(RSHIFT,INA,P_NUM,0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
-	/*
-	 * A shift by a whole byte is a register move, not a loop - two
-	 * bytes against the thirty-two the repeated form would emit.  The
-	 * signed right shift has to put the sign back, since the byte
-	 * that moved down carries it.
-	 */
-	R(RSHIFT,INHL,P_EIGHT,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
-		"\tld l,h\n" F_LDAH F_RLA F_SBCAA F_LDHA, R_HL),
-	R(RSHIFT,INHL,P_EIGHT,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n" F_LDH0, R_HL),
-	R(LSHIFT,INHL,P_EIGHT,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
-	R(RSHIFT,INHL,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
-	R(RSHIFT,INHL,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
-	R(RSHIFT,INBC,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
-	R(RSHIFT,INBC,P_SMALL,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
-	/*
-	 * By any other count.  M is one to four and 8 has a form of its
-	 * own, so a shift by five, six, seven or more than eight matched
-	 * nothing at all - the left shifts have taken any count all
-	 * along, and these stopped at four.
-	 */
-	R(RSHIFT,INHL,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
-	R(RSHIFT,INHL,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
-	/*
-	 * By a count that is not a constant: djnz over the one-shift
-	 * body, entered at the test so a count of nought runs it not at
-	 * all - the same shape the byte forms use.  The count arrives in
-	 * E, or sits in C when it lives in the register home; B is the
-	 * loop counter either way, safe under the $[ $] guard.
-	 */
-	R(LSHIFT,INHL,INDE,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,e\n\tinc b\n\tjr $$+3\n" T_ADD_HL_HL "\tdjnz $$-1\n$]", R_HL),
-	R(LSHIFT,INHL,INBC,0,0,0, LSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,c\n\tinc b\n\tjr $$+3\n" T_ADD_HL_HL "\tdjnz $$-1\n$]", R_HL),
-	R(RSHIFT,INHL,INDE,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
-		"$[\tld b,e\n\tinc b\n\tjr $$+6\n\tsra h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
-	R(RSHIFT,INHL,INDE,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,e\n\tinc b\n\tjr $$+6\n\tsrl h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
-	R(RSHIFT,INHL,INBC,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
-		"$[\tld b,c\n\tinc b\n\tjr $$+6\n\tsra h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
-	R(RSHIFT,INHL,INBC,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0,
-		"$[\tld b,c\n\tinc b\n\tjr $$+6\n\tsrl h\n\trr l\n\tdjnz $$-4\n$]", R_HL),
-	R(RSHIFT,INBC,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
-	R(RSHIFT,INBC,P_NUM,0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
+	/* complement of a word; the long form is handled in rewrite.c,
+	 * beside the long negation it shares its shape with */
+	R(NOT,INHL,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
+		F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
+	/* the same of a register variable, brought over first */
+	R(NOT,INBC,0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
+	R(NOT,INA,0,0,0,1, NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
 
-	/* stores/loads with indexed/symref */
-	R(ASSIGN,INA,DEREF,0,INDEX,1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
-	R(ASSIGN,INA,DEREF,0,SYMREF,1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
-	R(ASSIGN,INA,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
-	R(ASSIGN,INA,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
 	/*
-	 * A byte wanted in A that came back in HL, which is where the
-	 * wrapper that lands a value puts it.  Only the low half is
-	 * meaningful at this width, so it is one instruction - and it
-	 * was the single most repeated thing the compiler could not do.
+	 * Narrowing, which is the other direction and is only ever a
+	 * question of where the low half already is.
+	 *
+	 * Under HL':HL it is in HL, which is where a narrower reader
+	 * looks anyway, so narrowing a long emits nothing at all - the
+	 * high word is simply abandoned in HL'.  It used to be an
+	 * ex de,hl, the low word having been in DE.  Same for everything
+	 * else: the rule is here so that the cast emits nothing rather
+	 * than matching nothing.
+	 *
+	 * pass1 used to write the cast's type over the node and leave no
+	 * trace, so "(int)f()" on a long-returning f read HL - which was
+	 * then the high word.  Every numeric escape in cpp came back
+	 * zero, because escint() is "(int)getint(base)".
 	 */
-	R(ASSIGN,INA,INHL,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT235, R_A),
-	R(ASSIGN,INA,INBC,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT221, R_A),
-	R(ASSIGN,INA,INDE,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT121, R_A),
+	R(NARROW,INHL,0,0,0,98, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	R(NARROW,INHL,0,0,0,97, NARROW, P_L, P_NONE, P_NONE, 0, F_LDAL, R_A),
+	R(NARROW,INHL,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT235, R_A),
+	R(NARROW,INBC,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT221, R_A),
+	R(NARROW,INDE,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT121, R_A),
+	R(NARROW,INA,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_A),
+	R(NARROW,INE,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_E),
+	R(NARROW,INHL,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+
+	/*
+	 * Widening a byte to a word.  Unsigned zero-extends; signed puts
+	 * bit 7 into carry with rla, then sbc a,a turns that into 00 or
+	 * ff.  Both honour the target, since the widened value is as
+	 * often the right operand (DE) as the left (HL).
+	 */
+	R(WIDEN,INA,0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
+	/*
+	 * A byte that is already in HL rather than in A - which is where
+	 * a ternary leaves its value, both arms having been landed in the
+	 * one register so the expression has a value whichever way the
+	 * branch went.  Only the low half is meaningful, so the high half
+	 * is cleared or filled with the sign.
+	 *
+	 * The width has to be pinned on the operand, not just the result:
+	 * a SEXT to short whose operand is already a short is a widening
+	 * of a pointer, and filling H with the sign of L destroys it.
+	 */
+	R(WIDEN,INHL,0,0,0,34, WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
+	R(WIDEN,REGVAR,0,0,0,2, WIDEN, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
+	R(WIDEN,INBC,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
+	R(WIDEN,INDEX,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R(WIDEN,SYMREF,0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, RT69, 0),
+	R(WIDEN,INHL,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	/* an unsigned word widened: the high half is nothing, which is
+	 * the whole difference from X(H) */
+	R(WIDEN,INHL,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
+		F_EXX "\tld hl,0\n" F_EXX, R_HL),
+	R(WIDEN,INBC,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_EXX "\tld hl,0\n" F_EXX, R_HL),
+	R(WIDEN,INA,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
+		F_LDLA F_LDH0 F_EXX "\tld hl,0\n" F_EXX, R_HL),
+	/* widening a word to a word, which the usual conversions ask for
+	 * between two pointers of the same size: nothing to do, except
+	 * where the word is in the index register and has to come out */
+	R(SEXT,REGVAR,0,0,0,2, SEXT, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
+	R(SEXT,INHL,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	/*
+	 * The same for a word already in BC, where there is still nothing
+	 * to extend but it does have to come over.  Without these, a
+	 * pointer difference or a subscript on a register variable ran
+	 * into a sign extension from short to short that no rule named,
+	 * and stopped there.
+	 */
+	R(SEXT,INBC,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
+	/* and from a frame slot, where it is the same load D(I):s makes */
+	R(SEXT,INDEX,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	/* a symbol's address widened to a word, which is what taking a
+	 * function's address for a function pointer comes to */
+	R(SEXT,SYMREF,0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0, RT69, 0),
+	R(SEXT,INHL,0,0,0,34, SEXT, P_L, P_NONE, P_NONE, 0,
+		F_LDAL F_RLA F_SBCAA F_LDHA, R_HL),
+	R(SEXT,INA,0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tld $t,a\n" F_RLA F_SBCAA "\tld $u,a\n", 0),
+
+	/*
+	 * 32-bit values live in HL':HL, high word in HL'.
+	 *
+	 * Widening is where the layout earns its keep.  A word that is
+	 * already in HL is already the low half of the long, so nothing
+	 * has to move: the whole of the work is filling HL' in.  Under
+	 * HL:DE the value had to be shifted into DE first, which is the
+	 * ex de,hl these used to open with.
+	 *
+	 * Sign-extending fills the high word with sign bits - rla puts
+	 * bit 15 (or bit 7 for a byte) into carry and sbc a,a spreads it.
+	 */
+	R(SEXT,INHL,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
+		F_LDAH F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
+	R(SEXT,INBC,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_LDAB F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
+	R(SEXT,INA,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
+		F_LDLA F_RLA F_SBCAA F_LDHA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
+	R(PREINC,SYMREF,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
+	R(PREINC,SYMREF,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_CALLLAINC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
+	R(PREINC,INDEX,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
+	R(PREINC,INDEX,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR F_CALLLAINC T_IDX_ADDR "\tcall qld\n", R_HL),
+	R(PREINC,INHL,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
+	R(PREINC,INHL,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL F_CALLLAINC F_POPHL
+		"\tcall qld\n", R_HL),
+	R(PREINC,DEREF,0,INBC,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
+	R(PREINC,DEREF,0,INBC,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_CALLLAINC T_BC_HL
+		"\tcall qld\n", R_HL),
+
+	/*
+	 * Steps whose value nobody reads, for everything register-homed.
+	 * The forms below materialise the answer in HL or A, and a bare
+	 * "p++;" was paying those bytes to throw the answer away.  These
+	 * must sit above the context-less forms: first match wins, and a
+	 * pattern with no context suffix matches statement context too.
+	 */
+	R(PREINC,INBC,0,0,0,24, PREINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
+	R(PREINC,REGVAR,0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
+	R(PREINC,REGVAR,0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
+
+	/* pre-inc/dec */
+	R(PREINC,INBC,0,0,0,0, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n" F_LDLC F_LDHB, R_HL),
+	/* inc/dec a word global in place */
+	R(PREINC,SYMREF,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL2 F_INCHL F_LDLHL, R_HL),
+
+	/*
+	 * inc/dec through an address in HL.  Reading the word costs the
+	 * pointer, so it goes on the stack first and comes back to do the
+	 * store.  Postfix then undoes the update to get its old value,
+	 * the same trick the memory forms use.
+	 */
+	R(PREINC,INHL,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	/*
+	 * The same through a pointer kept in a register, where the DEREF
+	 * survives reduction and the address is in BC.  Without these,
+	 * "(*p)++" on a register pointer loaded the pointer, took that
+	 * for an address and stepped what it pointed at.
+	 */
+	/*
+	 * The byte forms, which had never existed: "(*p)++" on a byte
+	 * through a register pointer emitted a marker, and through a
+	 * frame pointer too.  ld a,(bc) is one of the Z80's two
+	 * one-byte indirect loads, so the BC forms cost nothing extra;
+	 * the HL forms read and write through (hl) directly.  Postfix
+	 * parks the old value in E, which nothing owns here.
+	 */
+	R(PREINC,DEREF,0,INBC,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tinc a\n\tld (bc),a\n", R_A),
+	R(PREINC,DEREF,0,INHL,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tinc (hl)\n\tld a,(hl)\n", R_A),
+	R(PREINC,DEREF,0,INBC,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	/*
+	 * Stepping a pointer the allocator homed in IX.  The BC pointer
+	 * has had these all along; through-IX steps existed only fused
+	 * with a deref, so "p++" standing alone matched nothing, and a
+	 * scan loop over a register pointer read one byte forever - a
+	 * marker in the listing, an infinite loop on the machine.  The
+	 * statement forms come first: a step nobody wants the value of
+	 * is inc ix and not a byte more.
+	 */
+	R(PREINC,REGVAR,0,0,0,24, PREINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
+	R(PREINC,REGVAR,0,0,0,0, PREINC, P_L, P_NONE, P_L, RF_IX,
+		"\tinc ix\n\tpush ix\n" F_POPHL, R_HL),
+	/*
+	 * And stepping the pointer that IX POINTS AT, which is the whole
+	 * of stdio's idiom: "*f->_ptr++" and "*--f->_ptr" with the FILE
+	 * homed in IX.  The rewriter leaves the DEREF standing for these
+	 * so a load rule cannot turn the step into a fetch, and the shape
+	 * it leaves is i(D(V)) - the ?(D(B)) forms name the same thing
+	 * for a pointer in BC and were the only ones written.  filbuf,
+	 * ungetc and fclose stepped nothing at all.
+	 *
+	 * At offset zero the member is (ix+0), so this needs no address
+	 * arithmetic and no stack: read the pair, step it, put it back.
+	 * A postfix wants the value from before, and undoing the step in
+	 * HL afterwards is a byte against holding both.
+	 */
+	R(PREINC,DEREF,0,REGVAR,0,2, PREINC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_INCHL T_IXP_ST, R_HL),
+	/*
+	 * Prefix on a word in a frame slot.  Load, step, store - and the
+	 * new value is the answer, so unlike the postfix forms above
+	 * there is nothing to undo.
+	 *
+	 * Written through $t and $T so it lands wherever it was asked
+	 * to.  Naming l and h outright, as this did, meant there was no
+	 * rule at all when the answer was wanted in DE - which is what a
+	 * relational asks for its right operand.  "if (++i >= n)" then
+	 * had no reduction: pass2 loaded n into HL, loaded i on top of
+	 * it, and jumped on whatever flags inc hl had left.  See
+	 * PREINCBUG.
+	 */
+	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
+	/*
+	 * A byte step on a frame slot needs no register at all: inc/dec
+	 * (iy+d) is one read-modify-write and it sets Z itself.  Where
+	 * the value is thrown away that is the whole job, and where only
+	 * the flags are wanted the prefix forms answer in NZ directly -
+	 * "while (--n)" on a frame byte is dec (iy+d) / jp z, not the
+	 * eleven-byte load, dec a, store, or a dance the value rules
+	 * make.  A postfix in flag context answers with the value from
+	 * before the step, so the load still happens and or a asks it.
+	 */
+	R(PREINC,INDEX,0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
+	R(PREINC,INDEX,0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT57, F_NZ),
+	R(PREINC,INDEX,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
+	R(PREINC,DEREF,0,REGVAR,0,1, PREINC, P_L, P_NONE, P_LL, RF_IX,
+		"\tinc (ix+0)\n\tld a,(ix+0)\n", R_A),
+
+	/*
+	 * Stepping a byte at a global.  There is no inc (nn), but there
+	 * is inc (hl), so the address goes in HL and the step happens in
+	 * memory - four bytes against the seven that loading, adding and
+	 * storing would take.
+	 *
+	 * Which side of the step the load falls on is the whole
+	 * difference between prefix and postfix, and a statement wants
+	 * neither: it is only the step.
+	 */
+	R(PREINC,SYMREF,0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT302, F_NZ),
+	R(PREINC,SYMREF,0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
+	R(PREINC,SYMREF,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL "\tinc (hl)\n" F_LDAHL, R_A),
+	R(PREINC,INHL,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tinc a\n" F_LDHLA, R_A),
+	/*
+	 * The word forms carry between the halves, so they go through A
+	 * rather than inc (hl) and a branch.  They leave HL on the high
+	 * byte and so say nothing about the value: statements only.
+	 */
+	R(PREINC,INHL,0,0,0,26, PREINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
 	/* a byte in A stepped in place */
 	/*
 	 * Stepping a byte that lives in B or C, in place.
@@ -2922,455 +3209,243 @@ struct rule rules[] = {
 	 */
 	R(PREINC,REGVAR,0,0,0,9, PREINC, P_L, P_NONE, P_L, RF_B, RT61, F_NZ),
 	R(PREINC,REGVAR,0,0,0,9, PREINC, P_L, P_NONE, P_L, RF_C, RT65, F_NZ),
-	R(PREDEC,REGVAR,0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, F_NZ),
-	R(PREDEC,REGVAR,0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, F_NZ),
 	R(PREINC,REGVAR,0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n\tld a,b\n", R_A),
 	R(PREINC,REGVAR,0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n\tld a,c\n", R_A),
-	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
-	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
+	R(PREINC,INA,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
+
+	/*
+	 * Stepping a long in memory.  The helper takes the address in HL,
+	 * updates the value in place and hands back what was there before
+	 * - which is what a postfix wants and a prefix does not, so a
+	 * prefix that is used for its value reads the new one back.  As a
+	 * statement, which is nearly always, there is nothing to read.
+	 */
+	R(POSTINC,SYMREF,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
+	/*
+	 * The same for a frame slot, where the address has to be worked
+	 * out: (iy+d) reaches a byte at a time, and the helper wants the
+	 * whole address in HL.
+	 */
+	R(POSTINC,INDEX,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
+	/*
+	 * And through a pointer, where the address is in HL already and
+	 * there is nothing to work out - "(*lp)++", which the short forms
+	 * had and these did not, so stepping a long through a pointer
+	 * emitted nothing at all.
+	 *
+	 * A prefix used for its value has to read the long back, and the
+	 * helper leaves the old one in HL:DE with the address gone, so the
+	 * address is kept on the stack under the saved BC.  lld preserves
+	 * BC, which is why it can come after the pop.
+	 */
+	R(POSTINC,INHL,0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
+	/*
+	 * And through a pointer kept in a register, where the DEREF is
+	 * still standing because rewrite1 left it there - see the step
+	 * branch that explains why.  The address is in BC and the helper
+	 * wants it in HL, which is the only difference from the forms
+	 * above.
+	 */
+	R(POSTINC,DEREF,0,INBC,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
+	R(POSTINC,INBC,0,0,0,24, POSTINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
+	R(POSTINC,REGVAR,0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
+	R(POSTINC,REGVAR,0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
+	R(POSTINC,SYMREF,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL2 F_INCHL F_LDLHL F_DECHL, R_HL),
+	R(POSTINC,INHL,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
+		F_DECHL, R_HL),
+	R(POSTINC,DEREF,0,INBC,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tld e,a\n\tinc a\n\tld (bc),a\n\tld a,e\n", R_A),
+	R(POSTINC,DEREF,0,INHL,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
+	R(POSTINC,DEREF,0,INBC,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
+		F_DECHL, R_HL),
+
+	/* postfix yields the old value, so read before updating */
+	R(POSTINC,INBC,0,0,0,0, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tinc bc\n", R_HL),
+	R(POSTINC,REGVAR,0,0,0,24, POSTINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
+	R(POSTINC,REGVAR,0,0,0,0, POSTINC, P_L, P_NONE, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tinc ix\n", R_HL),
+	R(POSTINC,DEREF,0,REGVAR,0,2, POSTINC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_INCHL T_IXP_ST F_DECHL, R_HL),
+	/*
+	 * Postfix on a word in memory.  The old value is wanted as the
+	 * result and the new one in store, and rather than hold both, the
+	 * update is undone afterwards - one byte, against a push/pop pair
+	 * or a shuffle through DE.
+	 */
+	R(POSTINC,INDEX,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n\tdec $T\n", 0),
+	R(POSTINC,INDEX,0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
+	R(POSTINC,INDEX,0,0,0,9, POSTINC, P_L, P_NONE, P_NONE, 0,
+	  F_LDAL1 "\tinc ($L)\n" F_ORA, F_NZ),
+	/* a postfix wants the value from before, so the step happens in
+	 * memory and the load beats it there */
+	R(POSTINC,INDEX,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc ($L)\n", R_A),
+
+	/*
+	 * The same through a pointer held in IX, where the member is the
+	 * first one and so needs no offset to add - "m->parmcount++"
+	 * with m in IX.  A member further in becomes +(D(V),N) and folds
+	 * to an INDEX, which the two rules above already take; only the
+	 * offset-free one arrived as a bare DEREF and matched nothing.
+	 *
+	 * It emitted no code and no marker, because the store above it
+	 * matched anyway - which is how cpp's macdefine came to write a
+	 * macro parameter through a stale HL.
+	 */
+	R(POSTINC,DEREF,0,REGVAR,0,1, POSTINC, P_L, P_NONE, P_LL, RF_IX,
+		"\tld a,(ix+0)\n\tinc (ix+0)\n", R_A),
+	R(POSTINC,SYMREF,0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
+	R(POSTINC,SYMREF,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_LDAHL "\tinc (hl)\n", R_A),
+	/*
+	 * Stepping what an address in HL points at - "p[i]++" once the
+	 * subscript has been worked out.  A postfix wants the value from
+	 * before, which is what is already in A after the load, so it can
+	 * step memory directly and is a byte shorter.
+	 */
+	R(POSTINC,INHL,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
+	R(POSTINC,INHL,0,0,0,26, POSTINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
 	/* postfix wants the old value, so take a copy before stepping */
 	R(POSTINC,REGVAR,0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tinc b\n", R_A),
 	R(POSTINC,REGVAR,0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tinc c\n", R_A),
+	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
+	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_CALLLADEC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
+	R(PREDEC,INDEX,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
+	R(PREDEC,INDEX,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR F_CALLLADEC T_IDX_ADDR "\tcall qld\n", R_HL),
+	R(PREDEC,INHL,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
+	R(PREDEC,INHL,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL F_CALLLADEC F_POPHL
+		"\tcall qld\n", R_HL),
+	R(PREDEC,DEREF,0,INBC,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
+	R(PREDEC,DEREF,0,INBC,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_CALLLADEC T_BC_HL
+		"\tcall qld\n", R_HL),
+	R(PREDEC,INBC,0,0,0,24, PREDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
+	R(PREDEC,REGVAR,0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
+	R(PREDEC,REGVAR,0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
+	R(PREDEC,INBC,0,0,0,0, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n" F_LDLC F_LDHB, R_HL),
+	R(PREDEC,SYMREF,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL2 F_DECHL F_LDLHL, R_HL),
+	R(PREDEC,INHL,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	R(PREDEC,DEREF,0,INBC,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tdec a\n\tld (bc),a\n", R_A),
+	R(PREDEC,DEREF,0,INHL,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tdec (hl)\n\tld a,(hl)\n", R_A),
+	R(PREDEC,DEREF,0,INBC,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	R(PREDEC,REGVAR,0,0,0,24, PREDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
+	R(PREDEC,REGVAR,0,0,0,0, PREDEC, P_L, P_NONE, P_L, RF_IX,
+		"\tdec ix\n\tpush ix\n" F_POPHL, R_HL),
+	R(PREDEC,DEREF,0,REGVAR,0,2, PREDEC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_DECHL T_IXP_ST, R_HL),
+	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
+	R(PREDEC,INDEX,0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
+	R(PREDEC,INDEX,0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, F_NZ),
+	R(PREDEC,INDEX,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
+	R(PREDEC,DEREF,0,REGVAR,0,1, PREDEC, P_L, P_NONE, P_LL, RF_IX,
+		"\tdec (ix+0)\n\tld a,(ix+0)\n", R_A),
+	R(PREDEC,SYMREF,0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, F_NZ),
+	R(PREDEC,SYMREF,0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
+	R(PREDEC,SYMREF,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL "\tdec (hl)\n" F_LDAHL, R_A),
+	R(PREDEC,INHL,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tdec a\n" F_LDHLA, R_A),
+	R(PREDEC,INHL,0,0,0,26, PREDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
+	R(PREDEC,REGVAR,0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, F_NZ),
+	R(PREDEC,REGVAR,0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, F_NZ),
+	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
+	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
+	R(PREDEC,INA,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
+	R(POSTDEC,SYMREF,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
+	R(POSTDEC,INDEX,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
+	R(POSTDEC,INHL,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
+	R(POSTDEC,DEREF,0,INBC,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
+	R(POSTDEC,INBC,0,0,0,24, POSTDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
+	R(POSTDEC,REGVAR,0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
+	R(POSTDEC,REGVAR,0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
+	R(POSTDEC,SYMREF,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL2 F_DECHL F_LDLHL F_INCHL, R_HL),
+	R(POSTDEC,INHL,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
+		F_INCHL, R_HL),
+	R(POSTDEC,DEREF,0,INBC,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tld e,a\n\tdec a\n\tld (bc),a\n\tld a,e\n", R_A),
+	R(POSTDEC,DEREF,0,INHL,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
+	R(POSTDEC,DEREF,0,INBC,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
+		F_INCHL, R_HL),
+	R(POSTDEC,INBC,0,0,0,0, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tdec bc\n", R_HL),
+	R(POSTDEC,REGVAR,0,0,0,24, POSTDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
+	R(POSTDEC,REGVAR,0,0,0,0, POSTDEC, P_L, P_NONE, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
+	R(POSTDEC,DEREF,0,REGVAR,0,2, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_DECHL T_IXP_ST F_INCHL, R_HL),
+	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
+	R(POSTDEC,INDEX,0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
+	R(POSTDEC,INDEX,0,0,0,9, POSTDEC, P_L, P_NONE, P_NONE, 0,
+	  F_LDAL1 "\tdec ($L)\n" F_ORA, F_NZ),
+	R(POSTDEC,INDEX,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
+	R(POSTDEC,DEREF,0,REGVAR,0,1, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+		"\tld a,(ix+0)\n\tdec (ix+0)\n", R_A),
+	R(POSTDEC,SYMREF,0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
+	R(POSTDEC,SYMREF,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_LDAHL "\tdec (hl)\n", R_A),
+	R(POSTDEC,INHL,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
+	R(POSTDEC,INHL,0,0,0,26, POSTDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
 	R(POSTDEC,REGVAR,0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tdec b\n", R_A),
 	R(POSTDEC,REGVAR,0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tdec c\n", R_A),
-	R(PREINC,INA,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
-	R(PREDEC,INA,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
-	/* storing a word already in DE to a global, so a nested
-	 * assignment can be used for its value */
-	R(ASSIGN,SYMREF,INDE,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
+
+
+	/* REGVAR -> IN* (value is in register) */
+	R(REGVAR,0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, 0, 0),
+	R(REGVAR,0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, 0, 0),
+	R(REGVAR,0,0,0,0,0, INHL, P_NONE, P_NONE, P_NONE, RF_HL, 0, 0),
+
+	/* REGVAR IX in flag context: test for zero */
+	R(REGVAR,0,0,0,0,8, REGVAR, P_NONE, P_NONE, P_NONE, RF_IX, RT443, F_NZ),
+
+	/* REGVAR byte C/B in flag context */
+	R(REGVAR,0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_C, RT226, F_NZ),
+	R(REGVAR,0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_B, RT219, F_NZ),
+
+	/* REGVAR C/B -> INA (value in C/B, byte context) */
+	R(REGVAR,0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_C, RT221, R_A),
+	R(REGVAR,0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_B, F_LDAB, R_A),
+	/* LOCALVAR -> INDEX */
+	R(LOCALVAR,0,0,0,0,0, INDEX, P_NONE, P_NONE, P_NONE, 0, 0, 0),
+
+	/* LOCALVAR past the 7-bit (iy+d) window (big-array bases live
+	 * below the callee-save slots): form the address with 16-bit
+	 * arithmetic (special-cased in tryrule).  Only reached when the
+	 * INDEX rule above refuses. */
+	R(LOCALVAR,0,0,0,0,0, CODE, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
 	/*
-	 * Bit testing.  A single bit out of a byte is what bit does, in
-	 * two bytes and without touching A or the carry - against and,
-	 * which needs the byte in A first, costs two bytes itself and
-	 * then a third to set the flags, because and leaves Z meaning
-	 * the whole result rather than the bit.
+	 * INHL/INDE/INA in flag context: test for zero.
 	 *
-	 * Only for a mask that is one bit: P matches a power of two, and
-	 * RF_POW2 turns the mask into the bit number the instruction
-	 * wants.  Neither admits 1, so bit 0 is still tested the long
-	 * way - ispow2 answers 0 for it and both guards read that as no.
-	 *
-	 * The first two test the byte where it lies, through an index
-	 * register or through HL, and are a byte shorter again than
-	 * loading it into A first.  Reaching them takes more than a rule:
-	 * an AND reduces its left operand before it is itself looked at,
-	 * which loads the byte into A and leaves the address nowhere to
-	 * be seen, so rewrite1 has a case that reduces the address and
-	 * leaves the DEREF standing.  Without it the indexed rule sat
-	 * here for a long time matching nothing at all.
-	 *
-	 * A global keeps the third form.  "ld a,(nn)" is the only direct
-	 * absolute load the Z80 has and bit has no absolute form, so
-	 * pointing HL at it first would cost what it saved.
+	 * The long has to come first.  "H:F" carries no width, so it
+	 * matches one too - and testing HL alone tests the high word,
+	 * which is zero for every long that fits in an int.  "if (v)"
+	 * on a long was false for 1 and true for 65536.
 	 */
-	R(AND,DEREF,P_POW2,INDEX,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
-	R(AND,DEREF,P_POW2,REGVAR,0,9, AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
-		"\tbit $R,(ix+0)\n", F_NZ),
-	R(AND,DEREF,P_POW2,INHL,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
-	R(AND,INA,P_POW2,0,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
-	R(AND,DEREF,P_NUM,INDEX,0,1, AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
-	R(OR,DEREF,P_NUM,INDEX,0,1, OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
-	R(XOR,DEREF,P_NUM,INDEX,0,1, XOR, P_L, P_R, P_NONE, 0, F_LDALL "\txor $R\n", R_A),
-	/*
-	 * Byte arithmetic against a memory operand.  These match on the
-	 * parent so that A is known to hold the left operand, which makes
-	 * HL free to point at the right one - a rule matching the DEREF
-	 * alone cannot know that, and would clobber a word left operand.
-	 * The Z80 operates directly on (hl) and (iy+d), so no temporary
-	 * register is needed at all.
-	 */
-	R(PLUS,INA,DEREF,0,SYMREF,1, PLUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tadd a,(hl)\n", R_A),
-	R(MINUS,INA,DEREF,0,SYMREF,1, MINUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tsub (hl)\n", R_A),
-	R(AND,INA,DEREF,0,SYMREF,1, AND, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tand (hl)\n", R_A),
-	R(OR,INA,DEREF,0,SYMREF,1, OR, P_L, P_R, P_NONE, 0, F_LDHLRL1 F_ORHL, R_A),
-	R(XOR,INA,DEREF,0,SYMREF,1, XOR, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\txor (hl)\n", R_A),
-	R(PLUS,INA,DEREF,0,INDEX,1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,($RL)\n", R_A),
-	R(MINUS,INA,DEREF,0,INDEX,1, MINUS, P_L, P_R, P_NONE, 0, "\tsub ($RL)\n", R_A),
-	R(AND,INA,DEREF,0,INDEX,1, AND, P_L, P_R, P_NONE, 0, "\tand ($RL)\n", R_A),
-	R(OR,INA,DEREF,0,INDEX,1, OR, P_L, P_R, P_NONE, 0, "\tor ($RL)\n", R_A),
-	R(XOR,INA,DEREF,0,INDEX,1, XOR, P_L, P_R, P_NONE, 0, "\txor ($RL)\n", R_A),
+	R(INHL,0,0,0,0,11, INHL, P_NONE, P_NONE, P_NONE, 0, T_HLDE_TEST, F_NZ),
+	R(INHL,0,0,0,0,8, INHL, P_NONE, P_NONE, P_NONE, 0, RT429, F_NZ),
+	R(INDE,0,0,0,0,8, INDE, P_NONE, P_NONE, P_NONE, 0, RT427, F_NZ),
+	R(INA,0,0,0,0,8, INA, P_NONE, P_NONE, P_NONE, 0, RT358, F_NZ),
 
-	/* byte arithmetic with both operands live: left in A, right in E */
-	R(PLUS,INA,INE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
-	R(MINUS,INA,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
-	R(AND,INA,INE,0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
-	R(OR,INA,INE,0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
-	R(XOR,INA,INE,0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
-	/*
-	 * The same five when the left operand is a WORD in HL and only
-	 * its low byte is wanted - a short loaded through a pointer,
-	 * meeting a byte at byte width.  The high byte never matters to
-	 * a truncated result, so the answer is one ld away.  Without
-	 * these, "np->flags |= e->flags & E_FUNARG" in the compiler's
-	 * own expr.c reduced both operands and then had nowhere to go:
-	 * the OR emitted nothing and the store above it was abandoned
-	 * with a marker.
-	 */
-	R(PLUS,INHL,INE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, F_LDAL "\tadd a,e\n", R_A),
-	R(MINUS,INHL,INE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, F_LDAL F_SUBE, R_A),
-	R(AND,INHL,INE,0,0,1, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n", R_A),
-	R(OR,INHL,INE,0,0,1, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n", R_A),
-	R(XOR,INHL,INE,0,0,1, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n", R_A),
-	/*
-	 * The same operators when the right operand arrived as a word in
-	 * DE - a call result moved aside, mostly.  A byte operation only
-	 * reads E, which is the low byte, which is the byte.  Without
-	 * these "cnt += rec(n)" on a byte counter had no rule, and c0's
-	 * cntCondLbls answered 0 under the self-build: every IF in the
-	 * stream was emitted claiming no short-circuit labels.
-	 */
-	R(PLUS,INA,INDE,0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
-	R(MINUS,INA,INDE,0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
-	R(AND,INA,INDE,0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
-	R(OR,INA,INDE,0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
-	R(XOR,INA,INDE,0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
-	/* the flag form first: and sets Z itself, so a test that only
-	 * wants the flag must not pay for a result register */
-	R(AND,INA,P_NUM,0,0,9, AND, P_L, P_R, P_NONE, 0, RT33, F_NZ),
-	R(AND,INA,P_NUM,0,0,1, AND, P_L, P_R, P_NONE, 0, RT33, R_A),
-	R(AND,INA,INE,0,0,9, AND, P_L, P_R, P_NONE, 0, RT35, F_NZ),
-	R(OR,INA,P_NUM,0,0,1, OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),
-	R(XOR,INA,P_NUM,0,0,1, XOR, P_L, P_R, P_NONE, 0, "\txor $R\n", R_A),
-	/* no 16-bit and/or/xor on the Z80 - do it a byte at a time */
-	R(AND,INHL,P_NUM,0,0,0, AND, P_L, P_R, P_NONE, 0,
-		F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
-	R(OR,INHL,P_NUM,0,0,0, OR, P_L, P_R, P_NONE, 0,
-		F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
-	R(XOR,INHL,P_NUM,0,0,0, XOR, P_L, P_R, P_NONE, 0,
-		F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
-	R(AND,INBC,P_NUM,0,0,0, AND, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
-	R(OR,INBC,P_NUM,0,0,0, OR, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
-	R(XOR,INBC,P_NUM,0,0,0, XOR, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
-	R(AND,INHL,INDE,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
-	R(OR,INHL,INDE,0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
-	R(XOR,INHL,INDE,0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
-	/*
-	 * The same with BC on one side or the other.  A word bitwise
-	 * operator had a form for HL against DE and no other, so one of
-	 * these on a register variable emitted nothing.  Against BC the
-	 * accumulator can take b and c directly; with the value in BC it
-	 * comes over to HL first, which is what the constant-count shifts
-	 * do a few rules down.
-	 */
-	R(AND,INHL,INBC,0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
-	R(OR,INHL,INBC,0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor c\n" F_LDLA F_LDAH "\tor b\n" F_LDHA, R_HL),
-	R(XOR,INHL,INBC,0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor c\n" F_LDLA F_LDAH "\txor b\n" F_LDHA, R_HL),
-	R(AND,INBC,INDE,0,0,0, AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
-	R(OR,INBC,INDE,0,0,0, OR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
-	R(XOR,INBC,INDE,0,0,0, XOR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
-
-	/*
-	 * Signed compare against zero is just the sign bit, and it has to
-	 * be: sbc hl,de sets carry on an unsigned borrow, so the generic
-	 * form below says "x < 0" is false for every x.  Must precede the
-	 * T/Y(H,N) rules - zero is a subset of NUMBER and first match wins.
-	 */
-	R(LT,INHL,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_M),
-	R(GE,INHL,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_P),
-	R(LT,INBC,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_M),
-	R(GE,INBC,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_P),
-	/*
-	 * "> 0" and "<= 0" are not a single flag the way "< 0" is - they
-	 * need the value to be non-negative AND non-zero.  Test the sign,
-	 * and on the negative side fall into an xor a that forces Z, so
-	 * both paths arrive with Z meaning false:
-	 *
-	 *   J+0  ld a,h   1
-	 *   J+1  or a     1   sign of the high byte
-	 *   J+2  jp m     3   negative, so false
-	 *   J+5  ld a,h   1
-	 *   J+6  or l     1   Z here means the whole value was zero
-	 *   J+7  jr       2   past the forced-false
-	 *   J+9  xor a    1
-	 *   J+10
-	 */
-	R(GT,INHL,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_NZ),
-	R(LE,INHL,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_Z),
-	R(GT,INBC,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_NZ),
-	R(LE,INBC,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_Z),
-
-	/*
-	 * Signed relational comparison.  Carry answers the unsigned
-	 * question, so it cannot be used here: with a = -1 and b = 1 the
-	 * subtraction does not borrow, and carry would report that -1 is
-	 * not less than 1.
-	 *
-	 * The signed answer is sign exclusive-or overflow.  sbc hl,de
-	 * leaves the sign in bit 7 of H and the overflow in P/V, so take
-	 * the high byte, flip its top bit when the subtraction overflowed,
-	 * and let or a set the sign from the result.  M is then "less
-	 * than" and P is "greater or equal".
-	 *
-	 * Ten bytes against the three carry costs, which is why the
-	 * unsigned forms below keep using it, and why comparing against
-	 * zero stays on the sign-bit rules above - those are exact and
-	 * cheaper.
-	 */
-	R(LT,INHL,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_M),
-	R(GE,INHL,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_P),
-	R(P_CMPX,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	/*
-	 * A symbol compared against a register.  A SYMREF is left
-	 * unreduced so the store and load rules can use it as an
-	 * address, so where its *value* is wanted it has to be loaded -
-	 * and here that is the whole difference.
-	 *
-	 * It only shows up on the left because "a > b" is canonicalised
-	 * to "b < a", which is what puts the symbol there.  "s == buf"
-	 * kept the symbol on the right, where it becomes DE and the
-	 * ordinary rules match, so equality worked and ordering did not:
-	 *
-	 *	while (s > macbuffer && ...)	never ran
-	 *
-	 * which is macro.c's trailing-whitespace trim, so a macro body
-	 * kept its trailing blanks - and an empty one walked off the end
-	 * of the definition and ate the next line.
-	 */
-	R(LT,SYMREF,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_M),
-	R(GE,SYMREF,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_P),
-	R(P_CMPX,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-
-	/*
-	 * The same symbol-on-the-left shapes with the register operand
-	 * living in BC - a register variable compared against a global
-	 * array's address arrives exactly here, and the table stopping
-	 * at (O,E) left "if (s > buf)" unreduced.
-	 */
-	R(LT,SYMREF,INBC,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_M),
-	R(GE,SYMREF,INBC,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_P),
-	R(P_CMPX,SYMREF,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-
-	/* and with the symbol on the other side, where it becomes DE */
-	R(LT,INHL,SYMREF,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
-	R(GE,INHL,SYMREF,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
-	R(P_CMPX,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
-
-	R(LT,INHL,INBC,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_M),
-	R(GE,INHL,INBC,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_P),
-	R(P_CMPX,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R(LT,INHL,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
-	R(GE,INHL,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
-	R(P_CMPX,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
-
-	/* comparisons */
-	/*
-	 * An ADDRESS compared, rather than the thing at it.  "p->c" is
-	 * an INDEX and the (ix+d) rules read through it, but "&p->c ==
-	 * g" wants the address itself worked out, and until these rules
-	 * existed CODE appeared in the table only as the source of an
-	 * assignment.  So the conversion that forms an effective address
-	 * in a register was never even attempted for a comparison: the
-	 * left operand stayed an INDEX, nothing matched, and the test
-	 * emitted a marker and then branched on whatever flags the
-	 * preceding load happened to leave.
-	 *
-	 * The sequence is the one the INHL form uses - by the time these
-	 * match, the address is in HL exactly as a loaded value would be.
-	 */
-	R(EQ,CODE,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
-	R(NEQ,CODE,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
-	R(EQ,CODE,SYMREF,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
-	R(NEQ,CODE,SYMREF,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
-
-	R(EQ,INHL,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
-	/* LE/GT have no cheap flag of their own: swap the operands so the
-	 * borrow from sbc answers the reversed question. */
-	R(P_CMPX,INHL,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R(NEQ,INHL,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
-	R(LT,INHL,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT360, F_C),
-	R(GE,INHL,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT360, F_NC),
-	/* the same four with a symbol on the left - see the signed set */
-	R(P_CMPX,SYMREF,INDE,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R(LT,SYMREF,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT312, F_C),
-	R(GE,SYMREF,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT312, F_NC),
-	R(P_CMPX,INHL,SYMREF,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R(LT,INHL,SYMREF,0,0,0, LT, P_L, P_R, P_NONE, 0, RT287, F_C),
-	R(GE,INHL,SYMREF,0,0,0, GE, P_L, P_R, P_NONE, 0, RT287, F_NC),
-	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
-	R(P_CMP,INHL,INBC,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
-	/*
-	 * LE and GT answer the reversed question, and there is no
-	 * ex bc,hl - so copy BC into DE and swap that instead.
-	 */
-	R(P_CMPX,INHL,INBC,0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R(EQ,INBC,INDE,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT415, F_Z),
-	R(NEQ,INBC,INDE,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT415, F_NZ),
-	/*
-	 * A register variable compared, signed.  The rules below answer
-	 * with carry, which is the unsigned question - the same fault the
-	 * HL forms had, in the register that fix did not reach.  A
-	 * variable that lives in BC and goes negative compared as though
-	 * it were large: "i < 2" was false for i = -1.
-	 *
-	 * Greater-than and at-or-below have no flag of their own, so the
-	 * operands are handed over the other way round, which is what the
-	 * ex de,hl is doing.
-	 */
-	R(LT,INBC,INDE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_M),
-	R(GE,INBC,INDE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_P),
-	R(P_CMPX,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R(LT,INBC,INDE,0,0,0, LT, P_L, P_R, P_NONE, 0, RT415, F_C),
-	R(GE,INBC,INDE,0,0,0, GE, P_L, P_R, P_NONE, 0, RT415, F_NC),
-	R(EQ,INBC,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT411, F_Z),
-	R(NEQ,INBC,P_NUM,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT411, F_NZ),
-	R(LT,INBC,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_M),
-	R(GE,INBC,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_P),
-	R(P_CMPX,INBC,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R(LT,INBC,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, 0, RT411, F_C),
-	R(GE,INBC,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, 0, RT411, F_NC),
-
-	/* against a symbol's address, which is what comparing a pointer
-	 * with "&thing" comes to */
-	R(EQ,INHL,SYMREF,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
-	R(NEQ,INHL,SYMREF,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
-	R(P_CMP,INHL,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
-
-	/*
-	 * Signed byte comparisons.  These have to come before the
-	 * unsigned forms below, which match either signedness and answer
-	 * the unsigned question: cp sets carry on a borrow, and nothing
-	 * borrows against zero, so "c < 0" was false for every char in
-	 * the language.  Equality needs no signed form - the bits are
-	 * either equal or they are not.
-	 *
-	 * Against zero the sign bit is the whole answer, and or a puts it
-	 * in S for free.  Zero is a subset of NUMBER, so these must also
-	 * precede the T/Y(A,N) rules: first match wins.
-	 *
-	 * None of these ask for flag context, unlike the unsigned rules
-	 * below, which is what let a byte comparison used for its value
-	 * fall through to no rule at all.  A flag becomes a number by the
-	 * same path a word comparison uses.
-	 */
-	R(LT,INA,P_ZERO,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_M),
-	R(GE,INA,P_ZERO,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_P),
-	/* or a sets S and Z together, which is what > 0 and <= 0 need */
-	R(GT,INA,P_ZERO,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_NZ),
-	R(LE,INA,P_ZERO,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_Z),
-	/*
-	 * Against anything else, the same sign-exclusive-or-overflow the
-	 * word rules use.  Seven bytes against cp's two, which is why the
-	 * unsigned forms below keep cp and why zero stays on the rules
-	 * above.
-	 *
-	 * > and <= go the long way round rather than becoming >= and <
-	 * against the constant plus one, the way the unsigned rules do.
-	 * That trick has nowhere to go at 127, where the increment wraps
-	 * to -128 and turns a test that is always false into one that is
-	 * always true.
-	 */
-	R(LT,INA,INE,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_M),
-	R(GE,INA,INE,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_P),
-	R(GT,INA,INE,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_NZ),
-	R(LE,INA,INE,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_Z),
-	R(LT,INA,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_M),
-	R(GE,INA,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_P),
-	R(GT,INA,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_NZ),
-	R(LE,INA,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_Z),
-	R(LT,DEREF,P_NUM,INDEX,0,1, LT, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_M),
-	R(GE,DEREF,P_NUM,INDEX,0,1, GE, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_P),
-	R(GT,DEREF,P_NUM,INDEX,0,1, GT, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_NZ),
-	R(LE,DEREF,P_NUM,INDEX,0,1, LE, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_Z),
-
-	/* byte comparisons */
-	/* byte comparison against another byte, in E */
-	R(P_CMP,INA,INE,0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
-	R(EQ,INA,P_NUM,0,0,0, EQ, P_L, P_R, P_NONE, 0, RT200, F_Z),
-	R(NEQ,INA,P_NUM,0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT200, F_NZ),
-	/*
-	 * Against a byte register variable, which lives in B or C.  cp
-	 * takes either directly; there were forms for E and for a
-	 * constant and none for these.
-	 */
-	R(EQ,INA,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_B, RT41, F_Z),
-	R(NEQ,INA,REGVAR,0,0,0, NEQ, P_L, P_R, P_R, RF_B, RT41, F_NZ),
-	R(EQ,INA,REGVAR,0,0,0, EQ, P_L, P_R, P_R, RF_C, RT42, F_Z),
-	R(NEQ,INA,REGVAR,0,0,0, NEQ, P_L, P_R, P_R, RF_C, RT42, F_NZ),
-	/*
-	 * The ordered relationals against the same homes.  Signed first:
-	 * the sign gate stops the search there, and an unsigned rule
-	 * reached by a signed compare answers with the wrong flag.  Only
-	 * LT and LE, because pass1 normalises GT and GE away by swapping.
-	 */
-	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_SIGNL|RF_B,
-		"\tsub b\n" T_SXORA, F_M),
-	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_SIGNL|RF_B,
-		"\tsub b\n" T_SXORA T_SZTAIL, F_Z),
-	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_SIGNL|RF_C,
-		"\tsub c\n" T_SXORA, F_M),
-	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_SIGNL|RF_C,
-		"\tsub c\n" T_SXORA T_SZTAIL, F_Z),
-	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_B, RT41, F_C),
-	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_B,
-		"\tcp b\n\tjr nz,$$+3\n\tscf\n", F_C),
-	R(LT,INA,REGVAR,0,0,0, LT, P_L, P_R, P_R, RF_C, RT42, F_C),
-	R(LE,INA,REGVAR,0,0,0, LE, P_L, P_R, P_R, RF_C,
-		"\tcp c\n\tjr nz,$$+3\n\tscf\n", F_C),
-	R(LT,INA,P_NUM,0,0,0, LT, P_L, P_R, P_NONE, 0, RT200, F_C),
-	R(GE,INA,P_NUM,0,0,0, GE, P_L, P_R, P_NONE, 0, RT200, F_NC),
-	R(P_CMP,DEREF,P_NUM,INDEX,0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
-
-	/*
-	 * Unsigned > and <=.  cp leaves the answer spread over two flags -
-	 * carry says below, zero says equal - and "at or below" wants
-	 * both.  Rather than branch twice, fold equality into the carry:
-	 * when the two were equal, set it.  Carry then means "at or
-	 * below" on its own, and its complement means "above".
-	 *
-	 *   J+0  cp     1   C = below, Z = equal
-	 *   J+1  jr nz  2   not equal, so carry already answers
-	 *   J+3  scf    1   equal, so make carry say so
-	 *   J+4
-	 *
-	 * This replaces turning "> n" into ">= n+1", which has nowhere to
-	 * go at 255: the increment wraps to zero and a test that is never
-	 * true becomes one that always is.  Two bytes more, and right at
-	 * both ends of the range.
-	 */
-	R(GT,INA,INE,0,0,0, GT, P_L, P_R, P_NONE, 0, RT199, F_NC),
-	R(LE,INA,INE,0,0,0, LE, P_L, P_R, P_NONE, 0, RT199, F_C),
-	R(GT,INA,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT201, F_NC),
-	R(LE,INA,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT201, F_C),
-	R(GT,DEREF,P_NUM,INDEX,0,1, GT, P_L, P_R, P_NONE, 0, RT269, F_NC),
-	R(LE,DEREF,P_NUM,INDEX,0,1, LE, P_L, P_R, P_NONE, 0, RT269, F_C),
-
-	/*
-	 * The same fold at word width.  These turned "> n" into ">= n+1"
-	 * until now, which the note above says has nowhere to go at the
-	 * top of the range - it was fixed for bytes at 255 and left here,
-	 * where the increment wraps at 65535 instead.  "u <= 0xffff" is
-	 * true of every unsigned short and came out false for all of
-	 * them.
-	 */
-	R(GT,INHL,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT288, F_NC),
-	R(LE,INHL,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT288, F_C),
-	/* the same for a register variable, which had neither */
-	R(GT,INBC,P_NUM,0,0,0, GT, P_L, P_R, P_NONE, 0, RT412, F_NC),
-	R(LE,INBC,P_NUM,0,0,0, LE, P_L, P_R, P_NONE, 0, RT412, F_C),
-	R(P_CMPX,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-
-	/* NEQ -> BANG(EQ) */
-	R(NEQ,P_ANY,P_NUM,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
-	R(NEQ,0,0,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
-
-	/*
-	 * Storing a register-relative address to a global: the INDEX
-	 * form the address-combining rules mint is the value here, not
-	 * a location - "g = a + 2" with a in IX.  Every other context
-	 * (frame store, argument push, comparison) materializes it on
-	 * some other path; this one had no rule at all, fell to the
-	 * incomplete-rewrite marker, and the store was silently
-	 * dropped - which is how cpp's -I list vanished on the Z80.
-	 * add hl takes only bc/de/hl/sp, so the register goes through
-	 * the stack.
-	 */
-	R(ASSIGN,SYMREF,INDEX,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tpush $Rr\n\tpop hl\n\tld de,$Ro\n\tadd hl,de\n\tld ($L),hl\n",
-		R_HL),
+	/* INBC in flag context: test for zero */
+	R(INBC,0,0,0,0,8, INBC, P_NONE, P_NONE, P_NONE, 0, RT426, F_NZ),
 
 	/* terminator */
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
