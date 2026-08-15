@@ -121,6 +121,42 @@ foldNode(struct expr *e)
     }
 
     /*
+     * (x + c1) - c2, and the rest of that family: put the constants
+     * together so what reaches pass2 is one offset from x.  Written
+     * out, "ybuf+256-5" arrived as a subtract of five from an add of
+     * two hundred and fifty six, and no rule spells an address
+     * computed that way against a register variable - while
+     * "ybuf+251", the same address, compiles.  grep's -y guard is
+     * written the long way.
+     *
+     * Only when the inner constant is on the right, which is where
+     * the parser puts it for these, and only for the two operators
+     * that reassociate: x - (y - c) is not x - y - c.
+     */
+    if ((op == PLUS || op == MINUS) && right && (right->flags & E_CONST) &&
+        left && (left->op == PLUS || left->op == MINUS) &&
+        left->right && (left->right->flags & E_CONST) &&
+        left->left && left->left->type) {
+        long c1 = (long)left->right->v;
+        long c2 = (long)right->v;
+        struct expr *inner = left;
+
+        if (inner->op == MINUS)
+            c1 = -c1;
+        if (op == MINUS)
+            c2 = -c2;
+        e->op = PLUS;
+        e->left = inner->left;
+        right->v = (unsigned long)(c1 + c2);
+        inner->left = NULL;
+        FreeExpr(inner->right);
+        inner->right = NULL;
+        freeNode(inner);
+        left = e->left;
+        op = PLUS;
+    }
+
+    /*
      * A conditional whose test is constant is one of its arms.  This
      * was missing entirely, and nothing said so: a static initializer
      * is required to be constant, so an unfolded ?: left the whole
