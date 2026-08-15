@@ -130,7 +130,7 @@ intern(char *s)
         h = h * 31 + (unsigned char)*p;
     h %= INTERN_HASH;
     for (e = ipool[h]; e; e = e->next)
-        if (strcmp(e->name, s) == 0)
+        if (e->name[0] == s[0] && strcmp(e->name, s) == 0)
             return e->name;
     e = (struct ient *)permalloc(sizeof(*e) + strlen(s));
     strcpy(e->name, s);

@@ -110,7 +110,7 @@ find_kparm(char *name)
 	unsigned char n = kp_cnt + 1;
 
 	while (--n) {
-		if (strcmp(pp->name, name) == 0)
+		if (pp->name[0] == name[0] && strcmp(pp->name, name) == 0)
 			return pp;
 		pp++;
 	}
