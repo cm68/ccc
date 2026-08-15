@@ -1066,7 +1066,15 @@ char *in;
 {
 	register struct instruct *isr;
 
+	/*
+	 * The first character decides sixty-eight of the sixty-nine.
+	 * This walked the whole table for every instruction in the
+	 * file and called match on each entry to be told no; the test
+	 * match makes first is the one made here, without the call.
+	 */
 	for (isr = isr_table; isr->type != IEND; isr++) {
+		if (*in != *isr->mnem)
+			continue;
 		if (match(in, isr->mnem)) {
 			if ((*isr_handlers[isr->type])(isr))
 				gripe("invalid operand");

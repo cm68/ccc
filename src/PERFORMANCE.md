@@ -54,6 +54,38 @@ which took its per-line work from about 1.47M operations to 70K - the
 nftab walk from 439,794 string comparisons to 3,888, and the rule
 dispatch from 1,027,880 invocations to 66,492.
 
+## asz: the table walk, and the fold that was thrown away
+
+2026-08-14.  asz 90,913,885 -> 61,619,963, a third of it, and a
+quarter of a compile becomes a fifth.
+
+| pass  | cycles      | sec @ 4MHz | heap gap | share |
+|-------|------------:|-----------:|---------:|------:|
+| pass0 |  81,944,111 |       20.5 |   20,197 | 25.9% |
+| c0    |  19,144,419 |        4.8 |   17,064 |  6.0% |
+| c1    | 121,915,130 |       30.5 |    9,392 | 38.5% |
+| peep  |  32,119,329 |        8.0 |   29,098 | 10.1% |
+| asz   |  61,619,963 |       15.4 |   32,533 | 19.5% |
+| total | 316,742,952 |       79.2 |          |       |
+
+Two changes, both output-identical over all 51 files:
+
+`match` folded a to lower case for every character it compared and
+then compared the unfolded one.  The fold was dead - and so is the
+case-insensitivity the comment claims, which nothing has ever had.
+
+`asm_instr` walked all 69 entries of the instruction table for every
+line and called match on each to be told no.  The first character
+settles 68 of them, and that is the test match makes first anyway.
+
+**Host profiling under-predicted this.**  callgrind said 17.8% -
+16,935,584 instructions down to 13,927,099 - and the machine says
+32.2%.  A call is nearly free on the host and out-of-order execution
+hides what is left of it; on a Z80 it is neither.  Work measured on
+the host carries across, but removing CALLS carries across better
+than the host will tell you, which is worth knowing when choosing
+what to do next.
+
 ## Keeping it
 
 Add a row when the number moves, and say what moved it.  A baseline

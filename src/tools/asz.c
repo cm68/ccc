@@ -432,23 +432,24 @@ escape()
 
 /*
  * checks if a string is equal
- * string a is read as lower case
+ *
+ * It used to fold a to lower case first - the comment said "string a
+ * is read as lower case" - except that it compared *a and not the
+ * folded character, so the fold was computed for every character of
+ * every comparison and then thrown away.  Two tests and an add per
+ * character, and no case-insensitivity to show for them; this is the
+ * same function with the dead half removed.  If a case-blind compare
+ * is ever wanted it has to be written deliberately, because nothing
+ * here has been getting one.
  */
 char
 match(a, b)
 char *a;
 char *b;
 {
-    char lower;
-
     while (*b) {
-        lower = *a;
-        if (lower >= 'A' && lower <= 'Z')
-            lower += 'a' - 'A';
-
         if (*a != *b)
             return 0;
-
         a++;
         b++;
     }
