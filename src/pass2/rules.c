@@ -1455,6 +1455,21 @@ struct rule rules[] = {
 	 * "&v[3] - p" - reaches here as SYMREF minus INDE, and the
 	 * SYMREF side is one immediate load.
 	 */
+	/*
+	 * A symbol's address less a value in bc.  The de form is below
+	 * and this was not here, so "&buf[33] - b" with b in bc did not
+	 * reduce at all - and nothing said so: the long subtraction
+	 * above it was emitted with an operand that had never been
+	 * computed, pushing whatever hl happened to hold.
+	 *
+	 *	t = nd - (&buf[33] - b);	came out 65337, not 77
+	 *
+	 * The same expression with the pointer in ix compiles, which is
+	 * the entry-2 rule beside this one: same shape, different
+	 * register, and the table only spelled one of them.
+	 */
+	R(MINUS,SYMREF,INBC,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
+		F_LDHLL T_SUB_BC, R_HL),
 	R(MINUS,SYMREF,INDE,0,0,0, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
 	/*
