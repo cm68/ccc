@@ -76,6 +76,7 @@ static int fnindex;		/* function index for unique labels */
 int nbadcase;
 
 static char funcname[20];
+static char funcstatic;		/* this function is not to be exported */
 static short framesize;		/* bytes of local stack frame */
 static short nparams;		/* how many parameters, for the frame test */
 static char arg1w;		/* width of the first parameter: it arrives
@@ -431,9 +432,18 @@ savesbc(void)
 void
 emitprolog(void)
 {
-	/* Emit function label: S prefix = static (one :), else global (::) */
+	/*
+	 * Emit the function label: one colon keeps it in this file, two
+	 * export it.
+	 *
+	 * This read the name for a leading S, which a static function
+	 * defined at top level does not have and never did - its name
+	 * is spelled exactly as a global's is - so every static came
+	 * out exported, and static was no namespace at all.  pass1 says
+	 * so in the type letter now.
+	 */
 	out(funcname);
-	if (funcname[0] == 'S')
+	if (funcstatic)
 		out(":\n");
 	else
 		out("::\n");
@@ -1179,6 +1189,8 @@ parse(void)
 		switch (op) {
 		case AST_FUNC:
 			t = read1();
+			funcstatic = (t & 0x80) != 0;	/* pass1 marks it there */
+			t &= 0x7f;
 			readS(funcname, sizeof(funcname));
 			labelcnt = 0;
 			fnindex++;

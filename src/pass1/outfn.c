@@ -193,13 +193,32 @@ emitFuncPre(struct name *func)
 		if (l->kind != kfunarg)
 			local_count++;
 
-	/* Emit function header */
+	/*
+	 * Emit function header.
+	 *
+	 * The name is the same either way - staticName with no
+	 * enclosing function is "_name", which is what the global
+	 * spelling is - so the name cannot carry the linkage, and pass2
+	 * was reading it for an S that a top-level function never has.
+	 * The type letter carries it instead, in its top bit.
+	 *
+	 * Not in its case: typeSfx spells unsigned by upper-casing the
+	 * letter, so marking static that way made every function that
+	 * returned an unsigned type static, and five of them left the
+	 * symbol table in a build that had been linking.
+	 */
 	if (func->sclass & SC_STATIC)
 		staticName(func_name, func->id, 0, 0);
 	else
 		fmtstr(func_name, "_%s", nameOf(func->id));
 	emit1(AST_FUNC);
-	emit1(func->type->sub ? typeSfx(func->type->sub) : 'v');
+	{
+		char t = func->type->sub ? typeSfx(func->type->sub) : 'v';
+
+		if (func->sclass & SC_STATIC)
+			t |= 0x80;
+		emit1(t);
+	}
 	emitS(func_name);
 	emit1(param_count);
 	emit1(local_count);
