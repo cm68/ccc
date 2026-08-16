@@ -704,6 +704,20 @@ kscan(struct token *t)
 			ks_isagg = 1;
 			return;
 		}
+		/*
+		 * An anonymous body, and it has no tag to be registered
+		 * under.  This kept the last one seen, so
+		 *
+		 *	struct big { char x[100]; };
+		 *	static struct { char y[6]; } anchor;
+		 *
+		 * priced the anonymous body and filed its size under
+		 * "big" - and stadd pushes while stfind takes the first
+		 * match, so the wrong answer shadowed the right one and
+		 * sizeof(struct big) became 6.  mtok has always cleared
+		 * its copy here; this one never did.
+		 */
+		ks_tag = 0;
 	}
 	if (t->type == STRUCT || t->type == UNION) {
 		ks_awtag = 1;
@@ -1764,6 +1778,28 @@ norm_run(void)
 			if (inagg) {
 				inagg = 0;
 				if (ks_kind) {
+					/*
+					 * ks_awtag still standing means the
+					 * token after "struct" was not a
+					 * name - an anonymous body, with no
+					 * tag to register a size under.  It
+					 * kept the last tag seen, so
+					 *
+					 *   struct big { char x[100]; };
+					 *   static struct { char y[6]; } a;
+					 *
+					 * filed the anonymous body's size
+					 * under "big"; stadd pushes and
+					 * stfind takes the first match, so
+					 * sizeof(struct big) answered 6.
+					 * calloc(n, sizeof(struct buf)) then
+					 * asked malloc for a fraction of
+					 * what the caller went on to use.
+					 */
+					if (ks_awtag) {
+						ks_awtag = 0;
+						ks_tag = 0;
+					}
 					mpush(ks_tag, ks_kind == 2);
 					mfeed = 1;
 					ks_kind = 0;
