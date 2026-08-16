@@ -37,7 +37,7 @@ struct symbol {
     unsigned char seg;              /* SEG_* */
     unsigned short index;           /* object file ordinal */
     unsigned short value;           /* segment relative */
-    struct symbol *next;
+    struct symbol *next;            /* bucket chain, then list: see asm.c */
     char name[1];                   /* variable length tail */
 };
 

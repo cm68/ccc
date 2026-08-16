@@ -616,6 +616,58 @@ int local_seq;
 struct symbol *symbols;
 struct symbol *symbols_tail;  /* for append order */
 
+/*
+ * The symbols, in buckets while the source is read.
+ *
+ * sym_fetch used to read the whole list to answer every question.
+ * On tools/nm.c - 1111 labels, 7966 lookups - that was 16,035
+ * instructions per lookup and 54% of the assembler, which is 19% of
+ * a build of the tree.
+ *
+ * So there is no list until the end.  next chains a bucket, and the
+ * buckets are hung back together into one list at emission by
+ * sym_relist, which is where a list starts being wanted and where
+ * the ordinal is handed out.  The ordinal does not have to be the
+ * order the source mentioned things in - it goes into relocations
+ * and only has to agree with the table it indexes - so nothing is
+ * owed to the old order, and this way the index costs one table and
+ * not a pointer in every symbol.
+ *
+ * That matters here.  nm.ps is the tightest file the assembler sees,
+ * with 6,262 bytes to spare, and a pointer apiece across its symbols
+ * is 3,600 of them - most of the headroom, spent on the one file
+ * that has none to spare.  This table is 512 bytes and that is all
+ * it is.
+ */
+#define NSYMHASH 256            /* a power of two: see symhash_of */
+
+static struct symbol *symhash[NSYMHASH];
+
+/*
+ * Hash a name, over the same characters sym_fetch compares.
+ *
+ * It stops at SYMLEN because the comparison does: two names that
+ * agree through SYMLEN characters ARE the same symbol here, and they
+ * have to land in the same bucket to be found so.  Compiler output
+ * shares prefixes heavily - no27_2, _C13, L1024 - so every character
+ * has to move the result, which the shift does.
+ */
+static unsigned char
+symhash_of(name)
+char *name;
+{
+    register unsigned short h;
+    register char *p;
+    register unsigned char n;
+
+    h = 0;
+    p = name;
+    n = SYMLEN;
+    while (n-- && *p)
+        h = (h << 1) + *p++;
+    return h & (NSYMHASH - 1);
+}
+
 extern unsigned char skipwhite();
 extern char alpha();
 extern char symchar();
@@ -1077,6 +1129,38 @@ unsigned char c;
 }
 
 /*
+ * Hang the buckets back together into one list.
+ *
+ * Called once, where the source has all been read and the ordinals
+ * are about to be handed out.  Everything from there on wants a list
+ * and none of it cares what order the list is in.
+ *
+ * The buckets are left pointing into it.  Nothing looks a symbol up
+ * after this - the last input is long since read - and a lookup that
+ * did would run off the end of its bucket into somebody else's.
+ */
+static void
+sym_relist()
+{
+	unsigned short h;
+	struct symbol *sym;
+
+	symbols = 0;
+	symbols_tail = 0;
+	for (h = 0; h < NSYMHASH; h++) {
+		if (!(sym = symhash[h]))
+			continue;
+		if (symbols_tail)
+			symbols_tail->next = sym;
+		else
+			symbols = sym;
+		while (sym->next)
+			sym = sym->next;
+		symbols_tail = sym;
+	}
+}
+
+/*
  * fetches the symbol
  * returns pointer to found symbol, or null
  */
@@ -1089,7 +1173,7 @@ char *name;
 	char *np;
 	unsigned char i;
 
-	for (sym = symbols; sym; sym = sym->next) {
+	for (sym = symhash[symhash_of(name)]; sym; sym = sym->next) {
 		sp = sym->name;
 		np = name;
 		i = SYMLEN + 1;
@@ -1133,13 +1217,13 @@ int visible;
 				;
 		}
 		sym = (struct symbol *) permalloc(sizeof(struct symbol) + i);
-		sym->next = 0;
-		/* append to preserve first-reference order */
-		if (symbols_tail)
-			symbols_tail->next = sym;
-		else
-			symbols = sym;
-		symbols_tail = sym;
+		{
+			/* into its bucket, at the head */
+			unsigned char h = symhash_of(name);
+
+			sym->next = symhash[h];
+			symhash[h] = sym;
+		}
 		sym->seg = SEG_UNDEF;
 		sym->index = 0xffff;
 		{
@@ -1225,12 +1309,16 @@ extern void io_reset();
 void
 asm_reset()
 {
+    unsigned short h;
+
     /*
      * Everything below came out of an arena, so releasing the arena
      * is what frees it; the lists just get dropped.
      */
     symbols = 0;
     symbols_tail = 0;
+    for (h = 0; h < NSYMHASH; h++)
+        symhash[h] = 0;
     freerelocs(&textr);
     freerelocs(&datar);
     freejumps();
@@ -1404,13 +1492,16 @@ unsigned short at;
 {
     struct symbol *s;
     int i;
+    unsigned short h;
 
     for (i = 0; i < nopen; i++)
         if (opens[i].addr > at)
             opens[i].addr--;
-    for (s = symbols; s; s = s->next)
-        if (s->seg == SEG_TEXT && s->value > at)
-            s->value--;
+    /* the buckets: there is no list yet, and this runs before there is */
+    for (h = 0; h < NSYMHASH; h++)
+        for (s = symhash[h]; s; s = s->next)
+            if (s->seg == SEG_TEXT && s->value > at)
+                s->value--;
     /*
      * cur_address and nothing else.  change_seg derives text_top from
      * it at the end of the segment, so decrementing text_top here as
@@ -2272,6 +2363,7 @@ assemble()
 {
     unsigned short type;
 	struct symbol *sym;
+	unsigned short symb;		/* which bucket, when walking them */
     unsigned short next;
 	struct expval eqval;
 
@@ -2618,8 +2710,18 @@ assemble()
 
             next = 0;
 
-            /* we've seen everything, so we can assign indexes */
-	        for (sym = symbols; sym; sym = sym->next) {
+            /*
+             * We've seen everything, so we can assign indexes.
+             *
+             * Over the buckets, not a list: pass 2 is still to come
+             * and it looks symbols up, so the buckets have to stay
+             * buckets until it is done with them.  The order the
+             * ordinals come out in is this walk's order, which is
+             * nobody's business but the relocations', and they are
+             * written from these same values.
+             */
+	        for (symb = 0; symb < NSYMHASH; symb++)
+	        for (sym = symhash[symb]; sym; sym = sym->next) {
 
                 if (sym->seg == SEG_UNDEF) {
                     /* Treat undefined symbols as extern */
@@ -2649,7 +2751,8 @@ assemble()
 			 * relocation index stays what it was.
 			 */
 			nlocalsym = 0;
-			for (sym = symbols; sym; sym = sym->next)
+			for (symb = 0; symb < NSYMHASH; symb++)
+			for (sym = symhash[symb]; sym; sym = sym->next)
 				if (sym->index == 0xffff &&
 				    (sym->seg == SEG_DATA || sym->seg == SEG_BSS))
 					nlocalsym++;
@@ -2692,6 +2795,12 @@ assemble()
 		if (pass == 2)
 			break;
 	}
+
+	/*
+	 * The passes are done and nothing looks a symbol up again, so
+	 * the buckets can become the list the rest of this wants.
+	 */
+	sym_relist();
 
 	/*
 	 * output symbols and relocation tables
