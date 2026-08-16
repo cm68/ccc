@@ -187,9 +187,34 @@ label(Expr *e)
 			e->regs = 2;
 		return;
 
-	/* ASSIGN: lvalue doesn't consume reg, only rvalue */
+	/*
+	 * ASSIGN: the rvalue's cost, or the lvalue's if the address
+	 * costs more.
+	 *
+	 * The lvalue really is free when the store names its address -
+	 * a global, a register pointer, (ix+d).  It is not free when
+	 * the address is arithmetic, and counting it free put the two
+	 * in the wrong order:
+	 *
+	 *	if ((rep->ad2 = p) > reend)
+	 *
+	 * loaded reend into hl, worked rep->ad2 out on top of it, and
+	 * left both sides of the comparison claiming hl - which no rule
+	 * builds code for, rightly.  Taking the larger side makes the
+	 * assignment outrank the operand beside it, so it goes first
+	 * and reend is loaded afterwards, into the register the store
+	 * did not want.  DEREF carries the same guard, three cases up.
+	 *
+	 * It has to come from the child's own label.  Asking about the
+	 * address's shape here does not work: label() runs through the
+	 * reduction, not once ahead of it, and by the time an ASSIGN is
+	 * labeled its address has often reduced to INHL already - which
+	 * honestly costs nothing, the work having been done.
+	 */
 	case ASSIGN:
 		e->regs = r ? r : 1;
+		if (l > e->regs)
+			e->regs = l;
 		return;
 
 	/*

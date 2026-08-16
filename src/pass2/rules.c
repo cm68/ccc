@@ -2668,8 +2668,15 @@ struct rule rules[] = {
 	 */
 	R(ASSIGN,DEREF,SYMREF,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDDER "\tld (ix+0),e\n\tld (ix+1),d\n", R_DE),
+	/*
+	 * bc names its value like its siblings do.  The hl and de forms
+	 * of this store say R_HL and R_DE; this one said nothing, and a
+	 * store used as a value - if ((rep->ad2 = p) > reend), with rep
+	 * the index register and p in bc - left the comparison over it
+	 * with no rule.  The store does not touch bc.
+	 */
 	R(ASSIGN,DEREF,INBC,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
-		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
+		"\tld (ix+0),c\n\tld (ix+1),b\n", R_BC),
 	/*
 	 * The same with the value in de, which is where it sits when the
 	 * store is one operand of a comparison: the other operand has
@@ -2690,7 +2697,7 @@ struct rule rules[] = {
 	R(ASSIGN,DEREF,INDE,REGVAR,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),e\n\tld (ix+1),d\n", R_DE),
 	R(ASSIGN,DEREF,P_NUM,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
-	R(ASSIGN,DEREF,INA,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
+	R(ASSIGN,DEREF,INA,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", R_A),
 	/* a word in HL narrowed on its way through the index register */
 	R(ASSIGN,DEREF,INHL,REGVAR,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAL "\tld (ix+0),a\n", R_A),
@@ -2726,18 +2733,42 @@ struct rule rules[] = {
 	 * ld d,ixh, each half costing two for its prefix.  Going through
 	 * A a byte at a time is seven as well.
 	 */
+	/*
+	 * Storing a register variable in ix, by the address it goes to.
+	 *
+	 * The ones whose address is named in the instruction - a global,
+	 * a register pointer - say where their value is, so that an
+	 * assignment can be used as one:
+	 *
+	 *	if ((rep->ad2 = p) > reend)
+	 *
+	 * With destval 0 the rewrite has nothing to relabel the ASSIGN
+	 * to, the operator over it never reduces, and the expression
+	 * comes out as no rule though the store had a rule all along.
+	 * Those that borrow hl for the address save it, because an
+	 * assignment used as a value sits under an operator that has
+	 * already evaluated its other operand into hl.
+	 *
+	 * The two whose address ARRIVES in hl stay valueless.  Whatever
+	 * put it there - the shift and add of a subscript - ran before
+	 * this template and outside any save it could make, and it ran
+	 * through the same hl the operator above was using.  Naming a
+	 * value buys a silent wrong answer in place of the refusal; the
+	 * refusal stands until the ordering is fixed.
+	 */
 	R(ASSIGN,DEREF,REGVAR,INHL,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
+		"\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
 	R(ASSIGN,DEREF,REGVAR,INHL,0,1, ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tld a,ixl\n" F_LDHLA, R_A),
 	R(ASSIGN,DEREF,REGVAR,INBC,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
+		F_PUSHHL T_BC_HL "\tpush ix\n\tpop de\n" F_LDHLE F_INCHL
+		F_LDHLD F_POPHL, R_DE),
 	R(ASSIGN,DEREF,REGVAR,INDEX,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		F_LDLLL F_LDHLL1 "\tpush ix\n\tpop de\n"
-		F_LDHLE F_INCHL F_LDHLD, 0),
+		F_LDHLE F_INCHL F_LDHLD, R_DE),
 	R(ASSIGN,DEREF,REGVAR,SYMREF,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
-		"\tld hl,($LL)\n\tpush ix\n\tpop de\n"
-		F_LDHLE F_INCHL F_LDHLD, 0),
+		F_PUSHHL "\tld hl,($LL)\n\tpush ix\n" F_POPDE
+		F_LDHLE F_INCHL F_LDHLD F_POPHL, R_DE),
 
 	/*
 	 * Store through a pointer that itself lives in memory - a pointer
