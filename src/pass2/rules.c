@@ -2857,6 +2857,27 @@ struct rule rules[] = {
 	 * is where a compound assignment through a computed address ends
 	 * up, the value in A and the address recovered from the stack */
 	R(ASSIGN,DEREF,INA,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLA, R_A),
+	/*
+	 * The same byte in A, stored through a pointer, to a word.
+	 *
+	 * The symbol and subscript forms of this are up where the note
+	 * about it is; the pointer form was missing, and
+	 *
+	 *	*(o->ovar) = ! *(o->ovar);
+	 *
+	 * had no rule - which is every boolean option toggle less
+	 * writes.  Unsigned by construction like its siblings: a truth
+	 * test leaves a nought or a one, and anything genuinely signed
+	 * arrives wrapped in a SEXT.
+	 *
+	 * Through de rather than the four-byte "ld (hl),a / inc hl /
+	 * ld (hl),0", because hl is the address here and the answer has
+	 * to be somewhere afterwards.  A store with nowhere to leave
+	 * its value cannot be used as one, and that is the shape that
+	 * left the comparison above it unreducible in entry 9.
+	 */
+	R(ASSIGN,DEREF,INA,INHL,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld e,a\n\tld d,0\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
 	/* a word narrowed to a byte on its way through an address */
 	R(ASSIGN,DEREF,INBC,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDHLA, R_A),
 	R(ASSIGN,DEREF,INHL,INHL,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDHLA, R_A),
