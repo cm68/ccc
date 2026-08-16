@@ -128,7 +128,24 @@ stSwitch2(void)
     emit1(SWITCH);
     emit1(0);  /* no label - cpp lowered break to goto */
     emit1(popCount());
-    emitExpr(e1);
+    /*
+     * The control is promoted to int, like any other operand that
+     * has to meet int-sized company - and the case labels are ints.
+     *
+     * It went out at its own width, so a char control was left in A
+     * and pass2 widened it the only way it could without knowing the
+     * type: "ld l,a / ld h,0", high half zero, with a comment saying
+     * anything narrower than its use had been widened before it got
+     * there.  For a signed char it had not been.
+     *
+     *	char opt;  ...  switch (opt) { case -1: ... }
+     *
+     * put 0x00ff up against the 0xffff in the table and matched
+     * nothing, so diff -e dropped every one of its ed command lines
+     * and printed only the text.  emitOperand puts a SEXT there when
+     * the type is signed and a WIDEN when it is not.
+     */
+    emitOperand(e1, inttype);
     FreeExpr(e1);
     /* Parse body - CASE/DEFAULT emit themselves */
     statement();
