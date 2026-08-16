@@ -234,13 +234,28 @@ label(Expr *e)
 		e->regs = l;
 		return;
 
-	/* Short-circuit: sides evaluated separately.
-	 * Ternary likewise: condition, then and else are all separate */
+	/*
+	 * Short-circuit: sides evaluated separately.  Ternary likewise:
+	 * condition, then and else are all separate.
+	 *
+	 * Separate, but not free.  Each of these evaluates a condition
+	 * into hl and branches on it, so whatever an operator above had
+	 * already put in hl is gone by the time the answer arrives -
+	 * and the answer arrives in hl too.  That is a call's shape,
+	 * and it takes a call's cost, which is what says go first:
+	 *
+	 *	newcol + (state ? ue_width : 0) > sc_width
+	 *
+	 * loaded newcol into hl, read state into hl on top of it, and
+	 * added the ternary to whatever ex de,hl turned up.
+	 */
 	case LAND:
 	case LOR:
 	case QUES:
 	case TERNBRANCH:
 		e->regs = l > r ? l : r;
+		if (e->regs < 2)
+			e->regs = 2;
 		return;
 
 	/* Unary ops: same as child, min 1 */
