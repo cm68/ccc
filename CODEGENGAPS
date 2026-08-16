@@ -302,11 +302,61 @@ Workaround in cmd/sed: the loop is hoisted into a translate(lp, tp)
 helper whose frame declares only two register pointers.
 
 9. assignment as the value of a pointer comparison, register struct  [FIXED]
-----------------------------------------------------------------------------
-FIXED 2026-08-15, commit fd41586.  Needed ASSIGN,DEREF,INDE,REGVAR: a
-word stored from de through a register pointer.  The store's VALUE is
+----------------------------------------------------------------------------------
+PART FIXED 2026-08-15, commit fd41586.  Needed ASSIGN,DEREF,INDE,REGVAR:
+a word stored from de through a register pointer.  The store's VALUE is
 in de because the other operand of the comparison has taken hl, and
 the table had the hl, bc and constant forms and not that one.
+
+FIXED 2026-08-15.  The global-pointer half was not a missing rule.
+ASSIGN,DEREF,REGVAR,SYMREF was in the table the whole time and had
+been storing correctly for as long as it had been there - with
+destval 0.  A rule that names no result register gives the rewrite
+nothing to relabel the ASSIGN to, so the store reduced and the
+COMPARISON over it did not, and the whole expression came out as no
+rule.  The refusal read as a missing rule; the rule that was wrong
+was present, and silent.
+
+Its siblings say what they hold - the INHL store says R_HL, the INDE
+store says R_DE - and this one said nothing, which is the shape of
+every gap in this file: one spelling of a family left unfilled.
+Four were unfilled the same way, and now say where their value is:
+
+	ASSIGN,DEREF,REGVAR,SYMREF	store ix through a global
+	ASSIGN,DEREF,REGVAR,INBC	store ix through a bc pointer
+	ASSIGN,DEREF,INBC,REGVAR	store bc through (ix+0)
+	ASSIGN,DEREF,INA,REGVAR		store a through (ix+0), byte
+
+The first two borrow hl to reach the address and now save it: an
+assignment used as a value sits under an operator that has already
+evaluated its other operand into hl, and the compare was reading
+what the store had left there.
+
+All six of the family now name their value.  Two of them - the forms
+whose address ARRIVES in hl (INHL, INDEX) - could not until the
+ordering was fixed, because whatever computed that address had run
+through the same hl the operator above was using.  That is entry 15,
+and it is what sed was really hitting; both were needed.
+
+	char *reend;
+	struct r {
+		char *ad2;
+	};
+	struct r *rep;
+	f()
+	{
+		register char *p;
+
+		p = reend;
+		if ((rep->ad2 = p) > reend)
+			return 1;
+		return 0;
+	}
+
+Verified fixed 2026-08-15 on the simulator - store and comparison
+both, through a global pointer, a register pointer and (ix+0), high
+and low against reend.  cmd/sed's two split sites (marked
+"CODEGENGAPS 9" in sed0.c) can come back together.
 
 The register struct pointer is not the discriminator - a file-scope
 one fails identically.  Which SIDE the store lands on is:
@@ -473,3 +523,54 @@ else the archive pulls in - which makes it worse, not better: when
 the link DOES succeed, one of the two functions has silently won).
 cmd/od renamed its copy odcvt.  The fix is `static` on doprnt's
 icvt, which frees the name and costs nothing.
+
+
+15. an assignment used as a value, through an address computed in hl  [FIXED]
+-----------------------------------------------------------------------------
+Found 2026-08-15 while closing entry 9, and it turned out to be what
+sed was really hitting.  The rules there were a real gap and fixing
+them was necessary, but sed's own shape needed this as well:
+
+	if((rep->ad2 = p) > reend)	rep global, ad2 at offset 2,
+					p spilled to the frame
+
+	LT(DEREF $_reend, ASSIGN(ADD(DEREF $_rep, 2), DEREF(LOCALVAR IY-10)))
+
+The comparison loaded reend into hl, then worked the address out on
+top of it - ld hl,(_rep) / inc hl / inc hl - and both operands ended
+up claiming hl, which the table has no rule for and rightly not.
+
+An ordering problem, not a spelling one.  label() had:
+
+	case ASSIGN:
+		e->regs = r ? r : 1;	/* lvalue doesn't consume reg */
+
+The lvalue is free when its address is named in the instruction - a
+global, a register pointer, (ix+d) - and not free when it is
+arithmetic.  DEREF carries this guard already, three cases above,
+raising itself to 2 so that it goes first "before an operand is
+sitting in HL to be clobbered".  ASSIGN now takes the larger of its
+two sides, which is all that was wanted:
+
+	case ASSIGN:
+		e->regs = r ? r : 1;
+		if (l > e->regs)
+			e->regs = l;
+
+The assignment then outranks the operand beside it, gets evaluated
+first, and the compare loads reend afterwards into the register the
+store did not want.
+
+An earlier attempt keyed on the address's SHAPE instead - a helper
+asking whether it was a subscript - and never fired once.  label() is
+called through reduction rather than once ahead of it, and by the
+time this ASSIGN is labeled its address has already reduced to INHL,
+which honestly costs nothing, the work having been done.  The count
+has to come from the child's own label, which is what taking l does.
+
+With the ordering right, all six rules of the store family can name
+their value, including the two whose address arrives in hl.  Checked
+on the simulator - store and comparison both - through a global
+pointer, a register pointer, (ix+0) and a subscript, high and low
+against reend; and cmd/sed builds with both split sites unwound and
+runs its ranges and substitutions correctly.

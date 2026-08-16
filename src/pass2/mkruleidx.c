@@ -47,12 +47,10 @@ main(int argc, char **argv)
 
 		if (op != prev) {
 			if (closed[op]) {
-				fprintf(stderr,
-"mkruleidx: rules[%u] carries op %u, which had already ended at an\n"
-"           earlier run.  The table is sorted by root opcode and every\n"
-"           op must be one unbroken run: a rule outside its run is\n"
-"           never tried.  File it with the others of its op.\n",
-				    (unsigned)n, (unsigned)op);
+				fprintf(stderr, "mkruleidx: rules[%u] carries op %u, which had already ended at an\n", (unsigned)n, (unsigned)op);
+				fprintf(stderr, "           earlier run.  The table is sorted by root opcode and every\n");
+				fprintf(stderr, "           op must be one unbroken run: a rule outside its run is\n");
+				fprintf(stderr, "           never tried.  File it with the others of its op.\n");
 				bad = 1;
 			}
 			if (prev)
