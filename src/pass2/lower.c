@@ -471,7 +471,20 @@ ccguard(Expr *e)
 	 * the entire lesson of this bug.
 	 */
 	nincomplete++;
-	out("; XXXXXX unreduced condition\n");
+	/*
+	 * With the tree, not without it.  The bare marker says an
+	 * expression did not reduce and leaves you to guess which
+	 * operand and in which register - and the answer has three
+	 * times been "the same shape with the value in another
+	 * register", which the tree states outright and the source
+	 * does not.
+	 */
+	out("; XXXXXX unreduced condition: ");
+#ifdef DEBUG
+	dumpexpr(e);		/* ends the line */
+#else
+	outc('\n');
+#endif
 }
 
 char *
