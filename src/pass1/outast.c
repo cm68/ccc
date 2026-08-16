@@ -205,10 +205,22 @@ emitExpr(struct expr *e)
 	struct type *type;
 	unsigned char op, uc;
 	char fullname[32], c, lval;
-	/* everything n carries fits a byte: an argument count, an
-	 * element size, an initializer count - and emit1 writes one
-	 * byte of it regardless */
-	unsigned char n;
+	/*
+	 * An argument count and an initializer count fit a byte, and
+	 * emit1 writes one byte of them regardless.  An element size
+	 * does not: it is what ++ steps a pointer by, the INCR case
+	 * below writes it with emit2, and a struct is allowed to be
+	 * bigger than 255 bytes.
+	 *
+	 *	struct buf { struct buf *next, *prev; long block;
+	 *		     char data[1024]; };	- 1032 bytes
+	 *	for (bp = &bufs[0]; bp < &bufs[n]; bp++)
+	 *
+	 * stepped bp by 8, which is 1032 with the top of it gone, so
+	 * the loop wrote five buffers into the first forty bytes of
+	 * the first one and ran off the end of the arena.
+	 */
+	unsigned short n;
 
 	/* Fold constants before emitting */
 	e = foldTree(e);
