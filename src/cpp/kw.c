@@ -37,6 +37,7 @@ unsigned char cppkw[] = {
             'd'|HI, 4, 'e', 'f', 0xff, PP_IFDEF,
             'n'|HI, 5, 'd', 'e', 'f', 0xff, PP_IFNDEF,
         'n', 'c', 'l', 'u', 'd', 'e', 0xff, PP_INCLUDE,
+    'p', 'r', 'a', 'g', 'm', 'a', 0xff, PP_PRAGMA,
     'u', 'n', 'd', 'e', 'f', 0xff, PP_UNDEF,
     0   /* end of table */
 };
@@ -46,7 +47,12 @@ unsigned char cppkw[] = {
  * It uses skip-optimization for fast lookup.
  */
 
-#ifdef ASMKWLOOK
+/*
+ * Z80 machine code, so the host is excluded whatever compiles it -
+ * see the note over advance() in io.c.  ASMKWLOOK is the separate
+ * question of whether this version is wanted at all.
+ */
+#if defined(ASMKWLOOK) && !defined(__linux__)
 /*
  * Look up keyword in compressed table (Z80 assembly implementation)
  *

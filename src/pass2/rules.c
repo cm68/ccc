@@ -3069,9 +3069,18 @@ struct rule rules[] = {
 	/* negation */
 	/* a byte in A negates in place - the Z80 has the instruction */
 	R(NEG,INA,0,0,0,1, NEG, P_L, P_NONE, P_NONE, 0, "\tneg\n", R_A),
-	R(NEG,INBC,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n" F_LDLA F_LDA0 "\tsbc a,b\n" F_LDHA, R_HL),
-	R(NEG,INHL,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
-	R(NEG,INDE,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
+	/*
+	 * A word negates through A into wherever it was asked for, which
+	 * $t/$u name.  As the right operand of a comparison the target is
+	 * DE, and always answering in HL put the result on top of the left
+	 * operand: the compare then read two values both claiming HL, which
+	 * no rule builds.  "a != -b" in a flag context reached exactly that
+	 * and emitted nothing.  Only A is scratch, so a register variable in
+	 * BC is negated into DE without being lost.
+	 */
+	R(NEG,INBC,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n\tld $t,a\n" F_LDA0 "\tsbc a,b\n\tld $u,a\n", 0),
+	R(NEG,INHL,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n\tld $t,a\n" F_LDA0 "\tsbc a,h\n\tld $u,a\n", 0),
+	R(NEG,INDE,0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE "\tld $t,a\n" F_LDA0 "\tsbc a,d\n\tld $u,a\n", 0),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
@@ -3359,6 +3368,16 @@ struct rule rules[] = {
 	R(PREINC,REGVAR,0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n\tld a,b\n", R_A),
 	R(PREINC,REGVAR,0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n\tld a,c\n", R_A),
 	R(PREINC,INA,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
+	/*
+	 * inc/dec a literal address - "*(char *)0x1000" - the same place
+	 * the ASSIGN(DEREF,P_NUM) rules reach, only stepped.  Load the
+	 * address and step through it: a byte is inc/dec (hl), a word is
+	 * loaded, stepped and stored back.
+	 */
+	R(PREINC,P_NUM,0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$La\n\tinc (hl)\n\tld a,(hl)\n", R_A),
+	R(PREINC,P_NUM,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($La)\n\tinc hl\n\tld ($La),hl\n", R_HL),
 
 	/*
 	 * Stepping a long in memory.  The helper takes the address in HL,
@@ -3459,6 +3478,11 @@ struct rule rules[] = {
 	/* postfix wants the old value, so take a copy before stepping */
 	R(POSTINC,REGVAR,0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tinc b\n", R_A),
 	R(POSTINC,REGVAR,0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tinc c\n", R_A),
+	/* postfix step of a literal address: old value is the read */
+	R(POSTINC,P_NUM,0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$La\n\tld a,(hl)\n\tinc (hl)\n", R_A),
+	R(POSTINC,P_NUM,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($La)\n\tinc hl\n\tld ($La),hl\n\tdec hl\n", R_HL),
 	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
 	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_CALLLADEC F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
@@ -3512,6 +3536,11 @@ struct rule rules[] = {
 	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
 	R(PREDEC,REGVAR,0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
 	R(PREDEC,INA,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
+	/* prefix decrement of a literal address, as PREINC above */
+	R(PREDEC,P_NUM,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$La\n\tdec (hl)\n\tld a,(hl)\n", R_A),
+	R(PREDEC,P_NUM,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($La)\n\tdec hl\n\tld ($La),hl\n", R_HL),
 	R(POSTDEC,SYMREF,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
 	R(POSTDEC,INDEX,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
 	R(POSTDEC,INHL,0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
@@ -3552,6 +3581,11 @@ struct rule rules[] = {
 	R(POSTDEC,INHL,0,0,0,26, POSTDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
 	R(POSTDEC,REGVAR,0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tdec b\n", R_A),
 	R(POSTDEC,REGVAR,0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tdec c\n", R_A),
+	/* postfix decrement of a literal address */
+	R(POSTDEC,P_NUM,0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$La\n\tld a,(hl)\n\tdec (hl)\n", R_A),
+	R(POSTDEC,P_NUM,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($La)\n\tdec hl\n\tld ($La),hl\n\tinc hl\n", R_HL),
 
 
 	/* REGVAR -> IN* (value is in register) */
