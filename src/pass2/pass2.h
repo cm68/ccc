@@ -73,6 +73,7 @@ void dumphits(void);
 #endif
 
 /* Output */
+extern int stackdepth;		/* astio.c: SP bytes below the frame base */
 void out(char *s);
 void outc(char c);
 void outd(int n);

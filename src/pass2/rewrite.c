@@ -735,6 +735,20 @@ expandtpl(char *tpl, char *buf)
 	*d = 0;
 }
 
+/*
+ * Emit [a, z) as one string.  Template text used to go out a
+ * character at a time through outc(), which the stack-depth counter
+ * cannot see; emitting whole spans keeps push/pop parseable at out().
+ */
+static void
+emitspan(char *a, char *z)
+{
+	char save = *z;
+	*z = 0;
+	out(a);
+	*z = save;
+}
+
 void
 emitasm(char *tpl, Expr *e)
 {
@@ -762,11 +776,8 @@ emitasm(char *tpl, Expr *e)
 			cnt = (e->right->op == NUMBER) ?
 			      (int)e->right->u.val : 1;
 			/* emit the enclosed text cnt times */
-			for (i = 0; i < cnt; i++) {
-				char *q;
-				for (q = start; q < p; q++)
-					outc(*q);
-			}
+			for (i = 0; i < cnt; i++)
+				emitspan(start, p);
 			if (*p == ')') p++;
 			continue;
 		}
@@ -921,11 +932,22 @@ emitasm(char *tpl, Expr *e)
 					/* o and r split it into the offset and
 					 * the register, for templates that
 					 * have to do the arithmetic themselves
-					 * rather than let (ix+d) do it */
+					 * rather than let (ix+d) do it.  Those
+					 * keep IY as the base - IY+off names
+					 * the same slot the SP-relative form
+					 * does, while IY still exists.  Only
+					 * the direct (reg+off) spelling is
+					 * SP-relative. */
 					if (mod == 'o') {
 						outd(n->u.var.off + offadj);
 					} else if (mod == 'r') {
 						out(idxregname(n->u.var.reg));
+					} else if (n->u.var.reg == R_IY) {
+						out("sp");
+						val = n->u.var.off + offadj +
+						      stackdepth;
+						if (val >= 0) outc('+');
+						outd(val);
 					} else {
 						out(idxregname(n->u.var.reg));
 						val = n->u.var.off + offadj;
@@ -946,7 +968,10 @@ emitasm(char *tpl, Expr *e)
 				out("?null?");
 			}
 		} else {
-			outc(*p++);
+			char *run = p;
+			while (*p && *p != '$' && *p != '%')
+				p++;
+			emitspan(run, p);
 		}
 	}
 }

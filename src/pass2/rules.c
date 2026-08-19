@@ -105,6 +105,7 @@
  * fragment in the long rules, which is exactly what this table is for.
  */
 #define F_EXX          "\307"	/*  exx */
+#define F_LDHLL4       "\310"	/*  ld hl,($LL) */
 
 char *fragtab[] = {
 	0,
@@ -179,6 +180,7 @@ char *fragtab[] = {
 	"\tld $u,($L+)\n",	/* F_LDUL */
 	"\trla\n",	/* F_RLA */
 	"\texx\n",	/* F_EXX */
+	"\tld hl,($LL)\n",	/* F_LDHLL4 */
 };
 
 #define T_SAVE_HL	F_LDDH F_LDEL
@@ -1692,7 +1694,8 @@ struct rule rules[] = {
 	 * absolute load the Z80 has and bit has no absolute form, so
 	 * pointing HL at it first would cost what it saved.
 	 */
-	R(AND,DEREF,P_POW2,INDEX,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
+	R(AND,DEREF,P_POW2,INDEX,0,9, AND, P_L, P_R, P_LL, RF_POW2 | RF_IX, "\tbit $R,($LL)\n", F_NZ),
+	R(AND,DEREF,P_POW2,INDEX,0,9, AND, P_L, P_R, P_NONE, RF_POW2, F_LDALL "\tbit $R,a\n", F_NZ),
 	R(AND,DEREF,P_POW2,REGVAR,0,9, AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
 		"\tbit $R,(ix+0)\n", F_NZ),
 	R(AND,DEREF,P_POW2,INHL,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
@@ -2202,15 +2205,18 @@ struct rule rules[] = {
 	 */
 	R(ASSIGN,INDEX,P_NUM,0,0,17, ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
 	R(ASSIGN,INDEX,P_NUM,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$R\n", 0),
-	R(ASSIGN,INDEX,P_NUM,0,0,18, ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
+	R(ASSIGN,INDEX,P_NUM,0,0,18, ASSIGN, P_L, P_R, P_L, RF_IX, RT325, R_HL),
+	R(ASSIGN,INDEX,P_NUM,0,0,18, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
 	R(ASSIGN,INDEX,P_NUM,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0),
-	R(ASSIGN,INDEX,INHL,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLL, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,1, ASSIGN, P_L, P_R, P_L, RF_IX, F_LDLL, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDLA1, R_HL),
 	/*
 	 * These stored from a register and left the value in it, so they
 	 * name it.  Claiming whatever register the node was aimed at
 	 * would hand the parent one that was never written.
 	 */
-	R(ASSIGN,INDEX,INHL,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,2, ASSIGN, P_L, P_R, P_L, RF_IX, T_IDX_S_ST, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
 	/*
 	 * A frame slot assigned a frame slot's address - "p = &v".  A
 	 * bare index is a place, not a value; reading one is a DEREF
@@ -2219,10 +2225,14 @@ struct rule rules[] = {
 	 * arises from address-of, and loading through the right operand
 	 * made "p = &v" mean "p = v".
 	 */
-	R(ASSIGN,INDEX,INDEX,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,INDEX,INDEX,0,0,2, ASSIGN, P_L, P_R, P_L, RF_IX,
 		T_IDX_R_ADDR T_IDX_S_ST, R_HL),
-	R(ASSIGN,INDEX,INDE,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
-	R(ASSIGN,INDEX,INBC,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
+	R(ASSIGN,INDEX,INDEX,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		T_IDX_R_ADDR F_LDLHL, R_HL),
+	R(ASSIGN,INDEX,INDE,0,0,2, ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
+	R(ASSIGN,INDEX,INDE,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDLHL F_EXDEHL, R_DE),
+	R(ASSIGN,INDEX,INBC,0,0,2, ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
+	R(ASSIGN,INDEX,INBC,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, T_BC_HL F_LDLHL, R_BC),
 
 	/* store to symref */
 	R(ASSIGN,SYMREF,INA,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
@@ -2320,7 +2330,8 @@ struct rule rules[] = {
 	 */
 	R(ASSIGN,SYMREF,INBC,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),bc\n", R_BC),
 	R(ASSIGN,INDEX,INBC,0,0,17, ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
-	R(ASSIGN,INDEX,INBC,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
+	R(ASSIGN,INDEX,INBC,0,0,1, ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ($L),c\n", 0),
+	R(ASSIGN,INDEX,INBC,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
 	R(ASSIGN,SYMREF,P_NUM,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
 	/*
 	 * A byte in A stored to a word.  This is what a truth test or a
@@ -2331,8 +2342,10 @@ struct rule rules[] = {
 	 */
 	R(ASSIGN,SYMREF,INA,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLA F_LDH0 F_LDLHL, R_HL),
-	R(ASSIGN,INDEX,INA,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,INDEX,INA,0,0,2, ASSIGN, P_L, P_R, P_L, RF_IX,
 		F_LDLA F_LDH0 T_IDX_S_ST, R_HL),
+	R(ASSIGN,INDEX,INA,0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLA F_LDH0 F_LDLHL, R_HL),
 
 	/* load constant to register variable */
 	R(ASSIGN,REGVAR,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, RT162, R_IX),
@@ -2376,7 +2389,7 @@ struct rule rules[] = {
 	 * that stood beside it went the same way.
 	 */
 	R(ASSIGN,INDEX,REGVAR,0,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n" F_POPHL T_IDX_S_ST, R_HL),
+		"\tpush ix\n" F_POPHL F_LDAL F_LDLA1 F_LDAH "\tld ($L+),a\n", R_HL),
 	/*
 	 * "p + n" folds into an indexed location, so assigning one back
 	 * is how a pointer step arrives here.  The base register of that
@@ -2606,11 +2619,15 @@ struct rule rules[] = {
 	R(ASSIGN,DEREF,INHL,SYMREF,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall qst\n",
 		R_HL),
-	R(ASSIGN,DEREF,INHL,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INHL,INDEX,0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
 		"\tcall qst\n", R_HL),
-	R(ASSIGN,DEREF,P_NUM,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INHL,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_PUSHHL F_LDHLL4 "\tex (sp),hl\n\tcall qst\n", R_HL),
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 T_ST_IHL_N, 0),
 	/*
 	 * And through the index register home.  "cp->value = value" in
 	 * pass1's addCase, with cp a register pointer into the case
@@ -2775,12 +2792,18 @@ struct rule rules[] = {
 	 * parameter, say.  Load it first; the HL form has to shuffle
 	 * through DE because HL is holding the value.
 	 */
-	R(ASSIGN,DEREF,P_NUM,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 F_LDHLRL F_INCHL F_LDHLRH, 0),
-	R(ASSIGN,DEREF,INHL,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 F_LDHLRL F_INCHL F_LDHLRH, 0),
+	R(ASSIGN,DEREF,INHL,INDEX,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld e,($LL)\n\tld d,($LL+)\n" F_EXDEHL F_LDHLE F_INCHL F_LDHLD, 0),
-	R(ASSIGN,DEREF,P_NUM,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INHL,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDALL "\tld e,a\n" "\tld a,($LL+)\n" "\tld d,a\n" F_EXDEHL F_LDHLE F_INCHL F_LDHLD, 0),
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 "\tld (hl),$R\n", 0),
+	R(ASSIGN,DEREF,P_NUM,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 "\tld (hl),$R\n", 0),
 	/*
 	 * R_A, and not 0: the value of a store is what was stored, and
 	 * that is the byte in a.  With 0 the value came from e->tgt,
@@ -2797,29 +2820,41 @@ struct rule rules[] = {
 	 * same loop was right or wrong according to how many register
 	 * variables the function declared.
 	 */
-	R(ASSIGN,DEREF,INA,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INA,INDEX,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 F_LDHLA, R_A),
+	R(ASSIGN,DEREF,INA,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 F_LDHLA, R_A),
 	/*
 	 * The same with the value in HL, narrowing to its low byte.  The
 	 * word form above is here and the byte one was not, so storing a
 	 * byte through a pointer in a frame slot emitted nothing.  Take
 	 * the byte out of L before loading the pointer, which wants HL.
 	 */
-	R(ASSIGN,DEREF,INHL,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INHL,INDEX,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAL F_LDLLL F_LDHLL1 F_LDHLA, R_A),
+	R(ASSIGN,DEREF,INHL,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAL F_LDHLL4 F_LDHLA, R_A),
 	/*
 	 * A register variable stored through a pointer in a frame slot,
 	 * narrowing on the way - "where[0] = v" with v in BC.  Load the
 	 * value out of BC before the pointer, since the pointer wants HL.
 	 */
-	R(ASSIGN,DEREF,INBC,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INBC,INDEX,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAC F_LDLLL F_LDHLL1 F_LDHLA, R_A),
-	R(ASSIGN,DEREF,INBC,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INBC,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAC F_LDHLL4 F_LDHLA, R_A),
+	R(ASSIGN,DEREF,INBC,INDEX,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", R_BC),
-	R(ASSIGN,DEREF,INDE,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INBC,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", R_BC),
+	R(ASSIGN,DEREF,INDE,INDEX,0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 F_LDHLE, R_DE),
-	R(ASSIGN,DEREF,INDE,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+	R(ASSIGN,DEREF,INDE,INDEX,0,1, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 F_LDHLE, R_DE),
+	R(ASSIGN,DEREF,INDE,INDEX,0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDLLL F_LDHLL1 F_LDHLE F_INCHL F_LDHLD, R_DE),
+	R(ASSIGN,DEREF,INDE,INDEX,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLL4 F_LDHLE F_INCHL F_LDHLD, R_DE),
 
 	/* indirect stores via HL */
 	/*
@@ -2907,7 +2942,8 @@ struct rule rules[] = {
 		T_IDX_R_ADDR "\tld c,l\n\tld b,h\n", R_BC),
 	R(ASSIGN,INHL,INDEX,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR, R_HL),
 	R(ASSIGN,INDE,INDEX,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR F_EXDEHL, R_DE),
-	R(ASSIGN,INDEX,SYMREF,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
+	R(ASSIGN,INDEX,SYMREF,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, RT325, R_HL),
+	R(ASSIGN,INDEX,SYMREF,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
 	/* one symbol's address into another symbol's storage - "lp = &g" */
 	R(ASSIGN,SYMREF,SYMREF,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
 	R(ASSIGN,INBC,SYMREF,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
@@ -3017,7 +3053,19 @@ struct rule rules[] = {
 	 */
 	R(DEREF,INDEX,0,0,0,9, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 F_ORA, F_NZ),
 	R(DEREF,INDEX,0,0,0,10, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tor ($L+)\n", F_NZ),
-	R(DEREF,INDEX,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	/*
+	 * A frame slot as a word: the Z280's SR mode reaches it in one
+	 * instruction, ld hl,(sp+dd), where the Z80 byte pair read
+	 * (iy+d) two at a time.  A pointer member - INDEX whose register
+	 * is IX - has no such form and keeps the byte pair.  The DE case
+	 * loads through A, because HL holds the left operand that a DE
+	 * target exists to preserve, and A is the scratch it can clobber.
+	 */
+	R(DEREF,INDEX,0,0,0,2, DEREF, P_L, P_NONE, P_L, RF_IX|RF_TDE, RT71, 0),
+	R(DEREF,INDEX,0,0,0,2, DEREF, P_L, P_NONE, P_L, RF_IX, RT71, 0),
+	R(DEREF,INDEX,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE,
+		F_LDAL1 "\tld e,a\n" "\tld a,($L+)\n" "\tld d,a\n", R_DE),
+	R(DEREF,INDEX,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_LDHLL2, R_HL),
 	/*
 	 * Of the 8-bit registers only A can load from an absolute address,
 	 * but the pairs all can, so ld de,(nn) reaches E without touching
@@ -3036,7 +3084,8 @@ struct rule rules[] = {
 
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
 	R(DEREF,SYMREF,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
-	R(DEREF,INDEX,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
+	R(DEREF,INDEX,0,0,0,1, DEREF, P_L, P_NONE, P_L, RF_IX|RF_TDE, "\tld e,($L)\n", R_E),
+	R(DEREF,INDEX,0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDHLL2 F_LDEL, R_E),
 	/* the plain load: a byte local reaching A, as D(O):b does for a
 	 * global.  Without it a byte local could only be read by the rules
 	 * that match its parent too, so SEXT of one had nothing to widen */
@@ -3155,7 +3204,8 @@ struct rule rules[] = {
 	R(WIDEN,INHL,0,0,0,34, WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
 	R(WIDEN,REGVAR,0,0,0,2, WIDEN, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
 	R(WIDEN,INBC,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
-	R(WIDEN,INDEX,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R(WIDEN,INDEX,0,0,0,66, WIDEN, P_L, P_NONE, P_L, RF_IX, RT71, 0),
+	R(WIDEN,INDEX,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, F_LDHLL2, 0),
 	R(WIDEN,SYMREF,0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, RT69, 0),
 	R(WIDEN,INHL,0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
 	/* an unsigned word widened: the high half is nothing, which is
@@ -3180,7 +3230,8 @@ struct rule rules[] = {
 	 */
 	R(SEXT,INBC,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
 	/* and from a frame slot, where it is the same load D(I):s makes */
-	R(SEXT,INDEX,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R(SEXT,INDEX,0,0,0,66, SEXT, P_L, P_NONE, P_L, RF_IX, RT71, 0),
+	R(SEXT,INDEX,0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, F_LDHLL2, 0),
 	/* a symbol's address widened to a word, which is what taking a
 	 * function's address for a function pointer comes to */
 	R(SEXT,SYMREF,0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0, RT69, 0),
@@ -3308,9 +3359,13 @@ struct rule rules[] = {
 	 * it, and jumped on whatever flags inc hl had left.  See
 	 * PREINCBUG.
 	 */
-	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_L, RF_IX,
 	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
+	R(PREINC,INDEX,0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld a,($L)\n\tld $t,a\n\tld a,($L+)\n\tld $u,a\n"
+	  "\tinc $T\n"
+	  "\tld a,$t\n\tld ($L),a\n\tld a,$u\n\tld ($L+),a\n", 0),
 	/*
 	 * A byte step on a frame slot needs no register at all: inc/dec
 	 * (iy+d) is one read-modify-write and it sets Z itself.  Where
@@ -3441,9 +3496,13 @@ struct rule rules[] = {
 	 * update is undone afterwards - one byte, against a push/pop pair
 	 * or a shuffle through DE.
 	 */
-	R(POSTINC,INDEX,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+	R(POSTINC,INDEX,0,0,0,2, POSTINC, P_L, P_NONE, P_L, RF_IX,
 	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n\tdec $T\n", 0),
+	R(POSTINC,INDEX,0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld a,($L)\n\tld $t,a\n\tld a,($L+)\n\tld $u,a\n"
+	  "\tinc $T\n"
+	  "\tld a,$t\n\tld ($L),a\n\tld a,$u\n\tld ($L+),a\n\tdec $T\n", 0),
 	R(POSTINC,INDEX,0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
 	R(POSTINC,INDEX,0,0,0,9, POSTINC, P_L, P_NONE, P_NONE, 0,
 	  F_LDAL1 "\tinc ($L)\n" F_ORA, F_NZ),
@@ -3516,9 +3575,13 @@ struct rule rules[] = {
 		"\tdec ix\n\tpush ix\n" F_POPHL, R_HL),
 	R(PREDEC,DEREF,0,REGVAR,0,2, PREDEC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_DECHL T_IXP_ST, R_HL),
-	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_L, RF_IX,
 	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n", 0),
+	R(PREDEC,INDEX,0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld a,($L)\n\tld $t,a\n\tld a,($L+)\n\tld $u,a\n"
+	  "\tdec $T\n"
+	  "\tld a,$t\n\tld ($L),a\n\tld a,$u\n\tld ($L+),a\n", 0),
 	R(PREDEC,INDEX,0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
 	R(PREDEC,INDEX,0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, F_NZ),
 	R(PREDEC,INDEX,0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
@@ -3565,9 +3628,13 @@ struct rule rules[] = {
 		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
 	R(POSTDEC,DEREF,0,REGVAR,0,2, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_DECHL T_IXP_ST F_INCHL, R_HL),
-	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_L, RF_IX,
 	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
+	R(POSTDEC,INDEX,0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld a,($L)\n\tld $t,a\n\tld a,($L+)\n\tld $u,a\n"
+	  "\tdec $T\n"
+	  "\tld a,$t\n\tld ($L),a\n\tld a,$u\n\tld ($L+),a\n\tinc $T\n", 0),
 	R(POSTDEC,INDEX,0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
 	R(POSTDEC,INDEX,0,0,0,9, POSTDEC, P_L, P_NONE, P_NONE, 0,
 	  F_LDAL1 "\tdec ($L)\n" F_ORA, F_NZ),

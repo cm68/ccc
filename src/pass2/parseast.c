@@ -432,6 +432,8 @@ savesbc(void)
 void
 emitprolog(void)
 {
+	stackdepth = 0;
+
 	/*
 	 * Emit the function label: one colon keeps it in this file, two
 	 * export it.
@@ -571,6 +573,13 @@ emitprolog(void)
 		if (rest > 0)
 			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
 			    rest);
+		/*
+		 * SP sits -off bytes below IY: the scalar area plus the
+		 * callee saves, then the leftover arrays (rest) if any.
+		 * That total is what every slot's SP-relative displacement
+		 * is built from.
+		 */
+		stackdepth = -off + (rest > 0 ? rest : 0);
 	}
 
 	/* Stage params from stack to registers.  The walk runs from the
@@ -589,23 +598,19 @@ emitprolog(void)
 		w = sp->width;
 
 		if (ISBYTE(w)) {
-			/* Byte: ld r,(iy+off) */
-			out("\tld\t");
-			switch (r) {
-			case R_B: outc('b'); break;
-			case R_C: outc('c'); break;
-			}
-			outf(",(iy+%d)\n", off);
+			/* Byte: SR mode reaches only A, so load through it */
+			outf("\tld\ta,(sp+%d)\n\tld\t%c,a\n", off + stackdepth,
+			    r == R_B ? 'b' : 'c');
 		} else {
-			/* Word: load low then high */
+			/* Word: SR mode reaches only HL, so load it and move on */
 			switch (r) {
 			case R_BC:
-				outf("\tld\tc,(iy+%d)\n\tld\tb,(iy+%d)\n",
-				    off, off + 1);
+				outf("\tld\thl,(sp+%d)\n\tld\tc,l\n\tld\tb,h\n",
+				    off + stackdepth);
 				break;
 			case R_IX:
-				outf("\tld\tl,(iy+%d)\n\tld\th,(iy+%d)\n\tpush\thl\n\tpop\tix\n",
-				    off, off + 1);
+				outf("\tld\thl,(sp+%d)\n\tpush\thl\n\tpop\tix\n",
+				    off + stackdepth);
 				break;
 			}
 		}
