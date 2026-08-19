@@ -33,6 +33,7 @@
 #define IOUTW       18
 #define ITSTI       19
 #define IMULDIV     20
+#define IADDW       21
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -159,6 +160,11 @@ struct instruct isr_table[] = {
 	{ IMULDIV, "multu", 0xC1, 0 },
 	{ IMULDIV, "div", 0xC4, 1 },
 	{ IMULDIV, "divu", 0xC5, 1 },
+
+	/* Z280 16-bit arithmetic: base opcode, destination is HL */
+	{ IADDW, "addw", 0xC6, 0 },
+	{ IADDW, "subw", 0xCE, 0 },
+	{ IADDW, "cpw", 0xC7, 0 },
 
 	{ IEND, "", 0x00, 0x00}
 };
@@ -1108,6 +1114,75 @@ struct instruct *isr;
 	return 0;
 }
 
+/*
+ * Z280 16-bit arithmetic: ADDW/SUBW/CPW.  The destination is always
+ * HL and may be spelled out.  Register and (hl) forms only; the
+ * memory modes (IM/DA/X/RA) take their own arms later.
+ */
+static char
+do_addw(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	/* "ADDW HL,src" — the destination spelled out */
+	if (arg == T_HL && peekchar() == ',') {
+		need(',');
+		arg = operand(&value);
+	}
+
+	if (arg >= T_BC && arg <= T_SP) {
+		/* R RR: ED <base + rr*16>, rr = BC/DE/HL/SP */
+		emitbyte(0xED);
+		emitbyte(isr->opcode + ((arg - T_BC) << 4));
+	} else if (arg == T_IX || arg == T_IY) {
+		/* R XY: DD/FD ED <base + 0x20> */
+		emitbyte(arg == T_IX ? 0xDD : 0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + 0x20);
+	} else if (arg == T_HL_I) {
+		/* IR (HL): DD ED <base> */
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode);
+	} else if (arg == T_PLAIN) {
+		/* IM: FD ED <base + 0x30> <imm16> */
+		emitbyte(0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + 0x30);
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
+	} else if (arg == T_INDIR) {
+		/* DA: DD ED <base + 0x10> <addr16> */
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + 0x10);
+		emit_exp(2, &value);
+	} else if (arg == T_IX_D || arg == T_IY_D) {
+		/* X: FD ED <base + 0x00/0x10> <disp16> (always 16-bit) */
+		emitbyte(0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + (arg == T_IX_D ? 0x00 : 0x10));
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
+	} else if (arg == T_PC_D) {
+		/* RA: DD ED <base + 0x30> <disp16>, symbol swizzled */
+		int dist = value.num.w;
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + 0x30);
+		if (value.sym)
+			dist = value.sym->value + value.num.w - (cur_address + 2);
+		emitbyte(dist & 0xff);
+		emitbyte((dist >> 8) & 0xff);
+	} else
+		return 1;
+	return 0;
+}
+
 static char
 do_exch(isr)
 struct instruct *isr;
@@ -1251,7 +1326,8 @@ static char (*isr_handlers[])() = {
 	do_inw,
 	do_outw,
 	do_tsti,
-	do_muldiv
+	do_muldiv,
+	do_addw
 };
 
 /*
