@@ -395,6 +395,14 @@ static char RT85[] = F_EXX "\tld ($L),hl\n" F_EXX "\tld ($L++),hl\n";
  * template serves IY and IX and the rule takes RF_IXIY.
  */
 static char RT87[] = "\tcall qst$Lr\n\t.db $Lo\n";
+/*
+ * The SP-relative frame forms of the long load and store.  LDA works
+ * out the slot address in one instruction, then the plain qld/qst do
+ * the move - no qldsp/qstsp helpers, and no inline byte moves.  The
+ * store parks the low word on the stack first, since LDA wants HL.
+ */
+static char RT87F[] = F_PUSHHL "\tlda hl,($L)\n\tex (sp),hl\n\tcall qst\n";
+static char RT88[] = "\tlda hl,($L)\n\tcall qld\n";
 
 #ifdef DEBUG
 /* the patterns as written, for the rule trace */
@@ -2434,14 +2442,18 @@ struct rule rules[] = {
 	 * libcpm's fseek left its condition unreduced.
 	 */
 	R(ASSIGN,SYMREF,INHL,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT85, R_HL),
-	R(ASSIGN,INDEX,INHL,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IX, RT87, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT87F, R_HL),
 	R(ASSIGN,SYMREF,CODE,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT85, R_HL),
-	R(ASSIGN,INDEX,CODE,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, R_HL),
+	R(ASSIGN,INDEX,CODE,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IX, RT87, R_HL),
+	R(ASSIGN,INDEX,CODE,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT87F, R_HL),
 	R(ASSIGN,SYMREF,INHL,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
-	R(ASSIGN,INDEX,INHL,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, 0),
+	R(ASSIGN,INDEX,INHL,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IX, RT87, 0),
+	R(ASSIGN,INDEX,INHL,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87F, 0),
 	/* the long helpers hand back a CODE that never passed through the
 	 * step() loop that would have made it an INHL */
-	R(ASSIGN,INDEX,CODE,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, 0),
+	R(ASSIGN,INDEX,CODE,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IX, RT87, 0),
+	R(ASSIGN,INDEX,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87F, 0),
 	R(ASSIGN,SYMREF,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
 	/* the value form: store, then put the constant back in HL:DE */
 	R(ASSIGN,INDEX,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
@@ -3003,8 +3015,9 @@ struct rule rules[] = {
 	 */
 	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
 		F_EXX F_LDHLL2 F_EXX F_LDHLL3, R_HL),
-	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IXIY,
-		"\tcall qld$Lr\n\t.db $Lo\n", R_HL),
+	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IX,
+		"\tcall qldix\n\t.db $Lo\n", R_HL),
+	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, RT88, R_HL),
 	/* through a pointer already in HL */
 	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall qld\n", R_HL),
 	/* and through the other register home - doprnt reads its long
