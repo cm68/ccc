@@ -29,6 +29,10 @@
 #define IEXCH       14
 #define IINTMODE    15
 #define ILOAD       16
+#define IINW        17
+#define IOUTW       18
+#define ITSTI       19
+#define IMULDIV     20
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -143,7 +147,19 @@ struct instruct isr_table[] = {
 	
 	/* load instructions */
 	{ ILOAD, "ld", 0x00, 0x00 },
-	
+
+	/* Z280 word input/output */
+	{ IINW, "inw", 0xB7, 0 },
+	{ IOUTW, "outw", 0xBF, 0 },
+	{ ITSTI, "tsti", 0x70, 0 },
+
+	/* Z280 multiply/divide: base opcode; arg says which optional
+	 * prefix - 0 for "A," (multiply), 1 for "HL," (divide) */
+	{ IMULDIV, "mult", 0xC0, 0 },
+	{ IMULDIV, "multu", 0xC1, 0 },
+	{ IMULDIV, "div", 0xC4, 1 },
+	{ IMULDIV, "divu", 0xC5, 1 },
+
 	{ IEND, "", 0x00, 0x00}
 };
 
@@ -214,6 +230,11 @@ extern unsigned char skipwhite();
 
 #define T_NUM   (T_BIAS + 43)
 #define T_C_I   (T_BIAS + 36)
+#define T_SP_D  (T_BIAS + 44)	/* Z280 (SP + dd): stack relative */
+#define T_PC_D  (T_BIAS + 45)	/* Z280 (PC + expr): PC relative (RA) */
+#define T_HL_IX (T_BIAS + 46)	/* Z280 (HL + IX): base index */
+#define T_HL_IY (T_BIAS + 47)	/* Z280 (HL + IY): base index */
+#define T_IX_IY (T_BIAS + 48)	/* Z280 (IX + IY): base index */
 
 /*
  * store indirect
@@ -912,6 +933,158 @@ struct instruct *isr;
 	return 0;
 }
 
+/*
+ * Z280 word input: INW HL,(C)
+ */
+static char
+do_inw(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg != T_HL)
+		return 1;
+	need(',');
+	arg = operand(&value);
+	if (arg != T_C_I)
+		return 1;
+	emitbyte(0xED);
+	emitbyte(isr->opcode);
+	return 0;
+}
+
+/*
+ * Z280 word output: OUTW (C),HL
+ */
+static char
+do_outw(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg != T_C_I)
+		return 1;
+	need(',');
+	arg = operand(&value);
+	if (arg != T_HL)
+		return 1;
+	emitbyte(0xED);
+	emitbyte(isr->opcode);
+	return 0;
+}
+
+/*
+ * Z280 test input: TSTI (C)
+ */
+static char
+do_tsti(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg != T_C_I)
+		return 1;
+	emitbyte(0xED);
+	emitbyte(isr->opcode);
+	return 0;
+}
+
+/*
+ * Z280 multiply/divide: MULT/MULTU A,r -> HL, DIV/DIVU HL,r -> HL.
+ * The destination (A for multiply, HL for divide) may be spelled out,
+ * followed by a comma; otherwise the source is the only operand.  The
+ * source is an 8-bit register, whose field goes in the low three bits
+ * of the second ED byte; (HL) is field 6.
+ */
+static char
+do_muldiv(isr)
+struct instruct *isr;
+{
+	unsigned char arg, want;
+	struct expval value;
+
+	arg = operand(&value);
+
+	/* "MULT A,src" / "DIV HL,src" — the destination is spelled out */
+	want = isr->arg ? T_HL : T_A;
+	if (arg == want && peekchar() == ',') {
+		need(',');
+		arg = operand(&value);
+	}
+
+	if (arg >= T_B && arg <= T_A) {
+		emitbyte(0xED);
+		emitbyte(isr->opcode + ((arg - T_B) << 3));
+	} else if (arg == T_SP_D) {
+		/* SR mode: DD ED <base> <disp16> */
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode);
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
+	} else if (arg == T_PC_D) {
+		/* RA mode: FD ED <base> <disp16>.  A symbol is swizzled
+		 * to sym - (next instruction); a number is the literal
+		 * displacement.  The next instruction is two bytes past
+		 * the FD ED <base> already emitted. */
+		int dist = value.num.w;
+		emitbyte(0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode);
+		if (value.sym)
+			dist = value.sym->value + value.num.w - (cur_address + 2);
+		emitbyte(dist & 0xff);
+		emitbyte((dist >> 8) & 0xff);
+	} else if (arg == T_INDIR) {
+		/* DA mode: DD ED <F8+delta> <addr16>, absolute with a
+		 * relocation for a forward symbol */
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(0xF8 + (isr->opcode - 0xC0));
+		emit_exp(2, &value);
+	} else if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY) {
+		/* BX mode: DD ED <C8/D0/D8 + delta>, register + register */
+		unsigned char op = arg == T_HL_IX ? 0xC8 :
+		                  arg == T_HL_IY ? 0xD0 : 0xD8;
+		emitbyte(0xDD);
+		emitbyte(0xED);
+		emitbyte(op + (isr->opcode - 0xC0));
+	} else if (arg == T_IX_D || arg == T_IY_D) {
+		/* SX mode: <DD/FD> ED <F0/F1 + delta> <disp8> */
+		if (arg == T_IX_D) {
+			emitbyte(0xDD);
+			emitbyte(0xED);
+			emitbyte(0xF0 + (isr->opcode - 0xC0));
+		} else {
+			emitbyte(0xFD);
+			emitbyte(0xED);
+			emitbyte(0xF1 + (isr->opcode - 0xC0));
+		}
+		emitbyte(value.num.w & 0xff);
+	} else if (arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
+		/* RX mode: index half-register.  The field is the same 4/5
+		 * as H/L, with a DD/FD prefix naming the index register. */
+		unsigned char field = (arg == T_IXH || arg == T_IYH) ? 4 : 5;
+		emitbyte((arg == T_IXH || arg == T_IXL) ? 0xDD : 0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->opcode + (field << 3));
+	} else if (arg == T_PLAIN) {
+		/* IM mode: FD ED <F9 + delta> <imm8> */
+		emitbyte(0xFD);
+		emitbyte(0xED);
+		emitbyte(0xF9 + (isr->opcode - 0xC0));
+		emitbyte(value.num.w & 0xff);
+	} else
+		return 1;
+	return 0;
+}
+
 static char
 do_exch(isr)
 struct instruct *isr;
@@ -1051,7 +1224,11 @@ static char (*isr_handlers[])() = {
 	do_out,
 	do_exch,
 	do_intmode,
-	do_load
+	do_load,
+	do_inw,
+	do_outw,
+	do_tsti,
+	do_muldiv
 };
 
 /*

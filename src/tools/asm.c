@@ -108,6 +108,11 @@ unsigned char operand();
 #define T_STR   (T_BIAS + 41)
 #define T_EOF   (T_BIAS + 42)
 #define T_LOCAL (T_BIAS + 43)  /* local label ref: Nf or Nb */
+#define T_SP_D  (T_BIAS + 44)  /* Z280 (SP + dd): stack relative */
+#define T_PC_D  (T_BIAS + 45)  /* Z280 (PC + expr): PC relative (RA) */
+#define T_HL_IX (T_BIAS + 46)  /* Z280 (HL + IX): base index */
+#define T_HL_IY (T_BIAS + 47)  /* Z280 (HL + IY): base index */
+#define T_IX_IY (T_BIAS + 48)  /* Z280 (IX + IY): base index */
 
 #ifdef DEBUG
 char *tokname[] = {
@@ -2159,27 +2164,101 @@ have_token:
 			indir++;
 		} else if (cur_token == T_NAME) {
             if (match(token_buf, "hl")) {
+                c = skipwhite();
+                if (c == '+') {
+                    /* Z280 base index: (hl+ix) or (hl+iy) */
+                    nextchar();  /* consume + */
+                    c = skipwhite();
+                    get_token();
+                    if (cur_token == T_NAME && match(token_buf, "ix")) {
+                        need(')');
+                        return T_HL_IX;
+                    }
+                    if (cur_token == T_NAME && match(token_buf, "iy")) {
+                        need(')');
+                        return T_HL_IY;
+                    }
+                    gripe("expected ix or iy after hl+");
+                }
                 need(')');
                 return T_HL_I;
             } else if (match(token_buf, "c")) {
                 need(')');
                 return T_C_I;
-            } else if (match(token_buf, "sp")) {
-                need(')');
-                return T_SP_I;
             } else if (match(token_buf, "bc")) {
                 need(')');
                 return T_BC_I;
             } else if (match(token_buf, "de")) {
                 need(')');
                 return T_DE_I;
-            } else if (match(token_buf, "ix") || match(token_buf, "iy")) {
+            } else if (match(token_buf, "ix") || match(token_buf, "iy") ||
+                       match(token_buf, "sp")) {
 				/*
-				 * (ix+d) (ix-d) (iy+d) (iy-d)
-				 * handle expressions like (ix+1+-2) = (ix-1)
-				 * populate displacement and eat ')'
+				 * (ix+d) (ix-d) (iy+d) (iy-d) and the Z280's
+				 * (sp+dd): indexed / stack-relative with a constant
+				 * displacement.  Handle expressions like (ix+1+-2)
+				 * = (ix-1); populate displacement and eat ')'.
 				 */
-				ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
+				if (token_buf[0] == 'i' && token_buf[1] == 'x') {
+					/*
+					 * (ix) is base-index (ix+iy) or short-index
+					 * (ix+d).  A '+' whose first term is the
+					 * register iy is BX; anything else is a
+					 * constant displacement.  Read it here so the
+					 * two can be told apart without token pushback.
+					 */
+					ret = T_IX_D;
+					vp->num.w = 0;
+					c = skipwhite();
+					if (c == '+' || c == '-') {
+						int first = 1;
+						while (c == '+' || c == '-') {
+							char op = c;
+							int sign = 1;
+							nextchar();
+							c = skipwhite();
+							if (c == '-') {
+								sign = -1;
+								nextchar();
+							} else if (c == '+') {
+								nextchar();
+							}
+							get_token();
+							if (first && op == '+' &&
+							    cur_token == T_NAME &&
+							    match(token_buf, "iy")) {
+								need(')');
+								return T_IX_IY;
+							}
+							if (cur_token == T_NAME) {
+								struct symbol *sym =
+								    sym_fetch(token_buf);
+								if (sym && sym->seg == SEG_ABS) {
+									token_val = sym->value;
+									cur_token = T_NUM;
+								}
+							}
+							if (cur_token != T_NUM)
+								gripe("index displacement must be constant");
+							i = sign * token_val;
+							if (op == '-')
+								vp->num.w -= i;
+							else
+								vp->num.w += i;
+							c = skipwhite();
+							first = 0;
+						}
+					} else {
+						ret = T_IX_I;
+					}
+					need(')');
+					return ret;
+				}
+				if (token_buf[0] == 's') {
+					ret = T_SP_D;
+				} else {
+					ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
+				}
 				vp->num.w = 0;
 				c = skipwhite();
 				if ((c == '+') || (c == '-')) {
@@ -2218,10 +2297,65 @@ have_token:
 					}
 				} else {
 					/* no displacement - convert to indirect */
-					ret = (ret == T_IX_D) ? T_IX_I : T_IY_I;
+					if (token_buf[0] == 's')
+						ret = T_SP_I;
+					else
+						ret = (ret == T_IX_D) ? T_IX_I : T_IY_I;
 				}
 				need(')');
             	return ret;
+			} else if (match(token_buf, "pc")) {
+				/*
+				 * (pc + expr): Z280 PC-relative (RA).  A number is
+				 * a literal displacement from the next instruction;
+				 * a symbol is an address, and the encoder swizzles
+				 * it into sym - (next instruction).  Store the two
+				 * the way a plain operand does - sym plus a numeric
+				 * offset - so the encoder can tell which it has.
+				 */
+				ret = T_PC_D;
+				vp->num.w = 0;
+				vp->sym = 0;
+				c = skipwhite();
+				if (c == '+' || c == '-') {
+					while (c == '+' || c == '-') {
+						char op = c;
+						int sign = 1;
+						nextchar();  /* consume +/- */
+						c = skipwhite();
+						/* handle signed number like +-2 */
+						if (c == '-') {
+							sign = -1;
+							nextchar();
+						} else if (c == '+') {
+							nextchar();
+						}
+						get_token();
+						if (cur_token == T_NUM) {
+							i = sign * token_val;
+						} else if (cur_token == T_NAME) {
+							struct symbol *sym = sym_fetch(token_buf);
+							if (sign < 0) {
+								gripe("PC-relative symbol cannot be negated");
+							}
+							if (!sym)
+								sym = sym_update(token_buf, SEG_UNDEF, 0, 0);
+							if (vp->sym && vp->sym != sym)
+								gripe("PC-relative takes one symbol");
+							vp->sym = sym;
+							i = 0;
+						} else {
+							gripe("expected number or symbol after +");
+						}
+						if (op == '-')
+							vp->num.w -= i;
+						else
+							vp->num.w += i;
+						c = skipwhite();
+					}
+				}
+				need(')');
+				return ret;
 			} else {
 				indir++;
 				/* fall through */
