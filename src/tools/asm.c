@@ -113,6 +113,7 @@ unsigned char operand();
 #define T_HL_IX (T_BIAS + 46)  /* Z280 (HL + IX): base index */
 #define T_HL_IY (T_BIAS + 47)  /* Z280 (HL + IY): base index */
 #define T_IX_IY (T_BIAS + 48)  /* Z280 (IX + IY): base index */
+#define T_HL_D  (T_BIAS + 49)  /* Z280 (HL + dd): indexed, 16-bit */
 
 #ifdef DEBUG
 char *tokname[] = {
@@ -2164,24 +2165,61 @@ have_token:
 			indir++;
 		} else if (cur_token == T_NAME) {
             if (match(token_buf, "hl")) {
+                /*
+                 * (hl) is IR, (hl+ix)/(hl+iy) base-index, or
+                 * (hl+dd) 16-bit indexed.  The first term after a +
+                 * tells a register (BX) from a constant displacement
+                 * (X); read it here for want of token pushback.
+                 */
+                ret = T_HL_D;
+                vp->num.w = 0;
                 c = skipwhite();
-                if (c == '+') {
-                    /* Z280 base index: (hl+ix) or (hl+iy) */
-                    nextchar();  /* consume + */
-                    c = skipwhite();
-                    get_token();
-                    if (cur_token == T_NAME && match(token_buf, "ix")) {
-                        need(')');
-                        return T_HL_IX;
+                if (c == '+' || c == '-') {
+                    int first = 1;
+                    while (c == '+' || c == '-') {
+                        char op = c;
+                        int sign = 1;
+                        nextchar();
+                        c = skipwhite();
+                        if (c == '-') {
+                            sign = -1;
+                            nextchar();
+                        } else if (c == '+') {
+                            nextchar();
+                        }
+                        get_token();
+                        if (first && op == '+' && cur_token == T_NAME &&
+                            match(token_buf, "ix")) {
+                            need(')');
+                            return T_HL_IX;
+                        }
+                        if (first && op == '+' && cur_token == T_NAME &&
+                            match(token_buf, "iy")) {
+                            need(')');
+                            return T_HL_IY;
+                        }
+                        if (cur_token == T_NAME) {
+                            struct symbol *sym = sym_fetch(token_buf);
+                            if (sym && sym->seg == SEG_ABS) {
+                                token_val = sym->value;
+                                cur_token = T_NUM;
+                            }
+                        }
+                        if (cur_token != T_NUM)
+                            gripe("index displacement must be constant");
+                        i = sign * token_val;
+                        if (op == '-')
+                            vp->num.w -= i;
+                        else
+                            vp->num.w += i;
+                        c = skipwhite();
+                        first = 0;
                     }
-                    if (cur_token == T_NAME && match(token_buf, "iy")) {
-                        need(')');
-                        return T_HL_IY;
-                    }
-                    gripe("expected ix or iy after hl+");
+                } else {
+                    ret = T_HL_I;
                 }
                 need(')');
-                return T_HL_I;
+                return ret;
             } else if (match(token_buf, "c")) {
                 need(')');
                 return T_C_I;

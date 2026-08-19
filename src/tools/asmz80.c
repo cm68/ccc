@@ -235,6 +235,7 @@ extern unsigned char skipwhite();
 #define T_HL_IX (T_BIAS + 46)	/* Z280 (HL + IX): base index */
 #define T_HL_IY (T_BIAS + 47)	/* Z280 (HL + IY): base index */
 #define T_IX_IY (T_BIAS + 48)	/* Z280 (IX + IY): base index */
+#define T_HL_D  (T_BIAS + 49)	/* Z280 (HL + dd): indexed, 16-bit */
 
 /*
  * store indirect
@@ -1082,6 +1083,13 @@ struct instruct *isr;
 			emitbyte(value.num.w & 0xff);
 			emitbyte((value.num.w >> 8) & 0xff);
 		}
+	} else if (arg == T_HL_D) {
+		/* X mode with HL: FD ED <D8 + delta> <disp16> */
+		emitbyte(0xFD);
+		emitbyte(0xED);
+		emitbyte(0xD8 + (isr->opcode - 0xC0));
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
 	} else if (arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
 		/* RX mode: index half-register.  The field is the same 4/5
 		 * as H/L, with a DD/FD prefix naming the index register. */
