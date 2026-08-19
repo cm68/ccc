@@ -91,7 +91,7 @@ static short savebase;		/* scalar area size: save slots below it */
  * a question for the first expression, one pass later.
  */
 static unsigned char framefree;
-static unsigned char regsused;	/* bitmask of callee-save regs */
+static unsigned short regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
 static short unwind;		/* bytes the exit helper unwinds before ret */
 
@@ -553,6 +553,10 @@ emitprolog(void)
 			outf("\tcall\tfenter%s\n", sfx);
 		else
 			outf("\tcall\t%s%s\n\t.dw\t%d  \n", h, sfx, -savebase);
+		/* IY is a register variable now; save it like the others,
+		 * inline, under the pair the helper just pushed */
+		if (regsused & REGBIT(R_IY))
+			out("\tpush\tiy\n");
 
 		off = -savebase;
 		if (savesbc()) {
@@ -567,6 +571,8 @@ emitprolog(void)
 			if (ixoff < -128)
 				out("\t.error scalar frame too large for IX restore\n");
 		}
+		if (regsused & REGBIT(R_IY))
+			off -= 2;
 		/* rest = arrays plus any unused save-slot bytes
 		 * (off is -savebase-pushed, so this is
 		 * framesize - savebase - pushed) */
@@ -584,7 +590,10 @@ emitprolog(void)
 		 * slots the caller pushed.
 		 */
 		stackdepth = -off + (rest > 0 ? rest : 0) - 2;
-		unwind = -off + (rest > 0 ? rest : 0) +
+		/* the exit helper runs after the inline pop iy, so the
+		 * saved IY is not part of what it has to unwind */
+		unwind = -off + (rest > 0 ? rest : 0) -
+		    (regsused & REGBIT(R_IY) ? 2 : 0) +
 		    (nparams == 0 ? 0 : (ISLONG(arg1w) ? 4 : 2));
 	}
 
@@ -615,8 +624,9 @@ emitprolog(void)
 				    off + stackdepth);
 				break;
 			case R_IX:
-				outf("\tld\thl,(sp+%d)\n\tpush\thl\n\tpop\tix\n",
-				    off + stackdepth);
+			case R_IY:
+				outf("\tld\thl,(sp+%d)\n\tpush\thl\n\tpop\t%s\n",
+				    off + stackdepth, r == R_IX ? "ix" : "iy");
 				break;
 			}
 		}
@@ -637,6 +647,8 @@ emitepilog(void)
 	 * saves to hand back, in the order that balances the entry.
 	 */
 	if (noframe) {
+		if (regsused & REGBIT(R_IY))
+			out("\tpop\tiy\n");
 		if (regsused & REGBIT(R_IX))
 			out("\tpop\tix\n");
 		if (savesbc())
@@ -670,8 +682,12 @@ emitepilog(void)
 	{
 	/*
 	 * One helper per save set; the spilled first argument is part of
-	 * the unwind amount, not a separate helper variant.
+	 * the unwind amount, not a separate helper variant.  IY was saved
+	 * inline after the entry helper, so it is popped inline first and
+	 * is left out of the unwind word.
 	 */
+	if (regsused & REGBIT(R_IY))
+		out("\tpop\tiy\n");
 	if (savesbc() || (regsused & REGBIT(R_IX))) {
 		char *h;
 

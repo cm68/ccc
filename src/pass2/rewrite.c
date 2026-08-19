@@ -18,6 +18,14 @@
 /* Label counter for short-circuit jumps */
 int labelcnt;		/* shared with lower.c */
 
+/*
+ * The index register a rule just matched: R_IX or R_IY, or 0 for a rule
+ * with no index-register requirement.  Set while the register constraint
+ * is checked, so $i/$I/$J can spell ix/iy, ixl/iyl, ixh/iyh in the
+ * template that follows.
+ */
+static char curidx;
+
 #ifdef DEBUG
 #include <stdio.h>
 
@@ -850,6 +858,23 @@ emitasm(char *tpl, Expr *e)
 				p++;
 				continue;
 			}
+			/* Index register substitution, for a rule that matched
+			 * RF_IXIY: $i the pair, $I the low byte, $J the high */
+			if (*p == 'i') {
+				out(curidx == R_IY ? "iy" : "ix");
+				p++;
+				continue;
+			}
+			if (*p == 'I') {
+				out(curidx == R_IY ? "iyl" : "ixl");
+				p++;
+				continue;
+			}
+			if (*p == 'J') {
+				out(curidx == R_IY ? "iyh" : "ixh");
+				p++;
+				continue;
+			}
 			/* collect path chars */
 			for (i = 0; i < 7 && (*p == 'L' || *p == 'R'); i++)
 				path[i] = *p++;
@@ -958,6 +983,26 @@ emitasm(char *tpl, Expr *e)
 					/* raw frame offset, for address
 					 * arithmetic templates */
 					outd(n->u.var.off + offadj);
+				} else if (n->op == REGVAR) {
+					/* a register variable's name: $r the
+					 * pair, $i/$j the index-register bytes */
+					if (mod == 'i' || mod == 'j') {
+						if (n->u.var.reg == R_IX ||
+						    n->u.var.reg == R_IY) {
+							out(idxregname(n->u.var.reg));
+							outc(mod == 'i' ? 'l' : 'h');
+						} else
+							out("?byte?");
+					} else {
+						switch (n->u.var.reg) {
+						case R_BC: out("bc"); break;
+						case R_DE: out("de"); break;
+						case R_HL: out("hl"); break;
+						case R_IX:
+						case R_IY: out(idxregname(n->u.var.reg)); break;
+						default: out("?reg?"); break;
+						}
+					}
 				} else {
 					/* template navigated to a node the
 					 * emitter can't print - make the
@@ -1073,6 +1118,7 @@ tryrule(struct rule *rp, Expr *e)
 	/* Match pattern */
 	if (!pmatch(rp, e))
 		return NULL;
+	curidx = 0;
 
 	/*
 	 * Check the register constraint.  A rule names at most one, so
@@ -1093,8 +1139,12 @@ tryrule(struct rule *rp, Expr *e)
 		if (want == RF_IXIY) {
 			if (have != R_IX && have != R_IY)
 				return NULL;
-		} else if (have != regwant[want >> 5])
-			return NULL;
+			curidx = have;
+		} else {
+			curidx = 0;
+			if (have != regwant[want >> 5])
+				return NULL;
+		}
 	}
 
 	/* Sign-bit tests are only valid on a signed operand */
@@ -1788,7 +1838,7 @@ step(Expr *e)
 		 * jp nz below it tested whatever flags happened to be set,
 		 * so the busy test never re-evaluated and the loop spun.
 		 */
-		else if (reg == R_IX) {
+		else if (reg == R_IX || reg == R_IY) {
 			e->op = REGVAR;
 			e->u.var.off = 0;
 		}

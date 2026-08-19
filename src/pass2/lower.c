@@ -203,7 +203,8 @@ reduced(Expr *e)
 		 * result left in IX now reduces to REGVAR rather than to
 		 * a CODE node.
 		 */
-		return e->u.var.reg == R_IX || e->u.var.reg == R_BC;
+		return e->u.var.reg == R_IX || e->u.var.reg == R_IY ||
+		    e->u.var.reg == R_BC;
 	}
 	return 0;
 }
@@ -1451,11 +1452,13 @@ valtohl(Expr *e)
 		return idxtohl(e);
 	if (e->op == INBC || e->op == INDE ||
 	    (e->op == REGVAR &&
-	     (e->u.var.reg == R_BC || e->u.var.reg == R_IX))) {
+	     (e->u.var.reg == R_BC || e->u.var.reg == R_IX ||
+	      e->u.var.reg == R_IY))) {
 		if (e->op == INDE)
 			out("\tld l,e\n\tld h,d\n");
-		else if (e->op == REGVAR && e->u.var.reg == R_IX)
-			out("\tpush ix\n\tpop hl\n");
+		else if (e->op == REGVAR &&
+		    (e->u.var.reg == R_IX || e->u.var.reg == R_IY))
+			outf("\tpush %s\n\tpop hl\n", idxregname(e->u.var.reg));
 		else
 			out("\tld l,c\n\tld h,b\n");
 		w = e->width;
@@ -2211,7 +2214,8 @@ spilled:	;
 			n = rewrite1(e->left->left);
 			e->left->left = n;
 			if (!(n->op == INDEX || n->op == INHL ||
-			      (n->op == REGVAR && n->u.var.reg == R_IX)))
+			      (n->op == REGVAR &&
+			       (n->u.var.reg == R_IX || n->u.var.reg == R_IY))))
 				e->left = rewrite1(e->left);
 			goto children_end;
 		} else if (e->left && e->left->op == REGVAR &&
@@ -2471,7 +2475,8 @@ spilled:	;
 		    e->left->op == DEREF && e->left->left &&
 		    (e->left->left->op == INBC ||
 		     (e->left->left->op == REGVAR &&
-		      e->left->left->u.var.reg == R_IX)))
+		      (e->left->left->u.var.reg == R_IX ||
+		       e->left->left->u.var.reg == R_IY))))
 			e->right = valtohl(e->right);
 
 		/*
