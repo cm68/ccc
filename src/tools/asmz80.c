@@ -34,6 +34,8 @@
 #define ITSTI       19
 #define IMULDIV     20
 #define IADDW       21
+#define IEI         22
+#define ILDCTL      23
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -61,13 +63,17 @@ struct instruct isr_table[] = {
 	{ IBASIC, "ccf", 0x3F, 0 },
 	{ IBASIC, "halt", 0x76, 0 },
 	{ IBASIC, "exx", 0xD9, 0 },
-	{ IBASIC, "di", 0xF3, 0 },
-	{ IBASIC, "ei", 0xFB, 0 },
-	
+	/* di/ei take an optional Z280 interrupt mask: opcode = plain,
+	 * arg = the ED second byte for the masked form */
+	{ IEI, "di", 0xF3, 0x7E },
+	{ IEI, "ei", 0xFB, 0x7F },
+
 	/* extended basic instructions */
 	{ IBASIC_EXT, "neg", 0x44, 0xED },
 	{ IBASIC_EXT, "retn", 0x44, 0xED },
 	{ IBASIC_EXT, "reti", 0x4D, 0xED },
+	{ IBASIC_EXT, "retil", 0x55, 0xED },
+	{ IBASIC_EXT, "pcache", 0x65, 0xED },
 	{ IBASIC_EXT, "rrd", 0x67, 0xED },
 	{ IBASIC_EXT, "rld", 0x6F, 0xED },
 	{ IBASIC_EXT, "ldi", 0xA0, 0xED },
@@ -166,6 +172,9 @@ struct instruct isr_table[] = {
 	{ IADDW, "subw", 0xCE, 0 },
 	{ IADDW, "cpw", 0xC7, 0 },
 
+	/* Z280 load control register */
+	{ ILDCTL, "ldctl", 0, 0 },
+
 	{ IEND, "", 0x00, 0x00}
 };
 
@@ -242,6 +251,7 @@ extern unsigned char skipwhite();
 #define T_HL_IY (T_BIAS + 47)	/* Z280 (HL + IY): base index */
 #define T_IX_IY (T_BIAS + 48)	/* Z280 (IX + IY): base index */
 #define T_HL_D  (T_BIAS + 49)	/* Z280 (HL + dd): indexed, 16-bit */
+#define T_USP   (T_BIAS + 50)	/* Z280 user stack pointer */
 
 /*
  * store indirect
@@ -1183,6 +1193,71 @@ struct instruct *isr;
 	return 0;
 }
 
+/*
+ * Z280 EI/DI with an optional interrupt mask.  A bare ei/di is the
+ * Z80 form; with a mask it is ED 7F/7E <mask>.
+ */
+static char
+do_ei(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg == 255) {
+		/* no mask: plain ei/di */
+		emitbyte(isr->opcode);
+	} else if (arg == T_PLAIN) {
+		emitbyte(0xED);
+		emitbyte(isr->arg);
+		emitbyte(value.num.w & 0xff);
+	} else
+		return 1;
+	return 0;
+}
+
+/*
+ * Z280 LDCTL dst,src: control-register transfer among (C), USP and
+ * HL/IX/IY.  The register names the control register; the second ED
+ * byte (6E/66/87/8F) distinguishes the direction.
+ */
+static char
+do_ldctl(isr)
+struct instruct *isr;
+{
+	unsigned char dst, src, reg, opcode;
+	struct expval value;
+
+	dst = operand(&value);
+	need(',');
+	src = operand(&value);
+
+	if (dst == T_C_I && (src == T_HL || src == T_IX || src == T_IY)) {
+		opcode = 0x6E; reg = src;
+	} else if ((dst == T_HL || dst == T_IX || dst == T_IY) &&
+	           src == T_C_I) {
+		opcode = 0x66; reg = dst;
+	} else if ((dst == T_HL || dst == T_IX || dst == T_IY) &&
+	           src == T_USP) {
+		opcode = 0x87; reg = dst;
+	} else if (dst == T_USP &&
+	           (src == T_HL || src == T_IX || src == T_IY)) {
+		opcode = 0x8F; reg = src;
+	} else
+		return 1;
+
+	if (reg == T_HL) {
+		emitbyte(0xED);
+		emitbyte(opcode);
+	} else {
+		emitbyte(reg == T_IX ? 0xDD : 0xFD);
+		emitbyte(0xED);
+		emitbyte(opcode);
+	}
+	return 0;
+}
+
 static char
 do_exch(isr)
 struct instruct *isr;
@@ -1246,6 +1321,10 @@ struct instruct *isr;
 
 	case 2:
 		emitbyte(isr->arg);
+		break;
+
+	case 3:
+		emitbyte(0x4E);
 		break;
 
 	default:
@@ -1327,7 +1406,9 @@ static char (*isr_handlers[])() = {
 	do_outw,
 	do_tsti,
 	do_muldiv,
-	do_addw
+	do_addw,
+	do_ei,
+	do_ldctl
 };
 
 /*
