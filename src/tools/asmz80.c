@@ -36,6 +36,7 @@
 #define IADDW       21
 #define IEI         22
 #define ILDCTL      23
+#define ILDA        24
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -174,6 +175,9 @@ struct instruct isr_table[] = {
 
 	/* Z280 load control register */
 	{ ILDCTL, "ldctl", 0, 0 },
+
+	/* Z280 load effective address: dst = HL, IX or IY */
+	{ ILDA, "lda", 0, 0 },
 
 	{ IEND, "", 0x00, 0x00}
 };
@@ -1451,6 +1455,55 @@ struct instruct *isr;
 	return 0;
 }
 
+/*
+ * Z280 load effective address: the address of the source operand lands
+ * in HL, IX or IY.  The code generator reaches two modes - SR, the
+ * frame-slot address, and X, the struct member - and DA is the absolute
+ * one, whose encoding is the same 21 nn as ld hl,nn.
+ */
+static char
+do_lda(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg == T_IX) {
+		emitbyte(0xDD);
+	} else if (arg == T_IY) {
+		emitbyte(0xFD);
+	} else if (arg != T_HL)
+		return 1;
+
+	need(',');
+	arg = operand(&value);
+
+	switch (arg) {
+	case T_SP_D:			/* lda hl,(sp+dd) = ED 02 dd16 */
+		emitbyte(0xED);
+		emitbyte(0x02);
+		break;
+	case T_IX_D:			/* lda hl,(ix+dd) = ED 2A dd16 */
+		emitbyte(0xED);
+		emitbyte(0x2A);
+		break;
+	case T_IY_D:			/* lda hl,(iy+dd) = ED 32 dd16 */
+		emitbyte(0xED);
+		emitbyte(0x32);
+		break;
+	case T_INDIR:			/* lda hl,(nn) = 21 nn */
+		emitbyte(0x21);
+		emit_exp(2, &value);
+		return 0;
+	default:
+		return 1;
+	}
+	emitbyte(value.num.w & 0xff);
+	emitbyte((value.num.w >> 8) & 0xff);
+	return 0;
+}
+
 static char (*isr_handlers[])() = {
 	0,
 	do_basic,
@@ -1475,7 +1528,8 @@ static char (*isr_handlers[])() = {
 	do_muldiv,
 	do_addw,
 	do_ei,
-	do_ldctl
+	do_ldctl,
+	do_lda
 };
 
 /*

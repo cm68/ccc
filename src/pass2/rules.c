@@ -245,9 +245,9 @@ char *fragtab[] = {
  */
 #define T_SZTAIL	F_JPM5 F_JR3 F_XORA
 /* the address of a frame slot, worked out into HL - left path */
-#define T_IDX_ADDR	F_PUSHLR F_POPHL F_LDDELO F_ADDHLDE
+#define T_IDX_ADDR	"\tlda hl,($L)\n"
 /* the same for the right operand, which is where address-of puts it */
-#define T_IDX_R_ADDR	"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
+#define T_IDX_R_ADDR	"\tlda hl,($R)\n"
 /* four bytes of a constant written through the address in HL */
 #define T_ST_IHL_N	F_LDHLR2 F_INCHL F_LDHLR3 F_INCHL F_LDHLRL F_INCHL F_LDHLRH
 /* address on the stack, value in HL -> address in HL, value in DE */
