@@ -1056,17 +1056,32 @@ struct instruct *isr;
 		emitbyte(0xED);
 		emitbyte(op + (isr->opcode - 0xC0));
 	} else if (arg == T_IX_D || arg == T_IY_D) {
-		/* SX mode: <DD/FD> ED <F0/F1 + delta> <disp8> */
-		if (arg == T_IX_D) {
-			emitbyte(0xDD);
-			emitbyte(0xED);
-			emitbyte(0xF0 + (isr->opcode - 0xC0));
+		/* SX (8-bit) when the displacement fits in a signed byte,
+		 * else X (16-bit).  The displacement is a constant - the
+		 * parser rejects forward symbols - so the choice is the same
+		 * in both passes and no relaxation is needed. */
+		short disp = (short)value.num.w;
+		if (disp >= -128 && disp <= 127) {
+			/* SX mode: <DD/FD> ED <F0/F1 + delta> <disp8> */
+			if (arg == T_IX_D) {
+				emitbyte(0xDD);
+				emitbyte(0xED);
+				emitbyte(0xF0 + (isr->opcode - 0xC0));
+			} else {
+				emitbyte(0xFD);
+				emitbyte(0xED);
+				emitbyte(0xF1 + (isr->opcode - 0xC0));
+			}
+			emitbyte(disp & 0xff);
 		} else {
+			/* X mode: FD ED <C8/D1 + delta> <disp16> */
 			emitbyte(0xFD);
 			emitbyte(0xED);
-			emitbyte(0xF1 + (isr->opcode - 0xC0));
+			emitbyte((arg == T_IX_D ? 0xC8 : 0xD1) +
+			         (isr->opcode - 0xC0));
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
 		}
-		emitbyte(value.num.w & 0xff);
 	} else if (arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
 		/* RX mode: index half-register.  The field is the same 4/5
 		 * as H/L, with a DD/FD prefix naming the index register. */
