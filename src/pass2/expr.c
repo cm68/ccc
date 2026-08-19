@@ -328,6 +328,14 @@ readexpr(void)
 		int off;
 		t = read1();
 		off = (short)read2();
+		/*
+		 * The old frame helper saved IY between the scalar area and
+		 * the return address.  With IY gone the locals move up one
+		 * word, so their (negative) offsets shift toward zero; the
+		 * parameters, above the return address, keep theirs.
+		 */
+		if (off < 0)
+			off += 2;
 #ifdef DEBUG
 		if (VERBOSE(V_EXPR))
 			fprintf(stderr, "  LOCALVAR type=%c off=%d\n", t, off);

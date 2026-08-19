@@ -93,6 +93,7 @@ static short savebase;		/* scalar area size: save slots below it */
 static unsigned char framefree;
 static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
+static short unwind;		/* bytes the exit helper unwinds before ret */
 
 /*
  * Switch dispatch.
@@ -574,12 +575,17 @@ emitprolog(void)
 			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
 			    rest);
 		/*
-		 * SP sits -off bytes below IY: the scalar area plus the
-		 * callee saves, then the leftover arrays (rest) if any.
-		 * That total is what every slot's SP-relative displacement
-		 * is built from.
+		 * There is no frame pointer any more.  SP sits savebase +
+		 * saves + rest bytes below the slot the old IY named, less
+		 * the two bytes the helper used to save IY in; that is the
+		 * displacement every slot's SP-relative spelling adds.  The
+		 * exit helper unwinds the whole frame and the spilled first
+		 * argument, so it is that same total put back plus the arg
+		 * slots the caller pushed.
 		 */
-		stackdepth = -off + (rest > 0 ? rest : 0);
+		stackdepth = -off + (rest > 0 ? rest : 0) - 2;
+		unwind = -off + (rest > 0 ? rest : 0) +
+		    (nparams == 0 ? 0 : (ISLONG(arg1w) ? 4 : 2));
 	}
 
 	/* Stage params from stack to registers.  The walk runs from the
@@ -662,34 +668,25 @@ emitepilog(void)
 	 * does not know exists, so the exit helper is what discards it.
 	 */
 	{
-	char *sfx = nparams == 0 ? "" : (ISLONG(arg1w) ? "q" : "w");
-
+	/*
+	 * One helper per save set; the spilled first argument is part of
+	 * the unwind amount, not a separate helper variant.
+	 */
 	if (savesbc() || (regsused & REGBIT(R_IX))) {
 		char *h;
-		short off;
 
-		if (!savesbc()) {
+		if (!savesbc())
 			h = "fexx";
-			off = ixoff;
-		} else if (!(regsused & REGBIT(R_IX))) {
+		else if (!(regsused & REGBIT(R_IX)))
 			h = "fexb";
-			off = bcoff;
-		} else {
+		else
 			h = "fexbx";
-			off = ixoff;	/* pushed last, so the lower */
-		}
-		outf("\tcall\t%s%s\n\t.dw\t%d\n", h, sfx, off);
+		outf("\tcall\t%s\n\t.dw\t%d\n", h, unwind);
 		return;
 	}
 
-	/*
-	 * Nothing to restore: just the unwind, and jumped to for the
-	 * same reason the entry is called.  Written out it is five bytes
-	 * - ld sp,iy and pop iy are two each - against three, and the
-	 * peephole that used to make the substitution only runs under
-	 * -O.
-	 */
-	outf("\tjp\tfexit%s\n", sfx);
+	/* Nothing to restore: just the unwind. */
+	outf("\tcall\tfexit\n\t.dw\t%d\n", unwind);
 	}
 }
 
