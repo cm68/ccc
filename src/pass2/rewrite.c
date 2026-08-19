@@ -1035,6 +1035,30 @@ ccflag(unsigned char op, int signed_)
 }
 
 /*
+ * Emit the address of a frame slot or struct member for LDA: sp plus
+ * the static offset and current stack depth for a frame slot (reg ==
+ * R_IY), index-register plus offset for a struct member.  outd()
+ * spells a word signed, so '+' is added only on the non-negative side.
+ */
+void
+emitslotaddr(char reg, int off)
+{
+	if (reg == R_IY) {
+		int v = off + stackdepth;
+
+		out("sp");
+		if (v >= 0)
+			outc('+');
+		outd(v);
+	} else {
+		out(idxregname(reg));
+		if (off >= 0)
+			outc('+');
+		outd(off);
+	}
+}
+
+/*
  * Try to apply a rule
  */
 Expr *
@@ -1173,13 +1197,14 @@ tryrule(struct rule *rp, Expr *e)
 		reg = e->u.var.reg ? e->u.var.reg : R_IY;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
-			    idxregname(reg), off);
+			out("\tpush hl\n\tlda hl,(");
+			emitslotaddr(reg, off);
+			out(")\n\tex de,hl\n\tpop hl\n");
 			n = mkcode(e->width, R_DE);
 		} else {
-			outf("\tpush %s\n\tpop hl\n", idxregname(reg));
-			if (off)
-				outf("\tld de,%d\n\tadd hl,de\n", off);
+			out("\tlda hl,(");
+			emitslotaddr(reg, off);
+			out(")\n");
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -1193,12 +1218,14 @@ tryrule(struct rule *rp, Expr *e)
 		off = e->u.var.off;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			outf("\tpush hl\n\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
-			    off);
+			out("\tpush hl\n\tlda hl,(");
+			emitslotaddr(R_IY, off);
+			out(")\n\tex de,hl\n\tpop hl\n");
 			n = mkcode(e->width, R_DE);
 		} else {
-			outf("\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
-			    off);
+			out("\tlda hl,(");
+			emitslotaddr(R_IY, off);
+			out(")\n");
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -1218,12 +1245,14 @@ tryrule(struct rule *rp, Expr *e)
 		off = (short)e->right->u.val;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
-			    idxregname(reg), off);
+			out("\tpush hl\n\tlda hl,(");
+			emitslotaddr(reg, off);
+			out(")\n\tex de,hl\n\tpop hl\n");
 			n = mkcode(e->width, R_DE);
 		} else {
-			outf("\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
-			    idxregname(reg), off);
+			out("\tlda hl,(");
+			emitslotaddr(reg, off);
+			out(")\n");
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;

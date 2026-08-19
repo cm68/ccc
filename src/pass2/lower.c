@@ -1419,9 +1419,9 @@ idxtohl(Expr *s)
 	Expr *n;
 	char w = s->width;
 
-	outf("\tpush %s\n\tpop hl\n", idxregname(s->u.var.reg));
-	if (s->u.var.off)
-		outf("\tld de,%d\n\tadd hl,de\n", s->u.var.off);
+	out("\tlda hl,(");
+	emitslotaddr(s->u.var.reg, s->u.var.off);
+	out(")\n");
 	freeexpr(s);
 	n = mkcode(w, R_HL);
 	n->op = INHL;
@@ -2537,11 +2537,9 @@ spilled:	;
 
 			if (keep)
 				out("\tpush hl\n");
-			outf("\tpush %s\n\tpop hl\n",
-			    idxregname(reg ? reg : R_IY));
-			if (off)
-				outf("\tld de,%d\n\tadd hl,de\n", off);
-			out("\tex de,hl\n");
+			out("\tlda hl,(");
+			emitslotaddr(reg ? reg : R_IY, off);
+			out(")\n\tex de,hl\n");
 			if (keep)
 				out("\tpop hl\n");
 			freeexpr(e->right);

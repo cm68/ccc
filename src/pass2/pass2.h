@@ -74,6 +74,7 @@ void dumphits(void);
 
 /* Output */
 extern int stackdepth;		/* astio.c: SP bytes below the frame base */
+void emitslotaddr(char reg, int off);	/* rewrite.c: LDA slot address */
 void out(char *s);
 void outc(char c);
 void outd(int n);

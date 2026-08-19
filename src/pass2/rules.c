@@ -1281,14 +1281,14 @@ struct rule rules[] = {
 	 * here - +(I,N) above folds it straight into the offset.
 	 */
 	R(PLUS,INDEX,INHL,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPDE F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
+		F_PUSHHL "\tlda hl,($L)\n" F_POPDE F_ADDHLDE, R_HL),
 	/* the same with the subscript already in DE, which is where the
 	 * reorder leaves it when the index is the costlier side */
 	R(PLUS,INDEX,INDE,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPHL F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
+		"\tlda hl,($L)\n" F_ADDHLDE, R_HL),
 	/* and in BC, which is where a register variable subscript sits */
 	R(PLUS,INDEX,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0,
-		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
+		"\tlda hl,($L)\n\tadd hl,bc\n", R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
 	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
@@ -2405,8 +2405,7 @@ struct rule rules[] = {
 	 * is worked out rather than added in place.
 	 */
 	R(ASSIGN,REGVAR,INDEX,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX,
-		"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
-		F_PUSHHL "\tpop ix\n", R_IX),
+		"\tlda hl,($R)\n" F_PUSHHL "\tpop ix\n", R_IX),
 
 	R(ASSIGN,REGVAR,INHL,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R(ASSIGN,REGVAR,INDE,0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
@@ -2998,8 +2997,7 @@ struct rule rules[] = {
 	 * the stack.
 	 */
 	R(ASSIGN,SYMREF,INDEX,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tpush $Rr\n\tpop hl\n\tld de,$Ro\n\tadd hl,de\n\tld ($L),hl\n",
-		R_HL),
+		"\tlda hl,($R)\n\tld ($L),hl\n", R_HL),
 
 	/* test a long in memory for zero */
 	R(DEREF,SYMREF,0,0,0,11, DEREF, P_L, P_NONE, P_NONE, 0,
