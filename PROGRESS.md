@@ -52,6 +52,47 @@ identical from every compiler, being a table and not code.  It went
 left in there, measured: ~1200 bytes of duplicated pattern and template
 strings, and ~3800 bytes held by rules that never match.
 
+## The Z280 target
+
+The compiler targets the Z280 as well as the Z80.  It is a disjoint
+variant, not a replacement: `-m z280` selects it (and `-m micronix` /
+`-m cpm` keep their Z80 meaning), and the two coexist in one tree.
+
+The divergent passes are split into sibling sources, installed under
+`280` names:
+
+| | Z80 | Z280 |
+|---|---|---|
+| c0 | `src/pass1` → `c0` | `src/pass1z280` → `c0280` |
+| c1 | `src/pass2` → `c1` | `src/pass2z280` → `c1280` |
+| peep | `src/peep` → `peep` | `src/peep280` → `peep280` |
+| asz | `asmz80.c`/`asm.c` → `asz` | `asmz280.c`/`asm280.c` → `asz280` |
+
+The runtime splits the same way — `libc.a`/`libc280.a`,
+`libu.a`/`libu280.a`, `crt0.o`/`crt0280.o` — because the frame
+convention differs: the Z80 `csv.s` sets up IY as the frame pointer, the
+Z280 `csv280.s` uses the SR-mode unwind (the word after the call holds
+the unwind amount).
+
+What the codegen does differently:
+
+* **IY is freed.**  Frames are SP-relative via the Z280's SR mode
+  (`(sp+dd)`, a 16-bit displacement), so IY is a second register-variable
+  pointer.  Pointers prefer IX/IY; integers keep BC.
+* **Word loads and compares.**  `ld hl,(sp+dd)`, `ld hl,(hl)`,
+  `ld hl,(hl+dd)`, `ld (hl),de` and `cpw hl,rr` / `cpw hl,nn` replace
+  the Z80 byte pairs and multi-instruction sequences.
+* **Signed compare is `cpw` + `sbc a,a` + `xor h`**, using
+  `signed(a<b) = C ^ sign(a) ^ sign(b)` rather than the S^V pair.
+* **DD/FD remap the operand code into a Z280 addressing mode** (SR,
+  SX `(ix+d)`, RX IXH/IXL, DA, BX) and prefix extensions (`push nn` =
+  `FD F5`, `cpw hl,nn` = `FD ED F7`).  Unlike the Z80, `DD 6E dd` is
+  `ld l,(ix+dd)` — real L, not IXL.
+
+`zsim` (`src/tools/zsim.c`) is a host-only Z280 simulator for the
+unprivileged instructions the compiler emits, so generated code can be
+run without booting a machine.
+
 ## It self-hosts in a 62K TPA
 
 Every source of every program in the tree — `cpp`, `c0`, `c1`, `peep`,
@@ -293,6 +334,16 @@ to IEEE 754, and that was never the right thing to build in: the Z80
 machines that shipped with a floating point unit did not agree on a
 format, and neither did the BASIC ROMs.  Choosing one in the assembler
 made a decision that belongs to the program.
+
+`libf` is the software float a program links when it wants one — `libf.a`
+for Z80, `libf280.a` for Z280.  `FLOAT` is an `unsigned long` holding a
+1-sign / 7-exponent (bias 64) / 24-mantissa value; `float.c` is the
+arithmetic, `mathf.c` the elementary functions, `fbcd.s` and `finc.s`
+the older assembly helpers (kept, but no longer called by the C code).
+It is work in progress: the arithmetic passes a host-side smoke test,
+but `fatof` parses a fraction as `d * tenth` (0.1 is inexact in this
+format), so `ftoa(fatof("3.5"), 2)` prints "3.49".  The defect and the
+intended fix are in `src/libf/README`.
 
 Three things worth knowing before touching this again:
 
