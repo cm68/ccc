@@ -142,8 +142,9 @@ ASTPPFLAGS = -m32 -g -O0 -Wall -Werror
 astpp: astpp.c ../ccclib/format.h
 	$(CC) $(ASTPPFLAGS) -I../ccclib -I../cpp -o $@ $<
 
-test: asz
+test: asz asz280
 	@sh tests/check-dollar.sh
+	@sh tests/check-appendix.sh
 
 # tests/ holds hand-written .s assembler cases, so its cleanup names
 # what the check script produces rather than sweeping the suffix.

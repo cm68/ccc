@@ -1,0 +1,1336 @@
+# Appendix C (Instructions in Alphabetic Order), in asz280 syntax.
+# instruction<TAB>expected bytes.  De-duplicated: ldw/incw/decw are ld/inc/dec.
+#
+# Active lines assemble and must match.  Lines prefixed with '#' are the
+# Appendix C entries the assembler does not yet implement, kept here so
+# the gap is visible.  They fall into a few families:
+#   - BX/DA/X/RA addressing ((hl+ix)/(nn)/(ix+dd16)/(pc+dd)) for the
+#     8-bit ALU, inc/dec and byte loads
+#   - DD/FD-prefixed indirect call/jp (call cc,(hl) etc.)
+#   - EX A,src and EX H,L / EX IX,HL / EX IY,HL
+#   - add hl,a / add ix,a, adc/sbc ix,rr, ld bc/de/sp,(mem), and the
+#     word-load forms ld r,(hl+ix) etc.
+#   - in/out word and block variants (indw/inirw/outdw/otirw, in ixh,(c))
+#   - EPU/MEPU, EXTS, LDUD/LDUP, MULTW/DIVW, TSET (never implemented)
+# Two of those silently mis-assemble rather than reject (the 16-bit-disp
+# X mode parses as SX plus a stray byte, and the indirect call/jp drops
+# the indirection); they are commented out pending the addressing-mode
+# work, not because the manual is wrong.
+# ===== ADC =====
+adc a,(hl)	8e
+# adc a,(hl+ix)	dd 89
+# adc a,(hl+iy)	dd 8a
+# adc a,(hl+0x1122)	fd 8b 22 11
+# adc a,(ix+iy)	dd 8b
+adc a,(ix+0x55)	dd 8e 55
+# adc a,(ix+0x1122)	fd 89 22 11
+adc a,(iy+0x55)	fd 8e 55
+# adc a,(iy+0x1122)	fd 8a 22 11
+# adc a,(pc+0x1122)	fd 88 22 11
+adc a,(sp+0x1122)	dd 88 22 11
+# adc a,(0x3344)	dd 8f 44 33
+adc a,a	8f
+adc a,b	88
+adc a,c	89
+adc a,d	8a
+adc a,e	8b
+adc a,h	8c
+adc a,ixh	dd 8c
+adc a,ixl	dd 8d
+adc a,iyh	fd 8c
+adc a,iyl	fd 8d
+adc a,l	8d
+adc a,0x66	ce 66
+adc hl,bc	ed 4a
+adc hl,de	ed 5a
+adc hl,hl	ed 6a
+adc hl,sp	ed 7a
+# adc ix,bc	dd ed 4a
+# adc ix,de	dd ed 5a
+# adc ix,ix	dd ed 6a
+# adc ix,sp	dd ed 7a
+# adc iy,bc	fd ed 4a
+# adc iy,de	fd ed 5a
+# adc iy,iy	fd ed 6a
+# adc iy,sp	fd ed 7a
+# ===== ADD =====
+add a,(hl)	86
+# add a,(hl+ix)	dd 81
+# add a,(hl+iy)	dd 82
+# add a,(hl+0x1122)	fd 83 22 11
+# add a,(ix+iy)	dd 83
+add a,(ix+0x55)	dd 86 55
+# add a,(ix+0x1122)	fd 81 22 11
+add a,(iy+0x55)	fd 86 55
+# add a,(iy+0x1122)	fd 82 22 11
+# add a,(pc+0x1122)	fd 80 22 11
+add a,(sp+0x1122)	dd 80 22 11
+# add a,(0x3344)	dd 87 44 33
+add a,a	87
+add a,b	80
+add a,c	81
+add a,d	82
+add a,e	83
+add a,h	84
+add a,ixh	dd 84
+add a,ixl	dd 85
+add a,iyh	fd 84
+add a,iyl	fd 85
+add a,l	85
+add a,0x66	c6 66
+# add hl,a	ed 6d
+add hl,bc	09
+add hl,de	19
+add hl,hl	29
+add hl,sp	39
+# add ix,a	dd ed 6d
+add ix,bc	dd 09
+add ix,de	dd 19
+add ix,ix	dd 29
+add ix,sp	dd 39
+# add iy,a	fd ed 6d
+add iy,bc	fd 09
+add iy,de	fd 19
+add iy,iy	fd 29
+add iy,sp	fd 39
+# ===== ADDW =====
+addw hl,(hl)	dd ed c6
+addw hl,(ix+0x1122)	fd ed c6 22 11
+addw hl,(iy+0x1122)	fd ed d6 22 11
+addw hl,(pc+0x1122)	dd ed f6 22 11
+addw hl,(0x3344)	dd ed d6 44 33
+addw hl,bc	ed c6
+addw hl,de	ed d6
+addw hl,hl	ed e6
+addw hl,ix	dd ed e6
+addw hl,iy	fd ed e6
+addw hl,sp	ed f6
+addw hl,0x3344	fd ed f6 44 33
+# ===== AND =====
+and (hl)	a6
+# and (hl+ix)	dd a1
+# and (hl+iy)	dd a2
+# and (hl+0x1122)	fd a3 22 11
+# and (ix+iy)	dd a3
+and (ix+0x55)	dd a6 55
+# and (ix+0x1122)	fd a1 22 11
+and (iy+0x55)	fd a6 55
+# and (iy+0x1122)	fd a2 22 11
+# and (pc+0x1122)	fd a0 22 11
+and (sp+0x1122)	dd a0 22 11
+# and (0x3344)	dd a7 44 33
+and a	a7
+and b	a0
+and c	a1
+and d	a2
+and e	a3
+and h	a4
+and ixh	dd a4
+and ixl	dd a5
+and iyh	fd a4
+and iyl	fd a5
+and l	a5
+and 0x66	e6 66
+# ===== BIT =====
+bit 0,(hl)	cb 46
+bit 0,(ix+0x55)	dd cb 55 46
+bit 0,(iy+0x55)	fd cb 55 46
+bit 0,a	cb 47
+bit 0,b	cb 40
+bit 0,c	cb 41
+bit 0,d	cb 42
+bit 0,e	cb 43
+bit 0,h	cb 44
+bit 0,l	cb 45
+bit 1,(hl)	cb 4e
+bit 1,(ix+0x55)	dd cb 55 4e
+bit 1,(iy+0x55)	fd cb 55 4e
+bit 1,a	cb 4f
+bit 1,b	cb 48
+bit 1,c	cb 49
+bit 1,d	cb 4a
+bit 1,e	cb 4b
+bit 1,h	cb 4c
+bit 1,l	cb 4d
+bit 2,(hl)	cb 56
+bit 2,(ix+0x55)	dd cb 55 56
+bit 2,(iy+0x55)	fd cb 55 56
+bit 2,a	cb 57
+bit 2,b	cb 50
+bit 2,c	cb 51
+bit 2,d	cb 52
+bit 2,e	cb 53
+bit 2,h	cb 54
+bit 2,l	cb 55
+bit 3,(hl)	cb 5e
+bit 3,(ix+0x55)	dd cb 55 5e
+bit 3,(iy+0x55)	fd cb 55 5e
+bit 3,a	cb 5f
+bit 3,b	cb 58
+bit 3,c	cb 59
+bit 3,d	cb 5a
+bit 3,e	cb 5b
+bit 3,h	cb 5c
+bit 3,l	cb 5d
+bit 4,(hl)	cb 66
+bit 4,(ix+0x55)	dd cb 55 66
+bit 4,(iy+0x55)	fd cb 55 66
+bit 4,a	cb 67
+bit 4,b	cb 60
+bit 4,c	cb 61
+bit 4,d	cb 62
+bit 4,e	cb 63
+bit 4,h	cb 64
+bit 4,l	cb 65
+bit 5,(hl)	cb 6e
+bit 5,(ix+0x55)	dd cb 55 6e
+bit 5,(iy+0x55)	fd cb 55 6e
+bit 5,a	cb 6f
+bit 5,b	cb 68
+bit 5,c	cb 69
+bit 5,d	cb 6a
+bit 5,e	cb 6b
+bit 5,h	cb 6c
+bit 5,l	cb 6d
+bit 6,(hl)	cb 76
+bit 6,(ix+0x55)	dd cb 55 76
+bit 6,(iy+0x55)	fd cb 55 76
+bit 6,a	cb 77
+bit 6,b	cb 70
+bit 6,c	cb 71
+bit 6,d	cb 72
+bit 6,e	cb 73
+bit 6,h	cb 74
+bit 6,l	cb 75
+bit 7,(hl)	cb 7e
+bit 7,(ix+0x55)	dd cb 55 7e
+bit 7,(iy+0x55)	fd cb 55 7e
+bit 7,a	cb 7f
+bit 7,b	cb 78
+bit 7,c	cb 79
+bit 7,d	cb 7a
+bit 7,e	cb 7b
+bit 7,h	cb 7c
+bit 7,l	cb 7d
+# ===== CALL =====
+# call (hl)	dd cd
+# call (pc+0x1122)	fd cd 22 11
+# call c,(hl)	dd dc
+# call c,(pc+0x1122)	fd dc 22 11
+call c,0x3344	dc 44 33
+# call m,(hl)	dd fc
+# call m,(pc+0x1122)	fd fc 22 11
+call m,0x3344	fc 44 33
+# call nc,(hl)	dd d4
+# call nc,(pc+0x1122)	fd d4 22 11
+call nc,0x3344	d4 44 33
+# call nz,(hl)	dd c4
+# call nz,(pc+0x1122)	fd c4 22 11
+call nz,0x3344	c4 44 33
+# call p,(hl)	dd f4
+# call p,(pc+0x1122)	fd f4 22 11
+call p,0x3344	f4 44 33
+# call pe,(hl)	dd ec
+# call pe,(pc+0x1122)	fd ec 22 11
+call pe,0x3344	ec 44 33
+# call po,(hl)	dd e4
+# call po,(pc+0x1122)	fd e4 22 11
+call po,0x3344	e4 44 33
+# call z,(hl)	dd cc
+# call z,(pc+0x1122)	fd cc 22 11
+call z,0x3344	cc 44 33
+call 0x3344	cd 44 33
+ccf	3f
+# ===== CP =====
+cp (hl)	be
+# cp (hl+ix)	dd b9
+# cp (hl+iy)	dd ba
+# cp (hl+0x1122)	fd bb 22 11
+# cp (ix+iy)	dd bb
+cp (ix+0x55)	dd be 55
+# cp (ix+0x1122)	fd b9 22 11
+cp (iy+0x55)	fd be 55
+# cp (iy+0x1122)	fd ba 22 11
+# cp (pc+0x1122)	fd b8 22 11
+cp (sp+0x1122)	dd b8 22 11
+# cp (0x3344)	dd bf 44 33
+cp a	bf
+cp b	b8
+cp c	b9
+cp d	ba
+cp e	bb
+cp h	bc
+cp ixh	dd bc
+cp ixl	dd bd
+cp iyh	fd bc
+cp iyl	fd bd
+cp l	bd
+cp 0x66	fe 66
+cpd	ed a9
+cpdr	ed b9
+cpi	ed a1
+cpir	ed b1
+cpl	2f
+# ===== CPW =====
+cpw hl,(hl)	dd ed c7
+cpw hl,(ix+0x1122)	fd ed c7 22 11
+cpw hl,(iy+0x1122)	fd ed d7 22 11
+cpw hl,(pc+0x1122)	dd ed f7 22 11
+cpw hl,(0x3344)	dd ed d7 44 33
+cpw hl,bc	ed c7
+cpw hl,de	ed d7
+cpw hl,hl	ed e7
+cpw hl,ix	dd ed e7
+cpw hl,iy	fd ed e7
+cpw hl,sp	ed f7
+cpw hl,0x3344	fd ed f7 44 33
+# ===== DAA / DEC / DI / DIV =====
+daa	27
+dec (hl)	35
+# dec (hl+ix)	dd 0d
+# dec (hl+iy)	dd 15
+# dec (hl+0x1122)	fd 1d 22 11
+# dec (ix+iy)	dd 1d
+dec (ix+0x55)	dd 35 55
+# dec (ix+0x1122)	fd 0d 22 11
+dec (iy+0x55)	fd 35 55
+# dec (iy+0x1122)	fd 15 22 11
+# dec (pc+0x1122)	fd 05 22 11
+dec (sp+0x1122)	dd 05 22 11
+# dec (0x3344)	dd 3d 44 33
+dec a	3d
+dec b	05
+dec bc	0b
+dec c	0d
+dec d	15
+dec de	1b
+dec e	1d
+dec h	25
+dec hl	2b
+dec ix	dd 2b
+dec ixh	dd 25
+dec ixl	dd 2d
+dec iy	fd 2b
+dec iyh	fd 25
+dec iyl	fd 2d
+dec l	2d
+dec sp	3b
+di	f3
+div hl,(hl)	ed f4
+div hl,(hl+ix)	dd ed cc
+div hl,(hl+iy)	dd ed d4
+div hl,(hl+0x1122)	fd ed dc 22 11
+div hl,(ix+iy)	dd ed dc
+div hl,(ix+0x55)	dd ed f4 55
+div hl,(ix+0x1122)	fd ed cc 22 11
+div hl,(iy+0x55)	fd ed f4 55
+div hl,(iy+0x1122)	fd ed d4 22 11
+div hl,(pc+0x1122)	fd ed c4 22 11
+div hl,(sp+0x1122)	dd ed c4 22 11
+div hl,(0x3344)	dd ed fc 44 33
+div hl,a	ed fc
+div hl,b	ed c4
+div hl,c	ed cc
+div hl,d	ed d4
+div hl,e	ed dc
+div hl,h	ed e4
+div hl,ixh	dd ed e4
+div hl,ixl	dd ed ec
+div hl,iyh	fd ed e4
+div hl,iyl	fd ed ec
+div hl,l	ed ec
+div hl,0x66	fd ed fc 66
+divu hl,(hl)	ed f5
+divu hl,(hl+ix)	dd ed cd
+divu hl,(hl+iy)	dd ed d5
+divu hl,(hl+0x1122)	fd ed dd 22 11
+divu hl,(ix+iy)	dd ed dd
+divu hl,(ix+0x55)	dd ed f5 55
+divu hl,(ix+0x1122)	fd ed cd 22 11
+divu hl,(iy+0x55)	fd ed f5 55
+divu hl,(iy+0x1122)	fd ed d5 22 11
+divu hl,(pc+0x1122)	fd ed c5 22 11
+divu hl,(sp+0x1122)	dd ed c5 22 11
+divu hl,(0x3344)	dd ed fd 44 33
+divu hl,a	ed fd
+divu hl,b	ed c5
+divu hl,c	ed cd
+divu hl,d	ed d5
+divu hl,e	ed dd
+divu hl,h	ed e5
+divu hl,ixh	dd ed e5
+divu hl,ixl	dd ed ed
+divu hl,iyh	fd ed e5
+divu hl,iyl	fd ed ed
+divu hl,l	ed ed
+divu hl,0x66	fd ed fd 66
+djnz $+0x77	10 75
+# ===== EI / EX / EXX =====
+ei	fb
+ei 0x66	ed 7f 66
+ex (sp),hl	e3
+ex (sp),ix	dd e3
+ex (sp),iy	fd e3
+# ex a,(hl)	ed 37
+# ex a,(hl+ix)	dd ed 0f
+# ex a,(hl+iy)	dd ed 17
+# ex a,(hl+0x1122)	fd ed 1f 22 11
+# ex a,(ix+iy)	dd ed 1f
+# ex a,(ix+0x55)	dd ed 37 55
+# ex a,(ix+0x1122)	fd ed 0f 22 11
+# ex a,(iy+0x55)	fd ed 37 55
+# ex a,(iy+0x1122)	fd ed 17 22 11
+# ex a,(pc+0x1122)	fd ed 07 22 11
+# ex a,(sp+0x1122)	dd ed 07 22 11
+# ex a,(0x3344)	dd ed 3f 44 33
+# ex a,a	ed 3f
+# ex a,b	ed 07
+# ex a,c	ed 0f
+# ex a,d	ed 17
+# ex a,e	ed 1f
+# ex a,h	ed 27
+# ex a,ixh	dd ed 27
+# ex a,ixl	dd ed 2f
+# ex a,iyh	fd ed 27
+# ex a,iyl	fd ed 2f
+# ex a,l	ed 2f
+ex af,af'	08
+ex de,hl	eb
+# ex h,l	ed ef
+# ex ix,hl	dd eb
+# ex iy,hl	fd eb
+exx	d9
+# ===== HALT / IM / IN / INC =====
+halt	76
+im 0	ed 46
+im 1	ed 56
+im 2	ed 5e
+im 3	ed 4e
+# in (hl+ix),(c)	dd ed 48
+# in (hl+iy),(c)	dd ed 50
+# in (hl+0x1122),(c)	fd ed 58 22 11
+# in (ix+iy),(c)	dd ed 58
+# in (ix+0x1122),(c)	fd ed 48 22 11
+# in (iy+0x1122),(c)	fd ed 50 22 11
+# in (pc+0x1122),(c)	fd ed 40 22 11
+# in (sp+0x1122),(c)	dd ed 40 22 11
+# in (0x3344),(c)	dd ed 78 44 33
+in a,(c)	ed 78
+in a,(0x66)	db 66
+in b,(c)	ed 40
+in c,(c)	ed 48
+in d,(c)	ed 50
+in e,(c)	ed 58
+in h,(c)	ed 60
+inw hl,(c)	ed b7
+# in ixh,(c)	dd ed 60
+# in ixl,(c)	dd ed 68
+# in iyh,(c)	fd ed 60
+# in iyl,(c)	fd ed 68
+in l,(c)	ed 68
+inc (hl)	34
+# inc (hl+ix)	dd 0c
+# inc (hl+iy)	dd 14
+# inc (hl+0x1122)	fd 1c 22 11
+# inc (ix+iy)	dd 1c
+inc (ix+0x55)	dd 34 55
+# inc (ix+0x1122)	fd 0c 22 11
+inc (iy+0x55)	fd 34 55
+# inc (iy+0x1122)	fd 14 22 11
+# inc (pc+0x1122)	fd 04 22 11
+inc (sp+0x1122)	dd 04 22 11
+# inc (0x3344)	dd 3c 44 33
+inc a	3c
+inc b	04
+inc bc	03
+inc c	0c
+inc d	14
+inc de	13
+inc e	1c
+inc h	24
+inc hl	23
+inc ix	dd 23
+inc ixh	dd 24
+inc ixl	dd 2c
+inc iy	fd 23
+inc iyh	fd 24
+inc iyl	fd 2c
+inc l	2c
+inc sp	33
+ind	ed aa
+indr	ed ba
+# indrw	ed 9a
+# indw	ed 8a
+ini	ed a2
+inir	ed b2
+# inirw	ed 92
+# iniw	ed 82
+inw hl,(c)	ed b7
+# ===== JP / JR =====
+jp (hl)	e9
+jp (ix)	dd e9
+jp (iy)	fd e9
+# jp (pc+0x1122)	fd c3 22 11
+# jp c,(hl)	dd da
+# jp c,(pc+0x1122)	fd da 22 11
+jp c,0x3344	da 44 33
+# jp m,(hl)	dd fa
+# jp m,(pc+0x1122)	fd fa 22 11
+jp m,0x3344	fa 44 33
+# jp nc,(hl)	dd d2
+# jp nc,(pc+0x1122)	fd d2 22 11
+jp nc,0x3344	d2 44 33
+# jp nz,(hl)	dd c2
+# jp nz,(pc+0x1122)	fd c2 22 11
+jp nz,0x3344	c2 44 33
+# jp p,(hl)	dd f2
+# jp p,(pc+0x1122)	fd f2 22 11
+jp p,0x3344	f2 44 33
+# jp pe,(hl)	dd ea
+# jp pe,(pc+0x1122)	fd ea 22 11
+jp pe,0x3344	ea 44 33
+# jp po,(hl)	dd e2
+# jp po,(pc+0x1122)	fd e2 22 11
+jp po,0x3344	e2 44 33
+# jp z,(hl)	dd ca
+# jp z,(pc+0x1122)	fd ca 22 11
+jp z,0x3344	ca 44 33
+jp 0x3344	c3 44 33
+jr c,$+0x77	38 75
+jr nc,$+0x77	30 75
+jr nz,$+0x77	20 75
+jr z,$+0x77	28 75
+jr $+0x77	18 75
+# ===== LD (stores) =====
+ld (bc),a	02
+ld (de),a	12
+ld (hl),a	77
+ld (hl),b	70
+ld (hl),bc	ed 0e
+ld (hl),c	71
+ld (hl),d	72
+ld (hl),de	ed 1e
+ld (hl),e	73
+ld (hl),h	74
+ld (hl),hl	ed 2e
+ld (hl),l	75
+ld (hl),sp	ed 3e
+ld (hl),0x66	36 66
+# ld (hl+ix),a	ed 0b
+# ld (hl+ix),hl	ed 0d
+# ld (hl+ix),ix	dd ed 0d
+# ld (hl+ix),iy	fd ed 0d
+# ld (hl+ix),0x66	dd 0e 66
+# ld (hl+iy),a	ed 13
+# ld (hl+iy),hl	ed 15
+# ld (hl+iy),ix	dd ed 15
+# ld (hl+iy),iy	fd ed 15
+# ld (hl+iy),0x66	dd 16 66
+# ld (hl+0x1122),a	ed 3b 22 11
+# ld (hl+0x1122),hl	ed 3d 22 11
+# ld (hl+0x1122),ix	dd ed 3d 22 11
+# ld (hl+0x1122),iy	fd ed 3d 22 11
+# ld (hl+0x1122),0x66	fd 1e 22 11 66
+# ld (ix+iy),a	ed 1b
+# ld (ix+iy),hl	ed 1d
+# ld (ix+iy),ix	dd ed 1d
+# ld (ix+iy),iy	fd ed 1d
+# ld (ix+iy),0x66	dd 1e 66
+ld (ix+0x55),a	dd 77 55
+ld (ix+0x55),b	dd 70 55
+# ld (ix+0x55),bc	dd ed 0e 55
+ld (ix+0x55),c	dd 71 55
+ld (ix+0x55),d	dd 72 55
+# ld (ix+0x55),de	dd ed 1e 55
+ld (ix+0x55),e	dd 73 55
+ld (ix+0x55),h	dd 74 55
+# ld (ix+0x55),hl	dd ed 2e 55
+ld (ix+0x55),l	dd 75 55
+# ld (ix+0x55),sp	dd ed 3e 55
+ld (ix+0x55),0x66	dd 36 55 66
+# ld (ix+0x1122),a	ed 2b 22 11
+# ld (ix+0x1122),hl	ed 2d 22 11
+# ld (ix+0x1122),ix	dd ed 2d 22 11
+# ld (ix+0x1122),iy	fd ed 2d 22 11
+# ld (ix+0x1122),0x66	fd 0e 22 11 66
+ld (iy+0x55),a	fd 77 55
+ld (iy+0x55),b	fd 70 55
+# ld (iy+0x55),bc	fd ed 0e 55
+ld (iy+0x55),c	fd 71 55
+ld (iy+0x55),d	fd 72 55
+# ld (iy+0x55),de	fd ed 1e 55
+ld (iy+0x55),e	fd 73 55
+ld (iy+0x55),h	fd 74 55
+# ld (iy+0x55),hl	fd ed 2e 55
+ld (iy+0x55),l	fd 75 55
+# ld (iy+0x55),sp	fd ed 3e 55
+ld (iy+0x55),0x66	fd 36 55 66
+# ld (iy+0x1122),a	ed 33 22 11
+# ld (iy+0x1122),hl	ed 35 22 11
+# ld (iy+0x1122),ix	dd ed 35 22 11
+# ld (iy+0x1122),iy	fd ed 35 22 11
+# ld (iy+0x1122),0x66	fd 16 22 11 66
+# ld (pc+0x1122),a	ed 23 22 11
+# ld (pc+0x1122),hl	ed 25 22 11
+# ld (pc+0x1122),ix	dd ed 25 22 11
+# ld (pc+0x1122),iy	fd ed 25 22 11
+# ld (pc+0x1122),0x66	fd 06 22 11 66
+ld (sp+0x1122),a	ed 03 22 11
+ld (sp+0x1122),hl	ed 05 22 11
+ld (sp+0x1122),ix	dd ed 05 22 11
+ld (sp+0x1122),iy	fd ed 05 22 11
+ld (sp+0x1122),0x66	dd 06 22 11 66
+ld (0x3344),a	32 44 33
+ld (0x3344),bc	ed 43 44 33
+ld (0x3344),de	ed 53 44 33
+ld (0x3344),hl	22 44 33
+ld (0x3344),ix	dd 22 44 33
+ld (0x3344),iy	fd 22 44 33
+ld (0x3344),sp	ed 73 44 33
+# ld (0x3344),0x66	dd 3e 44 33 66
+# ===== LD (loads: a) =====
+ld a,(bc)	0a
+ld a,(de)	1a
+ld a,(hl)	7e
+# ld a,(hl+ix)	dd 79
+# ld a,(hl+iy)	dd 7a
+# ld a,(hl+0x1122)	fd 7b 22 11
+# ld a,(ix+iy)	dd 7b
+ld a,(ix+0x55)	dd 7e 55
+# ld a,(ix+0x1122)	fd 79 22 11
+ld a,(iy+0x55)	fd 7e 55
+# ld a,(iy+0x1122)	fd 7a 22 11
+# ld a,(pc+0x1122)	fd 78 22 11
+ld a,(sp+0x1122)	dd 78 22 11
+ld a,(0x3344)	3a 44 33
+ld a,a	7f
+ld a,b	78
+ld a,c	79
+ld a,d	7a
+ld a,e	7b
+ld a,h	7c
+ld a,ixh	dd 7c
+ld a,ixl	dd 7d
+ld a,iyh	fd 7c
+ld a,iyl	fd 7d
+ld a,l	7d
+ld a,0x66	3e 66
+# ===== LD (loads: b..hl) =====
+ld b,(hl)	46
+ld b,(ix+0x55)	dd 46 55
+ld b,(iy+0x55)	fd 46 55
+ld b,a	47
+ld b,b	40
+ld b,c	41
+ld b,d	42
+ld b,e	43
+ld b,h	44
+ld b,ixh	dd 44
+ld b,ixl	dd 45
+ld b,iyh	fd 44
+ld b,iyl	fd 45
+ld b,l	45
+ld b,0x66	06 66
+# ld bc,(hl)	ed 06
+# ld bc,(ix+0x55)	dd ed 06 55
+# ld bc,(iy+0x55)	fd ed 06 55
+ld bc,(0x3344)	ed 4b 44 33
+ld bc,0x3344	01 44 33
+ld c,(hl)	4e
+ld c,(ix+0x55)	dd 4e 55
+ld c,(iy+0x55)	fd 4e 55
+ld c,a	4f
+ld c,b	48
+ld c,c	49
+ld c,d	4a
+ld c,e	4b
+ld c,h	4c
+ld c,ixh	dd 4c
+ld c,ixl	dd 4d
+ld c,iyh	fd 4c
+ld c,iyl	fd 4d
+ld c,l	4d
+ld c,0x66	0e 66
+ld d,(hl)	56
+ld d,(ix+0x55)	dd 56 55
+ld d,(iy+0x55)	fd 56 55
+ld d,a	57
+ld d,b	50
+ld d,c	51
+ld d,d	52
+ld d,e	53
+ld d,h	54
+ld d,ixh	dd 54
+ld d,ixl	dd 55
+ld d,iyh	fd 54
+ld d,iyl	fd 55
+ld d,l	55
+ld d,0x66	16 66
+# ld de,(hl)	ed 16
+# ld de,(ix+0x55)	dd ed 16 55
+# ld de,(iy+0x55)	fd ed 16 55
+ld de,(0x3344)	ed 5b 44 33
+ld de,0x3344	11 44 33
+ld e,(hl)	5e
+ld e,(ix+0x55)	dd 5e 55
+ld e,(iy+0x55)	fd 5e 55
+ld e,a	5f
+ld e,b	58
+ld e,c	59
+ld e,d	5a
+ld e,e	5b
+ld e,h	5c
+ld e,ixh	dd 5c
+ld e,ixl	dd 5d
+ld e,iyh	fd 5c
+ld e,iyl	fd 5d
+ld e,l	5d
+ld e,0x66	1e 66
+ld h,(hl)	66
+ld h,(ix+0x55)	dd 66 55
+ld h,(iy+0x55)	fd 66 55
+ld h,a	67
+ld h,b	60
+ld h,c	61
+ld h,d	62
+ld h,e	63
+ld h,h	64
+ld h,l	65
+ld h,0x66	26 66
+ld hl,(hl)	ed 26
+# ld hl,(hl+ix)	ed 0c
+# ld hl,(hl+iy)	ed 14
+# ld hl,(ix+iy)	ed 1c
+# ld hl,(ix+0x55)	dd ed 26 55
+# ld hl,(ix+0x1122)	ed 2c 22 11
+# ld hl,(iy+0x55)	fd ed 26 55
+# ld hl,(iy+0x1122)	ed 34 22 11
+# ld hl,(pc+0x1122)	ed 24 22 11
+ld hl,(sp+0x1122)	ed 04 22 11
+ld hl,(0x3344)	2a 44 33
+ld hl,0x3344	21 44 33
+# ld ix,(hl+ix)	dd ed 0c
+# ld ix,(hl+iy)	dd ed 14
+ld ix,(hl+0x1122)	dd ed 3c 22 11
+# ld ix,(ix+iy)	dd ed 1c
+# ld ix,(ix+0x1122)	dd ed 2c 22 11
+# ld ix,(iy+0x1122)	dd ed 34 22 11
+# ld ix,(pc+0x1122)	dd ed 24 22 11
+ld ix,(sp+0x1122)	dd ed 04 22 11
+ld ix,(0x3344)	dd 2a 44 33
+ld ix,0x3344	dd 21 44 33
+ld ixh,a	dd 67
+ld ixh,b	dd 60
+ld ixh,c	dd 61
+ld ixh,d	dd 62
+ld ixh,e	dd 63
+ld ixh,ixh	dd 64
+ld ixh,ixl	dd 65
+ld ixh,0x66	dd 26 66
+ld ixl,a	dd 6f
+ld ixl,b	dd 68
+ld ixl,c	dd 69
+ld ixl,d	dd 6a
+ld ixl,e	dd 6b
+ld ixl,ixh	dd 6c
+ld ixl,ixl	dd 6d
+ld ixl,0x66	dd 2e 66
+# ld iy,(hl+ix)	fd ed 0c
+# ld iy,(hl+iy)	fd ed 14
+ld iy,(hl+0x1122)	fd ed 3c 22 11
+# ld iy,(ix+iy)	fd ed 1c
+# ld iy,(ix+0x1122)	fd ed 2c 22 11
+# ld iy,(iy+0x1122)	fd ed 34 22 11
+# ld iy,(pc+0x1122)	fd ed 24 22 11
+ld iy,(sp+0x1122)	fd ed 04 22 11
+ld iy,(0x3344)	fd 2a 44 33
+ld iy,0x3344	fd 21 44 33
+ld iyh,a	fd 67
+ld iyh,b	fd 60
+ld iyh,c	fd 61
+ld iyh,d	fd 62
+ld iyh,e	fd 63
+ld iyh,iyh	fd 64
+ld iyh,iyl	fd 65
+ld iyh,0x66	fd 26 66
+ld iyl,a	fd 6f
+ld iyl,b	fd 68
+ld iyl,c	fd 69
+ld iyl,d	fd 6a
+ld iyl,e	fd 6b
+ld iyl,iyh	fd 6c
+ld iyl,iyl	fd 6d
+ld iyl,0x66	fd 2e 66
+ld l,(hl)	6e
+ld l,(ix+0x55)	dd 6e 55
+ld l,(iy+0x55)	fd 6e 55
+ld l,a	6f
+ld l,b	68
+ld l,c	69
+ld l,d	6a
+ld l,e	6b
+ld l,h	6c
+ld l,l	6d
+ld l,0x66	2e 66
+# ld sp,(hl)	ed 36
+# ld sp,(ix+0x55)	dd ed 36 55
+# ld sp,(iy+0x55)	fd ed 36 55
+ld sp,(0x3344)	ed 7b 44 33
+ld sp,hl	f9
+ld sp,ix	dd f9
+ld sp,iy	fd f9
+ld sp,0x3344	31 44 33
+# ===== LDA =====
+# lda hl,(hl+ix)	ed 0a
+# lda hl,(hl+iy)	ed 12
+# lda hl,(hl+0x1122)	ed 3a 22 11
+# lda hl,(ix+iy)	ed 1a
+lda hl,(ix+0x1122)	ed 2a 22 11
+lda hl,(iy+0x1122)	ed 32 22 11
+# lda hl,(pc+0x1122)	ed 22 22 11
+lda hl,(sp+0x1122)	ed 02 22 11
+lda hl,(0x3344)	21 44 33
+# lda ix,(hl+ix)	dd ed 0a
+# lda ix,(hl+iy)	dd ed 12
+# lda ix,(hl+0x1122)	dd ed 3a 22 11
+# lda ix,(ix+iy)	dd ed 1a
+lda ix,(ix+0x1122)	dd ed 2a 22 11
+lda ix,(iy+0x1122)	dd ed 32 22 11
+# lda ix,(pc+0x1122)	dd ed 22 22 11
+lda ix,(sp+0x1122)	dd ed 02 22 11
+lda ix,(0x3344)	dd 21 44 33
+# lda iy,(hl+ix)	fd ed 0a
+# lda iy,(hl+iy)	fd ed 12
+# lda iy,(hl+0x1122)	fd ed 3a 22 11
+# lda iy,(ix+iy)	fd ed 1a
+lda iy,(ix+0x1122)	fd ed 2a 22 11
+lda iy,(iy+0x1122)	fd ed 32 22 11
+# lda iy,(pc+0x1122)	fd ed 22 22 11
+lda iy,(sp+0x1122)	fd ed 02 22 11
+lda iy,(0x3344)	fd 21 44 33
+# ===== LDCTL =====
+ldctl (c),hl	ed 6e
+ldctl (c),ix	dd ed 6e
+ldctl (c),iy	fd ed 6e
+ldctl hl,(c)	ed 66
+ldctl hl,usp	ed 87
+ldctl ix,(c)	dd ed 66
+ldctl ix,usp	dd ed 87
+ldctl iy,(c)	fd ed 66
+ldctl iy,usp	fd ed 87
+ldctl usp,hl	ed 8f
+ldctl usp,ix	dd ed 8f
+ldctl usp,iy	fd ed 8f
+# ===== LDD/LDDR/LDI/LDIR =====
+ldd	ed a8
+lddr	ed b8
+ldi	ed a0
+ldir	ed b0
+# ===== MULT / MULTU =====
+mult a,(hl)	ed f0
+mult a,(hl+ix)	dd ed c8
+mult a,(hl+iy)	dd ed d0
+mult a,(hl+0x1122)	fd ed d8 22 11
+mult a,(ix+iy)	dd ed d8
+mult a,(ix+0x55)	dd ed f0 55
+mult a,(ix+0x1122)	fd ed c8 22 11
+mult a,(iy+0x55)	fd ed f0 55
+mult a,(iy+0x1122)	fd ed d0 22 11
+mult a,(pc+0x1122)	fd ed c0 22 11
+mult a,(sp+0x1122)	dd ed c0 22 11
+mult a,(0x3344)	dd ed f8 44 33
+mult a,a	ed f8
+mult a,b	ed c0
+mult a,c	ed c8
+mult a,d	ed d0
+mult a,e	ed d8
+mult a,h	ed e0
+mult a,ixh	dd ed e0
+mult a,ixl	dd ed e8
+mult a,iyh	fd ed e0
+mult a,iyl	fd ed e8
+mult a,l	ed e8
+mult a,0x66	fd ed f8 66
+multu a,(hl)	ed f1
+multu a,(hl+ix)	dd ed c9
+multu a,(hl+iy)	dd ed d1
+multu a,(hl+0x1122)	fd ed d9 22 11
+multu a,(ix+iy)	dd ed d9
+multu a,(ix+0x55)	dd ed f1 55
+multu a,(ix+0x1122)	fd ed c9 22 11
+multu a,(iy+0x55)	fd ed f1 55
+multu a,(iy+0x1122)	fd ed d1 22 11
+multu a,(pc+0x1122)	fd ed c1 22 11
+multu a,(sp+0x1122)	dd ed c1 22 11
+multu a,(0x3344)	dd ed f9 44 33
+multu a,a	ed f9
+multu a,b	ed c1
+multu a,c	ed c9
+multu a,d	ed d1
+multu a,e	ed d9
+multu a,h	ed e1
+multu a,ixh	dd ed e1
+multu a,ixl	dd ed e9
+multu a,iyh	fd ed e1
+multu a,iyl	fd ed e9
+multu a,l	ed e9
+multu a,0x66	fd ed f9 66
+# ===== NEG / NOP / OR =====
+neg	ed 44
+neg hl	ed 4c
+nop	00
+or (hl)	b6
+# or (hl+ix)	dd b1
+# or (hl+iy)	dd b2
+# or (hl+0x1122)	fd b3 22 11
+# or (ix+iy)	dd b3
+or (ix+0x55)	dd b6 55
+# or (ix+0x1122)	fd b1 22 11
+or (iy+0x55)	fd b6 55
+# or (iy+0x1122)	fd b2 22 11
+# or (pc+0x1122)	fd b0 22 11
+or (sp+0x1122)	dd b0 22 11
+# or (0x3344)	dd b7 44 33
+or a	b7
+or b	b0
+or c	b1
+or d	b2
+or e	b3
+or h	b4
+or ixh	dd b4
+or ixl	dd b5
+or iyh	fd b4
+or iyl	fd b5
+or l	b5
+or 0x66	f6 66
+# ===== OTDR/OTIR/OUTD/OUTI + W variants =====
+otdr	ed bb
+# otdrw	ed 9b
+otir	ed b3
+# otirw	ed 93
+outd	ed ab
+# outdw	ed 8b
+outi	ed a3
+# outiw	ed 83
+# ===== OUT =====
+# out (c),(hl+ix)	dd ed 49
+# out (c),(hl+iy)	dd ed 51
+# out (c),(hl+0x1122)	fd ed 59 22 11
+# out (c),(ix+iy)	dd ed 59
+# out (c),(ix+0x1122)	fd ed 49 22 11
+# out (c),(iy+0x1122)	fd ed 51 22 11
+# out (c),(pc+0x1122)	fd ed 41 22 11
+# out (c),(sp+0x1122)	dd ed 41 22 11
+# out (c),(0x3344)	dd ed 79 44 33
+out (c),a	ed 79
+out (c),b	ed 41
+out (c),c	ed 49
+out (c),d	ed 51
+out (c),e	ed 59
+out (c),h	ed 61
+outw (c),hl	ed bf
+# out (c),ixh	dd ed 61
+# out (c),ixl	dd ed 69
+# out (c),iyh	fd ed 61
+# out (c),iyl	fd ed 69
+out (c),l	ed 69
+out (0x66),a	d3 66
+outw (c),hl	ed bf
+# ===== PCACHE / POP / PUSH =====
+pcache	ed 65
+pop (hl)	dd c1
+pop (pc+0x1122)	dd f1 22 11
+pop (0x3344)	dd d1 44 33
+pop af	f1
+pop bc	c1
+pop de	d1
+pop hl	e1
+pop ix	dd e1
+pop iy	fd e1
+push (hl)	dd c5
+push (pc+0x1122)	dd f5 22 11
+push (0x3344)	dd d5 44 33
+push af	f5
+push bc	c5
+push de	d5
+push hl	e5
+push ix	dd e5
+push iy	fd e5
+push 0x3344	fd f5 44 33
+# ===== RES =====
+res 0,(hl)	cb 86
+res 0,(ix+0x55)	dd cb 55 86
+res 0,(iy+0x55)	fd cb 55 86
+res 0,a	cb 87
+res 0,b	cb 80
+res 0,c	cb 81
+res 0,d	cb 82
+res 0,e	cb 83
+res 0,h	cb 84
+res 0,l	cb 85
+res 1,(hl)	cb 8e
+res 1,(ix+0x55)	dd cb 55 8e
+res 1,(iy+0x55)	fd cb 55 8e
+res 1,a	cb 8f
+res 1,b	cb 88
+res 1,c	cb 89
+res 1,d	cb 8a
+res 1,e	cb 8b
+res 1,h	cb 8c
+res 1,l	cb 8d
+res 2,(hl)	cb 96
+res 2,(ix+0x55)	dd cb 55 96
+res 2,(iy+0x55)	fd cb 55 96
+res 2,a	cb 97
+res 2,b	cb 90
+res 2,c	cb 91
+res 2,d	cb 92
+res 2,e	cb 93
+res 2,h	cb 94
+res 2,l	cb 95
+res 3,(hl)	cb 9e
+res 3,(ix+0x55)	dd cb 55 9e
+res 3,(iy+0x55)	fd cb 55 9e
+res 3,a	cb 9f
+res 3,b	cb 98
+res 3,c	cb 99
+res 3,d	cb 9a
+res 3,e	cb 9b
+res 3,h	cb 9c
+res 3,l	cb 9d
+res 4,(hl)	cb a6
+res 4,(ix+0x55)	dd cb 55 a6
+res 4,(iy+0x55)	fd cb 55 a6
+res 4,a	cb a7
+res 4,b	cb a0
+res 4,c	cb a1
+res 4,d	cb a2
+res 4,e	cb a3
+res 4,h	cb a4
+res 4,l	cb a5
+res 5,(hl)	cb ae
+res 5,(ix+0x55)	dd cb 55 ae
+res 5,(iy+0x55)	fd cb 55 ae
+res 5,a	cb af
+res 5,b	cb a8
+res 5,c	cb a9
+res 5,d	cb aa
+res 5,e	cb ab
+res 5,h	cb ac
+res 5,l	cb ad
+res 6,(hl)	cb b6
+res 6,(ix+0x55)	dd cb 55 b6
+res 6,(iy+0x55)	fd cb 55 b6
+res 6,a	cb b7
+res 6,b	cb b0
+res 6,c	cb b1
+res 6,d	cb b2
+res 6,e	cb b3
+res 6,h	cb b4
+res 6,l	cb b5
+res 7,(hl)	cb be
+res 7,(ix+0x55)	dd cb 55 be
+res 7,(iy+0x55)	fd cb 55 be
+res 7,a	cb bf
+res 7,b	cb b8
+res 7,c	cb b9
+res 7,d	cb ba
+res 7,e	cb bb
+res 7,h	cb bc
+res 7,l	cb bd
+# ===== RET / RETI / RETIL / RETN =====
+ret	c9
+ret c	d8
+ret m	f8
+ret nc	d0
+ret nz	c0
+ret p	f0
+ret pe	e8
+ret po	e0
+ret z	c8
+reti	ed 4d
+retil	ed 55
+retn	ed 45
+# ===== RL / RLA / RLC / RLCA / RLD =====
+rl (hl)	cb 16
+rl (ix+0x55)	dd cb 55 16
+rl (iy+0x55)	fd cb 55 16
+rl a	cb 17
+rl b	cb 10
+rl c	cb 11
+rl d	cb 12
+rl e	cb 13
+rl h	cb 14
+rl l	cb 15
+rla	17
+rlc (hl)	cb 06
+rlc (ix+0x55)	dd cb 55 06
+rlc (iy+0x55)	fd cb 55 06
+rlc a	cb 07
+rlc b	cb 00
+rlc c	cb 01
+rlc d	cb 02
+rlc e	cb 03
+rlc h	cb 04
+rlc l	cb 05
+rlca	07
+rld	ed 6f
+# ===== RR / RRA / RRC / RRCA / RRD =====
+rr (hl)	cb 1e
+rr (ix+0x55)	dd cb 55 1e
+rr (iy+0x55)	fd cb 55 1e
+rr a	cb 1f
+rr b	cb 18
+rr c	cb 19
+rr d	cb 1a
+rr e	cb 1b
+rr h	cb 1c
+rr l	cb 1d
+rra	1f
+rrc (hl)	cb 0e
+rrc (ix+0x55)	dd cb 55 0e
+rrc (iy+0x55)	fd cb 55 0e
+rrc a	cb 0f
+rrc b	cb 08
+rrc c	cb 09
+rrc d	cb 0a
+rrc e	cb 0b
+rrc h	cb 0c
+rrc l	cb 0d
+rrca	0f
+rrd	ed 67
+# ===== RST =====
+rst 0x00	c7
+rst 0x08	cf
+rst 0x10	d7
+rst 0x18	df
+rst 0x20	e7
+rst 0x28	ef
+rst 0x30	f7
+rst 0x38	ff
+# ===== SBC =====
+sbc a,(hl)	9e
+# sbc a,(hl+ix)	dd 99
+# sbc a,(hl+iy)	dd 9a
+# sbc a,(hl+0x1122)	fd 9b 22 11
+# sbc a,(ix+iy)	dd 9b
+sbc a,(ix+0x55)	dd 9e 55
+# sbc a,(ix+0x1122)	fd 99 22 11
+sbc a,(iy+0x55)	fd 9e 55
+# sbc a,(iy+0x1122)	fd 9a 22 11
+# sbc a,(pc+0x1122)	fd 98 22 11
+sbc a,(sp+0x1122)	dd 98 22 11
+# sbc a,(0x3344)	dd 9f 44 33
+sbc a,a	9f
+sbc a,b	98
+sbc a,c	99
+sbc a,d	9a
+sbc a,e	9b
+sbc a,h	9c
+sbc a,ixh	dd 9c
+sbc a,ixl	dd 9d
+sbc a,iyh	fd 9c
+sbc a,iyl	fd 9d
+sbc a,l	9d
+sbc a,0x66	de 66
+sbc hl,bc	ed 42
+sbc hl,de	ed 52
+sbc hl,hl	ed 62
+sbc hl,sp	ed 72
+# sbc ix,bc	dd ed 42
+# sbc ix,de	dd ed 52
+# sbc ix,ix	dd ed 62
+# sbc ix,sp	dd ed 72
+# sbc iy,bc	fd ed 42
+# sbc iy,de	fd ed 52
+# sbc iy,iy	fd ed 62
+# sbc iy,sp	fd ed 72
+scf	37
+# ===== SET =====
+set 0,(hl)	cb c6
+set 0,(ix+0x55)	dd cb 55 c6
+set 0,(iy+0x55)	fd cb 55 c6
+set 0,a	cb c7
+set 0,b	cb c0
+set 0,c	cb c1
+set 0,d	cb c2
+set 0,e	cb c3
+set 0,h	cb c4
+set 0,l	cb c5
+set 1,(hl)	cb ce
+set 1,(ix+0x55)	dd cb 55 ce
+set 1,(iy+0x55)	fd cb 55 ce
+set 1,a	cb cf
+set 1,b	cb c8
+set 1,c	cb c9
+set 1,d	cb ca
+set 1,e	cb cb
+set 1,h	cb cc
+set 1,l	cb cd
+set 2,(hl)	cb d6
+set 2,(ix+0x55)	dd cb 55 d6
+set 2,(iy+0x55)	fd cb 55 d6
+set 2,a	cb d7
+set 2,b	cb d0
+set 2,c	cb d1
+set 2,d	cb d2
+set 2,e	cb d3
+set 2,h	cb d4
+set 2,l	cb d5
+set 3,(hl)	cb de
+set 3,(ix+0x55)	dd cb 55 de
+set 3,(iy+0x55)	fd cb 55 de
+set 3,a	cb df
+set 3,b	cb d8
+set 3,c	cb d9
+set 3,d	cb da
+set 3,e	cb db
+set 3,h	cb dc
+set 3,l	cb dd
+set 4,(hl)	cb e6
+set 4,(ix+0x55)	dd cb 55 e6
+set 4,(iy+0x55)	fd cb 55 e6
+set 4,a	cb e7
+set 4,b	cb e0
+set 4,c	cb e1
+set 4,d	cb e2
+set 4,e	cb e3
+set 4,h	cb e4
+set 4,l	cb e5
+set 5,(hl)	cb ee
+set 5,(ix+0x55)	dd cb 55 ee
+set 5,(iy+0x55)	fd cb 55 ee
+set 5,a	cb ef
+set 5,b	cb e8
+set 5,c	cb e9
+set 5,d	cb ea
+set 5,e	cb eb
+set 5,h	cb ec
+set 5,l	cb ed
+set 6,(hl)	cb f6
+set 6,(ix+0x55)	dd cb 55 f6
+set 6,(iy+0x55)	fd cb 55 f6
+set 6,a	cb f7
+set 6,b	cb f0
+set 6,c	cb f1
+set 6,d	cb f2
+set 6,e	cb f3
+set 6,h	cb f4
+set 6,l	cb f5
+set 7,(hl)	cb fe
+set 7,(ix+0x55)	dd cb 55 fe
+set 7,(iy+0x55)	fd cb 55 fe
+set 7,a	cb ff
+set 7,b	cb f8
+set 7,c	cb f9
+set 7,d	cb fa
+set 7,e	cb fb
+set 7,h	cb fc
+set 7,l	cb fd
+# ===== SLA / SLL / SRA / SRL =====
+sla (hl)	cb 26
+sla (ix+0x55)	dd cb 55 26
+sla (iy+0x55)	fd cb 55 26
+sla a	cb 27
+sla b	cb 20
+sla c	cb 21
+sla d	cb 22
+sla e	cb 23
+sla h	cb 24
+sla l	cb 25
+sll (hl)	cb 36
+sll (ix+0x55)	dd cb 55 36
+sll (iy+0x55)	fd cb 55 36
+sll a	cb 37
+sll b	cb 30
+sll c	cb 31
+sll d	cb 32
+sll e	cb 33
+sll h	cb 34
+sll l	cb 35
+sra (hl)	cb 2e
+sra (ix+0x55)	dd cb 55 2e
+sra (iy+0x55)	fd cb 55 2e
+sra a	cb 2f
+sra b	cb 28
+sra c	cb 29
+sra d	cb 2a
+sra e	cb 2b
+sra h	cb 2c
+sra l	cb 2d
+srl (hl)	cb 3e
+srl (ix+0x55)	dd cb 55 3e
+srl (iy+0x55)	fd cb 55 3e
+srl a	cb 3f
+srl b	cb 38
+srl c	cb 39
+srl d	cb 3a
+srl e	cb 3b
+srl h	cb 3c
+srl l	cb 3d
+# ===== SUB / SUBW =====
+sub (hl)	96
+# sub (hl+ix)	dd 91
+# sub (hl+iy)	dd 92
+# sub (hl+0x1122)	fd 93 22 11
+# sub (ix+iy)	dd 93
+sub (ix+0x55)	dd 96 55
+# sub (ix+0x1122)	fd 91 22 11
+sub (iy+0x55)	fd 96 55
+# sub (iy+0x1122)	fd 92 22 11
+# sub (pc+0x1122)	fd 90 22 11
+sub (sp+0x1122)	dd 90 22 11
+# sub (0x3344)	dd 97 44 33
+sub a	97
+sub b	90
+sub c	91
+sub d	92
+sub e	93
+sub h	94
+sub ixh	dd 94
+sub ixl	dd 95
+sub iyh	fd 94
+sub iyl	fd 95
+sub l	95
+sub 0x66	d6 66
+subw hl,(hl)	dd ed ce
+subw hl,(ix+0x1122)	fd ed ce 22 11
+subw hl,(iy+0x1122)	fd ed de 22 11
+subw hl,(pc+0x1122)	dd ed fe 22 11
+subw hl,(0x3344)	dd ed de 44 33
+subw hl,bc	ed ce
+subw hl,de	ed de
+subw hl,hl	ed ee
+subw hl,ix	dd ed ee
+subw hl,iy	fd ed ee
+subw hl,sp	ed fe
+subw hl,0x3344	fd ed fe 44 33
+# ===== TSTI / XOR =====
+tsti (c)	ed 70
+xor (hl)	ae
+# xor (hl+ix)	dd a9
+# xor (hl+iy)	dd aa
+# xor (hl+0x1122)	fd ab 22 11
+# xor (ix+iy)	dd ab
+xor (ix+0x55)	dd ae 55
+# xor (ix+0x1122)	fd a9 22 11
+xor (iy+0x55)	fd ae 55
+# xor (iy+0x1122)	fd aa 22 11
+# xor (pc+0x1122)	fd a8 22 11
+xor (sp+0x1122)	dd a8 22 11
+# xor (0x3344)	dd af 44 33
+xor a	af
+xor b	a8
+xor c	a9
+xor d	aa
+xor e	ab
+xor h	ac
+xor ixh	dd ac
+xor ixl	dd ad
+xor iyh	fd ac
+xor iyl	fd ad
+xor l	ad
+xor 0x66	ee 66
+
+
+
