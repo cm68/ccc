@@ -158,6 +158,7 @@ INSTALL = cp -u
 #
 CCC     = $(HOSTDIR)/bin/ccc
 AS      = $(HOSTLIBEXEC)/asz
+AS280   = $(HOSTLIBEXEC)/asz280
 LD      = $(HOSTLIBEXEC)/mxld
 #
 # The librarian is ar, built for the host as mxar.  It was wslib,
@@ -190,6 +191,11 @@ SIZE    = $(HOSTDIR)/bin/mxsize
 # failure as an alibi.
 CCDEP   = $(HOSTLIBEXEC)/pass0 $(HOSTLIBEXEC)/c0 \
 	  $(HOSTLIBEXEC)/c1 $(HOSTLIBEXEC)/peep $(HOSTLIBEXEC)/asz
+
+# The Z280 variant passes.  The runtime built with -m z280 depends on
+# these instead, so a fix to the divergent c1/peep/asz rebuilds it.
+CCDEP280 = $(HOSTLIBEXEC)/pass0 $(HOSTLIBEXEC)/c0280 \
+	  $(HOSTLIBEXEC)/c1280 $(HOSTLIBEXEC)/peep280 $(HOSTLIBEXEC)/asz280
 
 # ---------------------------------------------------------------
 # Default rules.

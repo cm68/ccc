@@ -9,6 +9,7 @@
 #
 
 ARCHIVE = libu.a
+ARCHIVE280 = libu280.a
 
 # The .s files here are sources, so CRUFTASM is deliberately absent.
 include ../../GNUmakefile.inc
@@ -36,7 +37,12 @@ CSRCS = signal.c lseek.c seek.c rename.c
 BUILD = z80
 OBJS = $(addprefix $(BUILD)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 
-all: $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o
+# Z280 variant: same sources (no divergent .s here), built by the Z280
+# passes so the objects use the SR-mode frame convention.
+BUILD280 = z280
+OBJS280 = $(addprefix $(BUILD280)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
+
+all: $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(BUILD280)/$(ARCHIVE280) $(BUILD280)/crt0280.o
 
 # Rebuilt when the compiler changes: these objects exist to be run,
 # and a codegen fix that leaves stale ones behind reads as a fix that
@@ -59,15 +65,34 @@ $(BUILD)/crt0.o: crt0.s
 	@mkdir -p $(BUILD)
 	$(AS) $< -o $@
 
+# Z280 build: .c via the Z280 passes, .s via the Z280 assembler.
+$(BUILD280)/%.o: %.c $(CCDEP280)
+	@mkdir -p $(BUILD280)
+	cd $(BUILD280) && $(CCC) -O -m z280 -I../../include -c ../$<
+
+$(BUILD280)/%.o: %.s
+	@mkdir -p $(BUILD280)
+	$(AS280) $< -o $@
+
+$(BUILD280)/$(ARCHIVE280): $(OBJS280)
+	rm -f $@
+	$(LIB) -cr $@ $(OBJS280)
+
+$(BUILD280)/crt0280.o: crt0.s
+	@mkdir -p $(BUILD280)
+	$(AS280) $< -o $@
+
 target-install: all
 	@mkdir -p $(MXDIR)/lib $(CPMDIR)/lib $(HOSTDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(MXDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(CPMDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(BUILD)/crt0.o $(HOSTDIR)/lib
+	$(INSTALL) $(BUILD280)/$(ARCHIVE280) $(BUILD280)/crt0280.o $(MXDIR)/lib
+	$(INSTALL) $(BUILD280)/$(ARCHIVE280) $(BUILD280)/crt0280.o $(HOSTDIR)/lib
 install: target-install
 
 clean:
-	rm -rf $(BUILD) zc3 ccc
+	rm -rf $(BUILD) $(BUILD280) zc3 ccc
 	rm -f $(CRUFT) $(CRUFTASMGEN)
 
 clobber: clean

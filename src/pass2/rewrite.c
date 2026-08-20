@@ -18,14 +18,6 @@
 /* Label counter for short-circuit jumps */
 int labelcnt;		/* shared with lower.c */
 
-/*
- * The index register a rule just matched: R_IX or R_IY, or 0 for a rule
- * with no index-register requirement.  Set while the register constraint
- * is checked, so $i/$I/$J can spell ix/iy, ixl/iyl, ixh/iyh in the
- * template that follows.
- */
-static char curidx;
-
 #ifdef DEBUG
 #include <stdio.h>
 
@@ -743,20 +735,6 @@ expandtpl(char *tpl, char *buf)
 	*d = 0;
 }
 
-/*
- * Emit [a, z) as one string.  Template text used to go out a
- * character at a time through outc(), which the stack-depth counter
- * cannot see; emitting whole spans keeps push/pop parseable at out().
- */
-static void
-emitspan(char *a, char *z)
-{
-	char save = *z;
-	*z = 0;
-	out(a);
-	*z = save;
-}
-
 void
 emitasm(char *tpl, Expr *e)
 {
@@ -784,8 +762,11 @@ emitasm(char *tpl, Expr *e)
 			cnt = (e->right->op == NUMBER) ?
 			      (int)e->right->u.val : 1;
 			/* emit the enclosed text cnt times */
-			for (i = 0; i < cnt; i++)
-				emitspan(start, p);
+			for (i = 0; i < cnt; i++) {
+				char *q;
+				for (q = start; q < p; q++)
+					outc(*q);
+			}
 			if (*p == ')') p++;
 			continue;
 		}
@@ -855,23 +836,6 @@ emitasm(char *tpl, Expr *e)
 			}
 			if (*p == 'T') {
 				out(e->tgt == R_DE ? "de" : "hl");
-				p++;
-				continue;
-			}
-			/* Index register substitution, for a rule that matched
-			 * RF_IXIY: $i the pair, $I the low byte, $J the high */
-			if (*p == 'i') {
-				out(curidx == R_IY ? "iy" : "ix");
-				p++;
-				continue;
-			}
-			if (*p == 'I') {
-				out(curidx == R_IY ? "iyl" : "ixl");
-				p++;
-				continue;
-			}
-			if (*p == 'J') {
-				out(curidx == R_IY ? "iyh" : "ixh");
 				p++;
 				continue;
 			}
@@ -957,22 +921,11 @@ emitasm(char *tpl, Expr *e)
 					/* o and r split it into the offset and
 					 * the register, for templates that
 					 * have to do the arithmetic themselves
-					 * rather than let (ix+d) do it.  Those
-					 * keep IY as the base - IY+off names
-					 * the same slot the SP-relative form
-					 * does, while IY still exists.  Only
-					 * the direct (reg+off) spelling is
-					 * SP-relative. */
+					 * rather than let (ix+d) do it */
 					if (mod == 'o') {
 						outd(n->u.var.off + offadj);
 					} else if (mod == 'r') {
 						out(idxregname(n->u.var.reg));
-					} else if (n->u.var.reg == R_IY) {
-						out("sp");
-						val = n->u.var.off + offadj +
-						      stackdepth;
-						if (val >= 0) outc('+');
-						outd(val);
 					} else {
 						out(idxregname(n->u.var.reg));
 						val = n->u.var.off + offadj;
@@ -983,26 +936,6 @@ emitasm(char *tpl, Expr *e)
 					/* raw frame offset, for address
 					 * arithmetic templates */
 					outd(n->u.var.off + offadj);
-				} else if (n->op == REGVAR) {
-					/* a register variable's name: $r the
-					 * pair, $i/$j the index-register bytes */
-					if (mod == 'i' || mod == 'j') {
-						if (n->u.var.reg == R_IX ||
-						    n->u.var.reg == R_IY) {
-							out(idxregname(n->u.var.reg));
-							outc(mod == 'i' ? 'l' : 'h');
-						} else
-							out("?byte?");
-					} else {
-						switch (n->u.var.reg) {
-						case R_BC: out("bc"); break;
-						case R_DE: out("de"); break;
-						case R_HL: out("hl"); break;
-						case R_IX:
-						case R_IY: out(idxregname(n->u.var.reg)); break;
-						default: out("?reg?"); break;
-						}
-					}
 				} else {
 					/* template navigated to a node the
 					 * emitter can't print - make the
@@ -1013,10 +946,7 @@ emitasm(char *tpl, Expr *e)
 				out("?null?");
 			}
 		} else {
-			char *run = p;
-			while (*p && *p != '$' && *p != '%')
-				p++;
-			emitspan(run, p);
+			outc(*p++);
 		}
 	}
 }
@@ -1080,30 +1010,6 @@ ccflag(unsigned char op, int signed_)
 }
 
 /*
- * Emit the address of a frame slot or struct member for LDA: sp plus
- * the static offset and current stack depth for a frame slot (reg ==
- * R_IY), index-register plus offset for a struct member.  outd()
- * spells a word signed, so '+' is added only on the non-negative side.
- */
-void
-emitslotaddr(char reg, int off)
-{
-	if (reg == R_IY) {
-		int v = off + stackdepth;
-
-		out("sp");
-		if (v >= 0)
-			outc('+');
-		outd(v);
-	} else {
-		out(idxregname(reg));
-		if (off >= 0)
-			outc('+');
-		outd(off);
-	}
-}
-
-/*
  * Try to apply a rule
  */
 Expr *
@@ -1118,7 +1024,6 @@ tryrule(struct rule *rp, Expr *e)
 	/* Match pattern */
 	if (!pmatch(rp, e))
 		return NULL;
-	curidx = 0;
 
 	/*
 	 * Check the register constraint.  A rule names at most one, so
@@ -1139,12 +1044,8 @@ tryrule(struct rule *rp, Expr *e)
 		if (want == RF_IXIY) {
 			if (have != R_IX && have != R_IY)
 				return NULL;
-			curidx = have;
-		} else {
-			curidx = 0;
-			if (have != regwant[want >> 5])
-				return NULL;
-		}
+		} else if (have != regwant[want >> 5])
+			return NULL;
 	}
 
 	/* Sign-bit tests are only valid on a signed operand */
@@ -1247,14 +1148,13 @@ tryrule(struct rule *rp, Expr *e)
 		reg = e->u.var.reg ? e->u.var.reg : R_IY;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			out("\tpush hl\n\tlda hl,(");
-			emitslotaddr(reg, off);
-			out(")\n\tex de,hl\n\tpop hl\n");
+			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    idxregname(reg), off);
 			n = mkcode(e->width, R_DE);
 		} else {
-			out("\tlda hl,(");
-			emitslotaddr(reg, off);
-			out(")\n");
+			outf("\tpush %s\n\tpop hl\n", idxregname(reg));
+			if (off)
+				outf("\tld de,%d\n\tadd hl,de\n", off);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -1268,14 +1168,12 @@ tryrule(struct rule *rp, Expr *e)
 		off = e->u.var.off;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			out("\tpush hl\n\tlda hl,(");
-			emitslotaddr(R_IY, off);
-			out(")\n\tex de,hl\n\tpop hl\n");
+			outf("\tpush hl\n\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    off);
 			n = mkcode(e->width, R_DE);
 		} else {
-			out("\tlda hl,(");
-			emitslotaddr(R_IY, off);
-			out(")\n");
+			outf("\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
+			    off);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -1295,14 +1193,12 @@ tryrule(struct rule *rp, Expr *e)
 		off = (short)e->right->u.val;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			out("\tpush hl\n\tlda hl,(");
-			emitslotaddr(reg, off);
-			out(")\n\tex de,hl\n\tpop hl\n");
+			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    idxregname(reg), off);
 			n = mkcode(e->width, R_DE);
 		} else {
-			out("\tlda hl,(");
-			emitslotaddr(reg, off);
-			out(")\n");
+			outf("\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
+			    idxregname(reg), off);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -1838,7 +1734,7 @@ step(Expr *e)
 		 * jp nz below it tested whatever flags happened to be set,
 		 * so the busy test never re-evaluated and the loop spun.
 		 */
-		else if (reg == R_IX || reg == R_IY) {
+		else if (reg == R_IX) {
 			e->op = REGVAR;
 			e->u.var.off = 0;
 		}

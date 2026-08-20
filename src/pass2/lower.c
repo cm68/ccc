@@ -203,8 +203,7 @@ reduced(Expr *e)
 		 * result left in IX now reduces to REGVAR rather than to
 		 * a CODE node.
 		 */
-		return e->u.var.reg == R_IX || e->u.var.reg == R_IY ||
-		    e->u.var.reg == R_BC;
+		return e->u.var.reg == R_IX || e->u.var.reg == R_BC;
 	}
 	return 0;
 }
@@ -1420,9 +1419,9 @@ idxtohl(Expr *s)
 	Expr *n;
 	char w = s->width;
 
-	out("\tlda hl,(");
-	emitslotaddr(s->u.var.reg, s->u.var.off);
-	out(")\n");
+	outf("\tpush %s\n\tpop hl\n", idxregname(s->u.var.reg));
+	if (s->u.var.off)
+		outf("\tld de,%d\n\tadd hl,de\n", s->u.var.off);
 	freeexpr(s);
 	n = mkcode(w, R_HL);
 	n->op = INHL;
@@ -1452,13 +1451,11 @@ valtohl(Expr *e)
 		return idxtohl(e);
 	if (e->op == INBC || e->op == INDE ||
 	    (e->op == REGVAR &&
-	     (e->u.var.reg == R_BC || e->u.var.reg == R_IX ||
-	      e->u.var.reg == R_IY))) {
+	     (e->u.var.reg == R_BC || e->u.var.reg == R_IX))) {
 		if (e->op == INDE)
 			out("\tld l,e\n\tld h,d\n");
-		else if (e->op == REGVAR &&
-		    (e->u.var.reg == R_IX || e->u.var.reg == R_IY))
-			outf("\tpush %s\n\tpop hl\n", idxregname(e->u.var.reg));
+		else if (e->op == REGVAR && e->u.var.reg == R_IX)
+			out("\tpush ix\n\tpop hl\n");
 		else
 			out("\tld l,c\n\tld h,b\n");
 		w = e->width;
@@ -2214,8 +2211,7 @@ spilled:	;
 			n = rewrite1(e->left->left);
 			e->left->left = n;
 			if (!(n->op == INDEX || n->op == INHL ||
-			      (n->op == REGVAR &&
-			       (n->u.var.reg == R_IX || n->u.var.reg == R_IY))))
+			      (n->op == REGVAR && n->u.var.reg == R_IX)))
 				e->left = rewrite1(e->left);
 			goto children_end;
 		} else if (e->left && e->left->op == REGVAR &&
@@ -2475,8 +2471,7 @@ spilled:	;
 		    e->left->op == DEREF && e->left->left &&
 		    (e->left->left->op == INBC ||
 		     (e->left->left->op == REGVAR &&
-		      (e->left->left->u.var.reg == R_IX ||
-		       e->left->left->u.var.reg == R_IY))))
+		      e->left->left->u.var.reg == R_IX)))
 			e->right = valtohl(e->right);
 
 		/*
@@ -2542,9 +2537,11 @@ spilled:	;
 
 			if (keep)
 				out("\tpush hl\n");
-			out("\tlda hl,(");
-			emitslotaddr(reg ? reg : R_IY, off);
-			out(")\n\tex de,hl\n");
+			outf("\tpush %s\n\tpop hl\n",
+			    idxregname(reg ? reg : R_IY));
+			if (off)
+				outf("\tld de,%d\n\tadd hl,de\n", off);
+			out("\tex de,hl\n");
 			if (keep)
 				out("\tpop hl\n");
 			freeexpr(e->right);

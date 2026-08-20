@@ -37,7 +37,7 @@ SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 
 # Host: what runs on the build machine, installed into unix/.  ccclib
 # comes first because the four passes link against its host archive.
-HOSTDIRS = ccclib cpp pass1 pass2 peep tools
+HOSTDIRS = ccclib cpp pass1 pass1z280 pass2 pass2z280 peep peep280 tools
 # tabled: cpm3
 
 # Target: the Z80 runtime, compiled by the compiler the host phase
@@ -93,7 +93,7 @@ selfcheck: cpm
 # whether or not CP/M is in the build lists today.  A cleanup list
 # that tracks the build list leaves droppings behind exactly when a
 # component is switched off, which is when nobody is looking.
-ALLDIRS = ccclib cpp pass1 pass2 peep tools cpm3 libc libcpm libu include
+ALLDIRS = ccclib cpp pass1 pass1z280 pass2 pass2z280 peep peep280 tools cpm3 libc libcpm libu include
 
 clean:
 	@for d in $(ALLDIRS); do $(SUBMAKE) -C $$d clean; done

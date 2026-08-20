@@ -91,9 +91,8 @@ static short savebase;		/* scalar area size: save slots below it */
  * a question for the first expression, one pass later.
  */
 static unsigned char framefree;
-static unsigned short regsused;	/* bitmask of callee-save regs */
+static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
-static short unwind;		/* bytes the exit helper unwinds before ret */
 
 /*
  * Switch dispatch.
@@ -433,8 +432,6 @@ savesbc(void)
 void
 emitprolog(void)
 {
-	stackdepth = 0;
-
 	/*
 	 * Emit the function label: one colon keeps it in this file, two
 	 * export it.
@@ -553,10 +550,6 @@ emitprolog(void)
 			outf("\tcall\tfenter%s\n", sfx);
 		else
 			outf("\tcall\t%s%s\n\t.dw\t%d  \n", h, sfx, -savebase);
-		/* IY is a register variable now; save it like the others,
-		 * inline, under the pair the helper just pushed */
-		if (regsused & REGBIT(R_IY))
-			out("\tpush\tiy\n");
 
 		off = -savebase;
 		if (savesbc()) {
@@ -571,8 +564,6 @@ emitprolog(void)
 			if (ixoff < -128)
 				out("\t.error scalar frame too large for IX restore\n");
 		}
-		if (regsused & REGBIT(R_IY))
-			off -= 2;
 		/* rest = arrays plus any unused save-slot bytes
 		 * (off is -savebase-pushed, so this is
 		 * framesize - savebase - pushed) */
@@ -580,21 +571,6 @@ emitprolog(void)
 		if (rest > 0)
 			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
 			    rest);
-		/*
-		 * There is no frame pointer any more.  SP sits savebase +
-		 * saves + rest bytes below the slot the old IY named, less
-		 * the two bytes the helper used to save IY in; that is the
-		 * displacement every slot's SP-relative spelling adds.  The
-		 * exit helper unwinds the whole frame and the spilled first
-		 * argument, so it is that same total put back plus the arg
-		 * slots the caller pushed.
-		 */
-		stackdepth = -off + (rest > 0 ? rest : 0) - 2;
-		/* the exit helper runs after the inline pop iy, so the
-		 * saved IY is not part of what it has to unwind */
-		unwind = -off + (rest > 0 ? rest : 0) -
-		    (regsused & REGBIT(R_IY) ? 2 : 0) +
-		    (nparams == 0 ? 0 : (ISLONG(arg1w) ? 4 : 2));
 	}
 
 	/* Stage params from stack to registers.  The walk runs from the
@@ -613,20 +589,23 @@ emitprolog(void)
 		w = sp->width;
 
 		if (ISBYTE(w)) {
-			/* Byte: SR mode reaches only A, so load through it */
-			outf("\tld\ta,(sp+%d)\n\tld\t%c,a\n", off + stackdepth,
-			    r == R_B ? 'b' : 'c');
+			/* Byte: ld r,(iy+off) */
+			out("\tld\t");
+			switch (r) {
+			case R_B: outc('b'); break;
+			case R_C: outc('c'); break;
+			}
+			outf(",(iy+%d)\n", off);
 		} else {
-			/* Word: SR mode reaches only HL, so load it and move on */
+			/* Word: load low then high */
 			switch (r) {
 			case R_BC:
-				outf("\tld\thl,(sp+%d)\n\tld\tc,l\n\tld\tb,h\n",
-				    off + stackdepth);
+				outf("\tld\tc,(iy+%d)\n\tld\tb,(iy+%d)\n",
+				    off, off + 1);
 				break;
 			case R_IX:
-			case R_IY:
-				outf("\tld\thl,(sp+%d)\n\tpush\thl\n\tpop\t%s\n",
-				    off + stackdepth, r == R_IX ? "ix" : "iy");
+				outf("\tld\tl,(iy+%d)\n\tld\th,(iy+%d)\n\tpush\thl\n\tpop\tix\n",
+				    off, off + 1);
 				break;
 			}
 		}
@@ -647,8 +626,6 @@ emitepilog(void)
 	 * saves to hand back, in the order that balances the entry.
 	 */
 	if (noframe) {
-		if (regsused & REGBIT(R_IY))
-			out("\tpop\tiy\n");
 		if (regsused & REGBIT(R_IX))
 			out("\tpop\tix\n");
 		if (savesbc())
@@ -680,29 +657,34 @@ emitepilog(void)
 	 * does not know exists, so the exit helper is what discards it.
 	 */
 	{
-	/*
-	 * One helper per save set; the spilled first argument is part of
-	 * the unwind amount, not a separate helper variant.  IY was saved
-	 * inline after the entry helper, so it is popped inline first and
-	 * is left out of the unwind word.
-	 */
-	if (regsused & REGBIT(R_IY))
-		out("\tpop\tiy\n");
+	char *sfx = nparams == 0 ? "" : (ISLONG(arg1w) ? "q" : "w");
+
 	if (savesbc() || (regsused & REGBIT(R_IX))) {
 		char *h;
+		short off;
 
-		if (!savesbc())
+		if (!savesbc()) {
 			h = "fexx";
-		else if (!(regsused & REGBIT(R_IX)))
+			off = ixoff;
+		} else if (!(regsused & REGBIT(R_IX))) {
 			h = "fexb";
-		else
+			off = bcoff;
+		} else {
 			h = "fexbx";
-		outf("\tcall\t%s\n\t.dw\t%d\n", h, unwind);
+			off = ixoff;	/* pushed last, so the lower */
+		}
+		outf("\tcall\t%s%s\n\t.dw\t%d\n", h, sfx, off);
 		return;
 	}
 
-	/* Nothing to restore: just the unwind. */
-	outf("\tcall\tfexit\n\t.dw\t%d\n", unwind);
+	/*
+	 * Nothing to restore: just the unwind, and jumped to for the
+	 * same reason the entry is called.  Written out it is five bytes
+	 * - ld sp,iy and pop iy are two each - against three, and the
+	 * peephole that used to make the substitution only runs under
+	 * -O.
+	 */
+	outf("\tjp\tfexit%s\n", sfx);
 	}
 }
 

@@ -36,7 +36,6 @@
 #define IADDW       21
 #define IEI         22
 #define ILDCTL      23
-#define ILDA        24
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -175,9 +174,6 @@ struct instruct isr_table[] = {
 
 	/* Z280 load control register */
 	{ ILDCTL, "ldctl", 0, 0 },
-
-	/* Z280 load effective address: dst = HL, IX or IY */
-	{ ILDA, "lda", 0, 0 },
 
 	{ IEND, "", 0x00, 0x00}
 };
@@ -348,16 +344,6 @@ unsigned char reg;
 			emitbyte(0x4B + ((reg - T_BC) << 4));
 		}
 		emit_exp(2, &value);
-	} else if (arg == T_SP_D && reg == T_HL) {
-		/*
-		 * Z280 SR mode: ld hl|ix|iy,(sp+dd) = [DD/FD] ED 04 dd16.
-		 * Only HL (and its IX/IY forms) has a word load; BC/DE do
-		 * not, so reg==T_HL is the gate.
-		 */
-		emitbyte(0xED);
-		emitbyte(0x04);
-		emitbyte(value.num.w & 0xff);
-		emitbyte((value.num.w >> 8) & 0xff);
 	} else if (reg == T_SP) {
 		/*
 		 * ld sp,hl|ix|iy specials
@@ -408,18 +394,6 @@ struct expval *disp;
 	need(',');
 
 	reg = operand(&value);
-
-	/* Z280 SR mode: only the accumulator has a byte form.
-	 * ld a,(sp+dd) = DD 78 dd16 */
-	if (reg == T_SP_D) {
-		if (arg != T_A)
-			return 1;
-		emitbyte(0xDD);
-		emitbyte(0x78);
-		emitbyte(value.num.w & 0xff);
-		emitbyte((value.num.w >> 8) & 0xff);
-		return 0;
-	}
 
 	if (arg >= T_IXH && arg <= T_IY_D) {
 		if (arg <= T_IX_D) {
@@ -592,12 +566,6 @@ struct instruct *isr;
 		} else if (arg == T_PLAIN) {
 			emitbyte(isr->opcode + 0x46);
 			emitbyte(value.num.b);
-		} else if (arg == T_SP_D) {
-			/* Z280 SR mode: op a,(sp+dd) = DD <opcode> dd16 */
-			emitbyte(0xDD);
-			emitbyte(isr->opcode);
-			emitbyte(value.num.w & 0xff);
-			emitbyte((value.num.w >> 8) & 0xff);
 		} else
 			return 1;
 	} else if (prim == 1) {
@@ -660,12 +628,6 @@ struct instruct *isr;
 		emitbyte(isr->opcode + ((arg - T_IYH + 4) << 3));
 		if (arg == T_IY_D)
 			emitbyte(value.num.b);
-	} else if (arg == T_SP_D) {
-		/* Z280 SR mode: inc/dec (sp+dd) = DD 04/05 dd16 */
-		emitbyte(0xDD);
-		emitbyte(isr->opcode);
-		emitbyte(value.num.w & 0xff);
-		emitbyte((value.num.w >> 8) & 0xff);
 	} else
 		return 1;
 	return 0;
@@ -1380,39 +1342,6 @@ struct instruct *isr;
 
 	arg = operand(&value);
 
-	/* Z280 SR mode: (sp+dd) as the destination */
-	if (arg == T_SP_D) {
-		int disp = value.num.w;
-		need(',');
-		reg = operand(&value);
-		if (reg == T_A) {
-			/* ld (sp+dd),a = ED 03 dd16 */
-			emitbyte(0xED);
-			emitbyte(0x03);
-		} else if (reg == T_HL) {
-			/* ld (sp+dd),hl = ED 05 dd16 */
-			emitbyte(0xED);
-			emitbyte(0x05);
-		} else if (reg == T_IX || reg == T_IY) {
-			/* ld (sp+dd),ix/iy = DD/FD ED 05 dd16 */
-			emitbyte(reg == T_IX ? 0xDD : 0xFD);
-			emitbyte(0xED);
-			emitbyte(0x05);
-		} else if (reg == T_PLAIN) {
-			/* ld (sp+dd),n = DD 06 dd16 n */
-			emitbyte(0xDD);
-			emitbyte(0x06);
-			emitbyte(disp & 0xff);
-			emitbyte((disp >> 8) & 0xff);
-			emitbyte(value.num.w & 0xff);
-			return 0;
-		} else
-			return 1;
-		emitbyte(disp & 0xff);
-		emitbyte((disp >> 8) & 0xff);
-		return 0;
-	}
-
 	if (arg == T_INDIR) {
 		return do_stax(&value);
 	}
@@ -1455,55 +1384,6 @@ struct instruct *isr;
 	return 0;
 }
 
-/*
- * Z280 load effective address: the address of the source operand lands
- * in HL, IX or IY.  The code generator reaches two modes - SR, the
- * frame-slot address, and X, the struct member - and DA is the absolute
- * one, whose encoding is the same 21 nn as ld hl,nn.
- */
-static char
-do_lda(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-	if (arg == T_IX) {
-		emitbyte(0xDD);
-	} else if (arg == T_IY) {
-		emitbyte(0xFD);
-	} else if (arg != T_HL)
-		return 1;
-
-	need(',');
-	arg = operand(&value);
-
-	switch (arg) {
-	case T_SP_D:			/* lda hl,(sp+dd) = ED 02 dd16 */
-		emitbyte(0xED);
-		emitbyte(0x02);
-		break;
-	case T_IX_D:			/* lda hl,(ix+dd) = ED 2A dd16 */
-		emitbyte(0xED);
-		emitbyte(0x2A);
-		break;
-	case T_IY_D:			/* lda hl,(iy+dd) = ED 32 dd16 */
-		emitbyte(0xED);
-		emitbyte(0x32);
-		break;
-	case T_INDIR:			/* lda hl,(nn) = 21 nn */
-		emitbyte(0x21);
-		emit_exp(2, &value);
-		return 0;
-	default:
-		return 1;
-	}
-	emitbyte(value.num.w & 0xff);
-	emitbyte((value.num.w >> 8) & 0xff);
-	return 0;
-}
-
 static char (*isr_handlers[])() = {
 	0,
 	do_basic,
@@ -1528,8 +1408,7 @@ static char (*isr_handlers[])() = {
 	do_muldiv,
 	do_addw,
 	do_ei,
-	do_ldctl,
-	do_lda
+	do_ldctl
 };
 
 /*

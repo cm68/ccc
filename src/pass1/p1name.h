@@ -101,7 +101,6 @@ struct name {
 #define REG_C       2   /* C register (byte) */
 #define REG_BC      3   /* BC register pair (word) */
 #define REG_IX      4   /* IX index register (struct pointer) */
-#define REG_IY      8   /* IY index register (second struct pointer) */
 
 extern struct name *newName(unsigned short id, kind k, struct type *t,
     unsigned char is_tag);

@@ -187,7 +187,7 @@ usage(void)
     printf("  -9             Use 9-char symbols in output\n");
     printf("  -I<dir>        Include directory\n");
     printf("  -i<dir>        System include directory (default /usr/include)\n");
-    printf("  -m <system>    Target system: micronix (default) or cpm\n");
+    printf("  -m <system>    Target: micronix (default), cpm or z280\n");
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
     printf("  -H             Use .tok (readable) input for pass1 instead of .x\n");
@@ -505,6 +505,7 @@ main(int argc, char **argv)
      */
     char *target = DEFTARGET;
     int cpm_target = 0;      /* target is CP/M: image layout differs */
+    int z280_variant = 0;    /* Z280 codegen: divergent passes + runtime */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -655,9 +656,11 @@ main(int argc, char **argv)
             }
             target = argv[0];
             if (strcmp(target, "micronix") != 0 &&
-                strcmp(target, "cpm") != 0) {
+                strcmp(target, "cpm") != 0 &&
+                strcmp(target, "z280") != 0 &&
+                strcmp(target, "micronix-z280") != 0) {
                 fprintf(stderr, "Error: unknown target %s "
-                        "(micronix or cpm)\n", target);
+                        "(micronix, cpm or z280)\n", target);
                 exit(1);
             }
             argc--;
@@ -804,7 +807,23 @@ main(int argc, char **argv)
      * and the startup object are not, so they are named per target.
      */
     cpm_target = (strcmp(target, "cpm") == 0);
-    sprintf(libc_path, "%s/libc.a", libdir);
+    /*
+     * -m z280 is micronix with the Z280 codegen: the divergent passes
+     * (c1, peep, asz) and the divergent runtime (libc's csv.s drops the
+     * IY frame pointer) are installed under their 280 names, so both
+     * variants coexist.  The pass paths were resolved before -m was
+     * seen; re-resolve them here (the base arg arrays hold pointers to
+     * these buffers, so they pick the new name up).
+     */
+    if (strcmp(target, "z280") == 0 || strcmp(target, "micronix-z280") == 0) {
+        z280_variant = 1;
+        target = "micronix";
+        sprintf(cc1_path, "%s/c0280", libexecdir);
+        sprintf(cc2_path, "%s/c1280", libexecdir);
+        sprintf(peep_path, "%s/peep280", libexecdir);
+        sprintf(asm_path, "%s/asz280", libexecdir);
+    }
+    sprintf(libc_path, "%s/%s", libdir, z280_variant ? "libc280.a" : "libc.a");
     /*
      * The headers do not live beside the passes on a Unix, they live
      * in /usr/include, and that is where the Micronix tree keeps them
@@ -828,6 +847,9 @@ main(int argc, char **argv)
     if (cpm_target) {
         sprintf(libu_path, "%s/libcpm.a", libdir);
         sprintf(chdr_path, "%s/crtcpm.o", libdir);
+    } else if (z280_variant) {
+        sprintf(libu_path, "%s/libu280.a", libdir);
+        sprintf(chdr_path, "%s/crt0280.o", libdir);
     } else {
         sprintf(libu_path, "%s/libu.a", libdir);
         sprintf(chdr_path, "%s/crt0.o", libdir);

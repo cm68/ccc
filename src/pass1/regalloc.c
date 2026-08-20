@@ -180,7 +180,7 @@ void
 allocRegs(struct local *locals)
 {
 	struct local *n, *best;
-	char regs = 0;  /* bits: 1=IX, 2=BC, 4=B, 8=C, 16=IY */
+	char regs = 0;  /* bits: 1=IX, 2=BC, 4=B, 8=C */
 	unsigned char no_arg_regs = 0;
 
 	/* If any funarg has address taken, no funargs can use registers */
@@ -198,9 +198,6 @@ allocRegs(struct local *locals)
 		if ((n->type->flags & TF_POINTER) && !(regs & 1)) {
 			n->reg = REG_IX;
 			regs |= 1;
-		} else if ((n->type->flags & TF_POINTER) && !(regs & 16)) {
-			n->reg = REG_IY;
-			regs |= 16;
 		} else if (n->type->size == 2 && !(regs & 14)) {
 			/* the pair is free only if neither half is taken */
 			n->reg = REG_BC;
@@ -211,39 +208,35 @@ allocRegs(struct local *locals)
 		}
 	}
 
-	/*
-	 * IX and then IY to the pointers with the highest agg_refs (only
-	 * if used for field access).  IY was the frame pointer; now that
-	 * it is free it is the second index register.  An array carries
-	 * TF_POINTER too - it decays - so the pointer bit alone does not
-	 * mean there is a pointer here to put in a register: an array IS
-	 * its storage, and giving it IX made "stack[0].l = 11" assign to
-	 * the register while every field reference addressed the frame.
-	 */
-	{
-		int i;
-
-		for (i = 0; i < 2; i++) {
-			char want = (i == 0) ? REG_IX : REG_IY;
-			int bit = (i == 0) ? 1 : 16;
-
-			if (regs & bit)
+	/* IX to pointer with highest agg_refs (only if used for field access) */
+	if (!(regs & 1)) {
+		best = NULL;
+		for (n = locals; n; n = n->next) {
+			if (!canAlloc(n, no_arg_regs))
 				continue;
-			best = NULL;
-			for (n = locals; n; n = n->next) {
-				if (!canAlloc(n, no_arg_regs))
-					continue;
-				if (!(n->type->flags & TF_POINTER))
-					continue;
-				if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
-					continue;
-				if (n->agg_refs > 0) {
-					if (!best || n->agg_refs > best->agg_refs)
-						best = n;
-				}
+			if (!(n->type->flags & TF_POINTER))
+				continue;
+			/*
+			 * An array carries TF_POINTER too - it decays - so the
+			 * pointer bit alone does not mean there is a pointer
+			 * here to put in a register.  An array IS its storage;
+			 * giving it IX made "stack[0].l = 11" assign to the
+			 * register and every field reference address the frame
+			 * from wherever that left it.  The two allocators below
+			 * have always excluded aggregates; this one did not,
+			 * and only escaped notice because a declared register
+			 * pointer usually takes IX first - which is exactly
+			 * what was hiding it in qsort.
+			 */
+			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
+				continue;
+			/* Only use IX if pointer is used for field access */
+			if (n->agg_refs > 0) {
+				if (!best || n->agg_refs > best->agg_refs)
+					best = n;
 			}
-			if (best) { best->reg = want; regs |= bit; }
 		}
+		if (best) { best->reg = REG_IX; regs |= 1; }
 	}
 
 	/*

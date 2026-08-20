@@ -105,6 +105,9 @@ fenterw:
 	pop	af		;the caller's return address
 	push	hl		;arg 1, into its old slot
 	push	af
+	push	iy
+	ld	iy,0
+	add	iy,sp		;new frame pointer
 	push	de
 	ret			;into the body, hl untouched
 
@@ -121,78 +124,243 @@ fenterq:
 
 fenter:
 	pop	hl		;return address
+	push	iy
+	ld	iy,0
+	add	iy,sp		;new frame pointer
 	jp	(hl)
 
-fexit:				;unwind, no saves: the word is scalars+arrays+arg
-	ex	(sp),hl		;hl -> the word after the call, value on the stack
-	ld	e,(hl)
-	inc	hl
-	ld	d,(hl)		;de = the unwind amount
-	pop	hl		;the return value back, sp = the frame base
-	ex	de,hl		;de = return value, hl = the amount
-	add	hl,sp
-	ld	sp,hl		;unwind the frame and the spilled argument
-	ex	de,hl		;hl = the return value
+fexit:
+	ld	sp,iy
+	pop	iy
+	ret
+
+	global	fexitw, fexitq
+
+fexitw:
+	ld	sp,iy
+	pop	iy
+	pop	de		;the return address
+	inc	sp
+	inc	sp		;over the spilled first argument
+	push	de
+	ret
+
+fexitq:
+	ld	sp,iy
+	pop	iy
+	pop	de
+	inc	sp
+	inc	sp
+	inc	sp
+	inc	sp		;a long is two slots
+	push	de
 	ret
 
 ;	Callee-save exits.  A function that keeps a variable in BC or in
-;	IX has to hand the caller's back.  The saves sit together at the
-;	bottom of the frame - IX pushed last, so it is at sp+2 and BC at
-;	sp+4 once the call has parked the return value on the stack - so
-;	they are reached by the Z280's SR word load, and the word after
-;	the call is the whole frame to unwind (scalars, arrays and the
-;	spilled first argument).  Nothing touches HL' or the shadow set,
-;	so a long return value lives through these unchanged.
+;	IX has to hand the caller's back, and that was written out at
+;	the end of every one of them: twelve bytes for IX, because it
+;	has to come back through A to leave HL and the flags alone, and
+;	six for BC.  Two thousand bytes of it in c1 alone.
+;
+;	Here instead, once.  The saved pair sits just under the scalar
+;	area, so where it is depends on the frame - the caller says so
+;	with a word after the call, the offset of the LOWER save from
+;	the frame pointer, and the helper reads them from there.  Five
+;	bytes at the call site against twenty-one.
+;
+;	These used to do their arithmetic in the shadow set, on the
+;	grounds that every ordinary register was either the return value
+;	or one of the pair being restored.  Two of the three premises
+;	were wrong.
+;
+;	The first: A and the flags are NOT live here.  Every return goes
+;	through an assignment to HL - pass2's RETURN case widens even a
+;	byte and hands it back in HL - so there is nothing in A to
+;	protect and no condition to preserve, and the ex af,af' that
+;	bracketed all three was guarding a value that does not exist.
+;
+;	The second: the saves do not have to be popped.  Pointing SP at
+;	them is what forced a spare pair to hold the address; reading
+;	them through (hl) does not, because ex (sp),hl parks the return
+;	value on the stack and hands over the pointer in the same byte.
+;	BC is then free - in two of the three it is about to be
+;	restored anyway, and fexx borrows the caller's and gives it
+;	back.
+;
+;	So nothing here touches BC', DE' or HL' any more, which is what
+;	lets a long live in HL':HL.  DE is untouched too, so this is
+;	correct under either convention.  Seven bytes more across the
+;	three of them, once.  _signal still saves the shadow set around
+;	a handler; it no longer has to on account of this file.
 
 	global	fexbx, fexx, fexb
 
 fexbx:				;restore IX and BC
-	ex	(sp),hl
-	ld	e,(hl)
+	ex	(sp),hl		;hl -> the word after the call,
+				; and the return value is on the stack
+	ld	c,(hl)
 	inc	hl
-	ld	d,(hl)		;de = the unwind amount
-	ld	hl,(sp+2)	;the saved IX, pushed last
-	push	hl
-	pop	ix
-	ld	hl,(sp+4)	;the saved BC
-	ld	c,l
-	ld	b,h
+	ld	b,(hl)		;bc = offset of the lower save from iy
+	push	iy
+	pop	hl
+	add	hl,bc		;-> the saves
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix		;pushed last, so it is underneath
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
 	pop	hl		;the return value back
-	ex	de,hl
-	add	hl,sp
-	ld	sp,hl
-	ex	de,hl
-	ret
+	jr	fexit
 
 fexx:				;restore IX alone
 	ex	(sp),hl
-	ld	e,(hl)
+	push	bc		;the caller's, borrowed and given back
+	ld	c,(hl)
 	inc	hl
-	ld	d,(hl)
-	ld	hl,(sp+2)
-	push	hl
-	pop	ix
+	ld	b,(hl)
+	push	iy
 	pop	hl
-	ex	de,hl
-	add	hl,sp
-	ld	sp,hl
-	ex	de,hl
-	ret
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix
+	pop	bc
+	pop	hl
+	jr	fexit
 
 fexb:				;restore BC alone
 	ex	(sp),hl
-	ld	e,(hl)
+	ld	c,(hl)
 	inc	hl
-	ld	d,(hl)
-	ld	hl,(sp+2)
-	ld	c,l
-	ld	b,h
+	ld	b,(hl)
+	push	iy
 	pop	hl
-	ex	de,hl
-	add	hl,sp
-	ld	sp,hl
-	ex	de,hl
-	ret
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jr	fexit
+
+;	The same three, for a function whose first argument came in HL
+;	(w) or HL':HL (q): the entry spilled it above the return
+;	address, and these discard it on the way out.  The bodies are
+;	the ones above verbatim - only the unwind they leave through
+;	differs - and jp rather than jr because fexitw sits out of
+;	range from the far end of this run.
+
+	global	fexbxw, fexxw, fexbw
+	global	fexbxq, fexxq, fexbq
+
+fexbxw:				;restore IX and BC
+	ex	(sp),hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jp	fexitw
+
+fexbxq:
+	ex	(sp),hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jp	fexitq
+
+fexxw:				;restore IX alone
+	ex	(sp),hl
+	push	bc		;the caller's, borrowed and given back
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix
+	pop	bc
+	pop	hl
+	jp	fexitw
+
+fexxq:
+	ex	(sp),hl
+	push	bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
+	pop	ix
+	pop	bc
+	pop	hl
+	jp	fexitq
+
+fexbw:				;restore BC alone
+	ex	(sp),hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jp	fexitw
+
+fexbq:
+	ex	(sp),hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	iy
+	pop	hl
+	add	hl,bc
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jp	fexitq
 
 ;	And the entries that match them.  A prologue was the frame
 ;	pointer (three, through fenter), the scalar area (five, and it
@@ -232,6 +400,9 @@ fentbxw:			;frame, scalar area, save IX and BC
 	pop	af		;the caller's return address
 	push	hl		;arg 1, into its old slot
 	push	af
+	push	iy
+	ld	iy,0
+	add	iy,sp		;new frame pointer
 	ld	a,(de)		;-savebase, the low byte says it all
 	inc	de
 	inc	de		;de = the body
@@ -247,6 +418,8 @@ fentbxw:			;frame, scalar area, save IX and BC
 	ld	sp,hl		;scalar area allocated
 	push	bc
 	push	ix
+	ld	l,(iy+4)
+	ld	h,(iy+5)	;arg 1 back: hl and its slot agree
 	exx
 	push	de		;the body address, off the ferry
 	exx
@@ -257,6 +430,9 @@ fentxw:				;the same, saving IX alone
 	pop	af
 	push	hl
 	push	af
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ld	a,(de)
 	inc	de
 	inc	de
@@ -271,6 +447,8 @@ fentxw:				;the same, saving IX alone
 	add	hl,sp
 	ld	sp,hl
 	push	ix
+	ld	l,(iy+4)
+	ld	h,(iy+5)
 	exx
 	push	de
 	exx
@@ -281,6 +459,9 @@ fentbw:				;saving BC alone
 	pop	af
 	push	hl
 	push	af
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ld	a,(de)
 	inc	de
 	inc	de
@@ -295,6 +476,8 @@ fentbw:				;saving BC alone
 	add	hl,sp
 	ld	sp,hl
 	push	bc
+	ld	l,(iy+4)
+	ld	h,(iy+5)
 	exx
 	push	de
 	exx
@@ -305,6 +488,9 @@ fentnw:				;no saves, but a scalar area to allocate
 	pop	af
 	push	hl
 	push	af
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ld	a,(de)
 	inc	de
 	inc	de
@@ -318,6 +504,8 @@ fentnw:				;no saves, but a scalar area to allocate
 	ld	h,a
 	add	hl,sp
 	ld	sp,hl
+	ld	l,(iy+4)
+	ld	h,(iy+5)
 	exx
 	push	de
 	exx
@@ -377,6 +565,9 @@ fentbx:				;frame, scalar area, save IX and BC
 	inc	hl
 	ld	d,(hl)
 	inc	hl		;hl = return address, de = -scalars
+	push	iy
+	ld	iy,0
+	add	iy,sp		;new frame pointer
 	ex	de,hl
 	add	hl,sp
 	ld	sp,hl		;scalar area allocated
@@ -391,6 +582,9 @@ fentx:				;the same, saving IX alone
 	inc	hl
 	ld	d,(hl)
 	inc	hl
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ex	de,hl
 	add	hl,sp
 	ld	sp,hl
@@ -404,6 +598,9 @@ fentb:				;saving BC alone
 	inc	hl
 	ld	d,(hl)
 	inc	hl
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ex	de,hl
 	add	hl,sp
 	ld	sp,hl
@@ -417,6 +614,9 @@ fentn:				;no saves, but a scalar area to allocate
 	inc	hl
 	ld	d,(hl)
 	inc	hl
+	push	iy
+	ld	iy,0
+	add	iy,sp
 	ex	de,hl
 	add	hl,sp
 	ld	sp,hl

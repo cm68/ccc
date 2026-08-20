@@ -1,0 +1,94 @@
+.he "c0 (1)                       8/11/26                       c0 (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+c0
+- C parser
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+c0 [options] file.x out.ast out.dat
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+C0
+is the second pass of the C compiler.  It reads the lexeme stream
+.bd
+pass0
+wrote and parses it, and writes two files:
+
+.in +5
+.ti -5
+1.	The abstract syntax tree, one tree per function, in the file
+named second.  This is what
+.bd
+c1
+walks to generate code.
+
+.ti -5
+2.	The initialised data - string literals, initialisers,
+everything whose value is known before the program runs - as
+assembler, in the file named third.
+.in -5
+
+The split is what lets the code generator be a tree walk and nothing
+else.  Data that has a value at compile time never reaches it.
+
+.bd
+C0
+does the whole of the front end above lexing: scopes, declarations,
+types, the usual arithmetic conversions, constant folding, and the
+promotion and truncation the target's widths call for.  A tree
+reaching
+.bd
+c1
+has been type-checked and every conversion in it is explicit.
+
+The three file arguments are positional and all three are required.
+The driver names them for the source with the suffixes changed, and
+removes them afterwards unless -k was given.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-v mask	Set the debugging verbosity to the hexadecimal
+.bd
+mask.
+Present only in a compiler built with debugging; the masks are listed
+if the pass is run with no arguments.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), pass0 (1), c1 (1), astpp (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+Errors name the file and line they were found on, taken from the line
+markers in the lexeme stream, and are written to standard error.  The
+exit status is non-zero if any were reported, and the output files
+should not be used.

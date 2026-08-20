@@ -23,6 +23,7 @@
 #
 
 ARCHIVE = libc.a
+ARCHIVE280 = libc280.a
 
 # opendir.c IS here and is not built here.  It wants types.h,
 # dirent.h and sys/dir.h, which are the micronix tree's headers and
@@ -100,7 +101,13 @@ CSRCS = \
 BUILD = z80
 OBJS = $(addprefix $(BUILD)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 
-all: $(BUILD)/$(ARCHIVE)
+# The Z280 variant: same sources, but csv.s -> csv280.s (the startup
+# drops the IY frame pointer) and everything built by the Z280 passes.
+BUILD280 = z280
+SRCS280 = $(filter-out csv.s,$(SRCS)) csv280.s
+OBJS280 = $(addprefix $(BUILD280)/,$(SRCS280:.s=.o) $(CSRCS:.c=.o))
+
+all: $(BUILD)/$(ARCHIVE) $(BUILD280)/$(ARCHIVE280)
 
 # Rebuilt when the compiler changes: these objects exist to be run,
 # and a codegen fix that leaves stale ones behind reads as a fix that
@@ -117,6 +124,20 @@ $(BUILD)/$(ARCHIVE): $(OBJS)
 	rm -f $@
 	$(LIB) -cr $@ $(OBJS)
 
+# Z280 build: the .c compiled by the Z280 passes, the .s assembled by
+# the Z280 assembler.  csv280.s takes csv.s's place via SRCS280.
+$(BUILD280)/%.o: %.c $(CCDEP280)
+	@mkdir -p $(BUILD280)
+	cd $(BUILD280) && $(CCC) -O -m z280 -I../../include -c ../$<
+
+$(BUILD280)/%.o: %.s
+	@mkdir -p $(BUILD280)
+	$(AS280) $< -o $@
+
+$(BUILD280)/$(ARCHIVE280): $(OBJS280)
+	rm -f $@
+	$(LIB) -cr $@ $(OBJS280)
+
 # Every install gets every target's runtime, because any host can
 # cross-build for any target - a Micronix machine builds .com files
 # with -m cpm and needs libcpm.a sitting beside its own libu.a.  They
@@ -127,10 +148,12 @@ target-install: all
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(MXDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(CPMDIR)/lib
 	$(INSTALL) $(BUILD)/$(ARCHIVE) $(HOSTDIR)/lib
+	$(INSTALL) $(BUILD280)/$(ARCHIVE280) $(MXDIR)/lib
+	$(INSTALL) $(BUILD280)/$(ARCHIVE280) $(HOSTDIR)/lib
 install: target-install
 
 clean:
-	rm -rf $(BUILD) zc3 ccc
+	rm -rf $(BUILD) $(BUILD280) zc3 ccc
 	rm -f $(CRUFT) $(CRUFTASMGEN)
 
 clobber: clean

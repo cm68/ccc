@@ -406,14 +406,22 @@ static struct nf {
 	char *pop;		/* what is emitted in place of the exit */
 	char nsaved;		/* text bytes the rewrite buys */
 } nftab[] = {
-	{ "call fenter", 1, "call fexit", 2, ".dw 0",
-	  0, 0, "\tret\n", 7 },
-	{ "call fentb", 2, "call fexb", 2, ".dw 2",
-	  "\tpush\tbc\n", 0, "\tpop\tbc\n\tret\n", 9 },
-	{ "call fentx", 2, "call fexx", 2, ".dw 2",
-	  "\tpush\tix\n", 0, "\tpop\tix\n\tret\n", 7 },
-	{ "call fentbx", 2, "call fexbx", 2, ".dw 4",
-	  "\tpush\tbc\n", "\tpush\tix\n", "\tpop\tix\n\tpop\tbc\n\tret\n", 5 },
+	{ "call fenterw", 1, "jp fexitw", 1, 0,
+	  0, 0, "\tret\n", 5 },
+	{ "call fenter", 1, "jp fexit", 1, 0,
+	  0, 0, "\tret\n", 5 },
+	{ "call fentbw", 2, "call fexbw", 2, ".dw -2",
+	  "\tpush\tbc\n", 0, "\tpop\tbc\n\tret\n", 7 },
+	{ "call fentb", 2, "call fexb", 2, ".dw -2",
+	  "\tpush\tbc\n", 0, "\tpop\tbc\n\tret\n", 7 },
+	{ "call fentxw", 2, "call fexxw", 2, ".dw -2",
+	  "\tpush\tix\n", 0, "\tpop\tix\n\tret\n", 5 },
+	{ "call fentx", 2, "call fexx", 2, ".dw -2",
+	  "\tpush\tix\n", 0, "\tpop\tix\n\tret\n", 5 },
+	{ "call fentbxw", 2, "call fexbxw", 2, ".dw -4",
+	  "\tpush\tbc\n", "\tpush\tix\n", "\tpop\tix\n\tpop\tbc\n\tret\n", 3 },
+	{ "call fentbx", 2, "call fexbx", 2, ".dw -4",
+	  "\tpush\tbc\n", "\tpush\tix\n", "\tpop\tix\n\tpop\tbc\n\tret\n", 3 },
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 

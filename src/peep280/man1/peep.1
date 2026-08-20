@@ -1,0 +1,92 @@
+.he "peep (1)                     8/11/26                     peep (1)"
+.fo "				    -#-"
+.in 5
+.rm 65
+.bd
+PROGRAM
+.in +5
+.br
+.bd
+peep
+- peephole optimizer
+
+
+.in -5
+.bd
+USAGE
+.in +5
+.br
+.bd
+peep [-v] input.s output.s
+
+
+.in -5
+.bd
+FUNCTION
+.in +5
+.br
+.bd
+Peep
+reads Z80 assembler, replaces short sequences with shorter ones that
+do the same thing, and writes the result.  Both file arguments are
+positional and both are required.
+
+It works on what it can see in the text and nothing else: a window of
+a few instructions at a time, matched against a table of patterns.  It
+does not know the shape of the program, and it does not need to.  That
+is deliberate - anything requiring a view of the whole function
+belongs in
+.bd
+c1,
+which has the tree in front of it.  What the two of them divide is
+memory, not cleverness:
+.bd
+c1
+is close enough to what the machine can hold that a rule which can be
+found textually is better spent here.
+
+The passes run over their own sources until nothing more changes.
+This is not a small saving on a machine this size - it is 610 bytes
+off
+.bd
+pass0,
+1109 off
+.bd
+c0
+and 1665 off
+.bd
+c1
+- and the compiler is close enough to the ceiling that a few percent
+is the difference between a source compiling on the target and not.
+
+.bd
+Peep
+never changes what a program does.  A rule that fires has to leave the
+flags and the registers the way the sequence it replaced left them,
+and the cross-target gate compares what the compiler emits against the
+host's on every source in the tree with the optimizer on.
+
+The options are:
+
+.in +10
+.ta 10
+.ti -10
+-v	Report each rule as it fires, on standard error.
+
+.in -10
+.in -5
+.bd
+SEE ALSO
+.in +5
+.br
+ccc (1), c1 (1), asz (1)
+
+
+.in -5
+.bd
+DIAGNOSTICS
+.in +5
+.br
+Errors are written to standard error and the exit status is non-zero.
+Assembly it cannot parse is passed through unchanged rather than
+rejected, so a construct it has not been taught still assembles.

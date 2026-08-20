@@ -18,15 +18,6 @@ int outfd;
 static int pushback = -1;
 
 /*
- * Current stack depth: how far SP has moved below the frame base,
- * tracked by counting the pushes and pops the code generator emits.
- * The prologue's frame allocation is not a push, so emitprolog sets
- * this to framesize once the frame is up; frame access adds it to the
- * static slot offset at emission time.
- */
-int stackdepth;
-
-/*
  * The .n sidecar, from cpp -j: identifiers crossed the front of the
  * compiler as 2-byte ids and their spellings live here - a 2-byte
  * count, a table of 2-byte offsets, then the names in id order,
@@ -158,18 +149,6 @@ nidxp(char *buf, int size)
 void
 out(char *s)
 {
-	register char *p;
-
-	/*
-	 * Keep the stack depth in step with what is written.  Only the
-	 * tab-prefixed push/pop mnemonics count - comments, labels and
-	 * directives are never spelled that way, so a straight substring
-	 * scan is exact.
-	 */
-	for (p = s; (p = strstr(p, "\tpush")) != NULL; p += 5)
-		stackdepth += 2;
-	for (p = s; (p = strstr(p, "\tpop")) != NULL; p += 4)
-		stackdepth -= 2;
 	write(outfd, s, strlen(s));
 }
 

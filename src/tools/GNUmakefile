@@ -40,7 +40,7 @@ endif
 # build below does not.  MXBINTOOLS is what goes into /bin over there
 # and is named plainly.
 #
-ALL = asz mxld mxnm mxar mxsize ccc astpp
+ALL = asz asz280 mxld mxnm mxar mxsize ccc astpp zsim
 
 all: $(ALL)
 
@@ -48,6 +48,8 @@ all: $(ALL)
 asz.o: asm.h
 asm.o: asm.h wsobj.h
 asmz80.o: asm.h
+asm280.o: asm.h wsobj.h
+asmz280.o: asm.h
 wsobj.o: wsobj.h
 ld.o: wsobj.h
 nm.o: wsobj.h
@@ -57,6 +59,15 @@ size.o: wsobj.h
 # Link targets
 asz: asz.o asm.o asmz80.o wsobj.o
 	$(CC) $(CFLAGS) -o $@ asz.o asm.o asmz80.o wsobj.o
+
+# The Z280 assembler: same asz.c/wsobj.c, but the divergent asm.c and
+# asmz80.c renamed with the 280 suffix so both coexist.
+asz280: asz.o asm280.o asmz280.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ asz.o asm280.o asmz280.o wsobj.o
+
+# Host-only Z280 simulator; runs raw images, has no micronix build.
+zsim: zsim.o
+	$(CC) $(CFLAGS) -o $@ zsim.o
 
 #
 # The HOST linker is mxld: "ld" on this machine is the host's own and
@@ -149,8 +160,8 @@ clobber: clean
 # passes.  wslib, mxnm and mxsize are ordinary tools a person uses on
 # an object file and stay on the path - under the mx names, because on
 # the path is exactly where "nm" and "size" would be the host's.
-LIBTOOLS = asz mxld astpp
-BINTOOLS = ccc mxar mxnm mxsize
+LIBTOOLS = asz asz280 mxld astpp
+BINTOOLS = ccc mxar mxnm mxsize zsim
 
 install: all man-install
 	@mkdir -p $(HOSTDIR)/bin $(HOSTLIBEXEC)
