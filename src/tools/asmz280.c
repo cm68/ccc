@@ -94,6 +94,14 @@ struct instruct isr_table[] = {
 	{ IBASIC_EXT, "cpdr", 0xB9, 0xED },
 	{ IBASIC_EXT, "indr", 0xBA, 0xED },
 	{ IBASIC_EXT, "otdr", 0xBB, 0xED },
+	{ IBASIC_EXT, "iniw", 0x82, 0xED },
+	{ IBASIC_EXT, "outiw", 0x83, 0xED },
+	{ IBASIC_EXT, "indw", 0x8A, 0xED },
+	{ IBASIC_EXT, "outdw", 0x8B, 0xED },
+	{ IBASIC_EXT, "inirw", 0x92, 0xED },
+	{ IBASIC_EXT, "otirw", 0x93, 0xED },
+	{ IBASIC_EXT, "indrw", 0x9A, 0xED },
+	{ IBASIC_EXT, "otdrw", 0x9B, 0xED },
 	
 	/* arithmetic */
 	{ IARITH, "add", 0x80, ADD },
@@ -298,6 +306,13 @@ struct expval *vp;
 		emitbyte(0x43 + ((arg - T_BC) << 4));
 		break;
 
+	case T_PLAIN:				/* ld (nn), n = DD 3E nn16 n8 */
+		emitbyte(0xDD);
+		emitbyte(0x3E);
+		emit_exp(2, vp);
+		emitbyte(value.num.b);
+		return 0;
+
 	default:
 		return 1;
 	}
@@ -454,6 +469,166 @@ struct expval *disp;
 	if (arg == T_HL_I && reg >= T_BC && reg <= T_SP) {
 		emitbyte(0xED);
 		emitbyte(0x0E + ((reg - T_BC) << 4));
+		return 0;
+	}
+
+	/* Z280 word store to BX/X/RA/SR: ld (hl+ix)/...,hl/ix/iy */
+	if ((arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY ||
+	     arg == T_HL_D || arg == T_PC_D || arg == T_SP_D) &&
+	    (reg == T_HL || reg == T_IX || reg == T_IY)) {
+		if (reg == T_IX)
+			emitbyte(0xDD);
+		else if (reg == T_IY)
+			emitbyte(0xFD);
+		emitbyte(0xED);
+		switch (arg) {
+		case T_HL_IX: emitbyte(0x0D); return 0;
+		case T_HL_IY: emitbyte(0x15); return 0;
+		case T_IX_IY: emitbyte(0x1D); return 0;
+		case T_HL_D: emitbyte(0x3D); break;
+		case T_PC_D: emitbyte(0x25); break;
+		case T_SP_D: emitbyte(0x05); break;
+		}
+		emitbyte(disp->num.w & 0xff);
+		emitbyte((disp->num.w >> 8) & 0xff);
+		return 0;
+	}
+
+	/* Z280 word store to SX/X: ld (ix+d)/(iy+d),rr */
+	if ((arg == T_IX_D || arg == T_IY_D) && reg >= T_BC && reg <= T_IY) {
+		short d = (short)disp->num.w;
+		if (d >= -128 && d <= 127) {
+			/* SX: ld (ix+d8),bc/de/hl/sp = DD/FD ED 0E/1E/2E/3E d8 */
+			if (reg < T_BC || reg > T_SP)
+				return 1;
+			emitbyte(arg == T_IX_D ? 0xDD : 0xFD);
+			emitbyte(0xED);
+			emitbyte(0x0E + ((reg - T_BC) << 4));
+			emitbyte(d & 0xff);
+		} else {
+			/* X: ld (ix+dd16),hl/ix/iy = [DD/FD] ED 2D/35 dd16 */
+			if (reg != T_HL && reg != T_IX && reg != T_IY)
+				return 1;
+			if (reg == T_IX)
+				emitbyte(0xDD);
+			else if (reg == T_IY)
+				emitbyte(0xFD);
+			emitbyte(0xED);
+			emitbyte(arg == T_IX_D ? 0x2D : 0x35);
+			emitbyte(disp->num.w & 0xff);
+			emitbyte((disp->num.w >> 8) & 0xff);
+		}
+		return 0;
+	}
+
+	/* Z280 X-mode byte store: ld (ix+dd16)/(iy+dd16),a or n */
+	if (arg == T_IX_D || arg == T_IY_D) {
+		short d = (short)disp->num.w;
+		if (d < -128 || d > 127) {
+			if (reg == T_A) {
+				emitbyte(0xED);
+				emitbyte(arg == T_IX_D ? 0x2B : 0x33);
+				emitbyte(disp->num.w & 0xff);
+				emitbyte((disp->num.w >> 8) & 0xff);
+				return 0;
+			}
+			if (reg == T_PLAIN) {
+				emitbyte(0xFD);
+				emitbyte(arg == T_IX_D ? 0x0E : 0x16);
+				emitbyte(disp->num.w & 0xff);
+				emitbyte((disp->num.w >> 8) & 0xff);
+				emitbyte(value.num.b);
+				return 0;
+			}
+		}
+	}
+
+	/* Z280 byte store to BX/X/RA/DA: ld (hl+ix)/...,a or n */
+	if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY ||
+	    arg == T_HL_D || arg == T_PC_D || arg == T_SP_D || arg == T_INDIR) {
+		unsigned char op = 0;
+		switch (arg) {
+		case T_HL_IX: op = 0x0B; break;      /* ED 0B */
+		case T_HL_IY: op = 0x13; break;
+		case T_IX_IY: op = 0x1B; break;
+		case T_HL_D: op = 0x3B; break;
+		case T_PC_D: op = 0x23; break;
+		case T_SP_D: op = 0x03; break;
+		case T_INDIR: op = 0; break;          /* DA: DD 3E addr16 */
+		default: return 1;
+		}
+		if (arg == T_INDIR) {
+			if (reg != T_PLAIN)
+				return 1;
+			emitbyte(0xDD);
+			emitbyte(0x3E);
+			emit_exp(2, &value);
+			emitbyte(value.num.b);
+			return 0;
+		}
+		if (reg == T_A) {
+			emitbyte(0xED);
+			emitbyte(op);
+			if (arg != T_HL_IX && arg != T_HL_IY && arg != T_IX_IY) {
+				emitbyte(disp->num.w & 0xff);
+				emitbyte((disp->num.w >> 8) & 0xff);
+			}
+			return 0;
+		}
+		if (reg == T_PLAIN) {
+			if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY) {
+				/* immediate store to BX: DD 0E/16/1E n */
+				emitbyte(0xDD);
+				emitbyte(arg == T_HL_IX ? 0x0E : arg == T_HL_IY ? 0x16 : 0x1E);
+				emitbyte(value.num.b);
+			} else {
+				/* immediate store to X/RA/SR: FD/DD 0E..06 dd16 n */
+				emitbyte(arg == T_SP_D ? 0xDD : 0xFD);
+				emitbyte(arg == T_HL_D ? 0x1E : 0x06);
+				emitbyte(disp->num.w & 0xff);
+				emitbyte((disp->num.w >> 8) & 0xff);
+				emitbyte(value.num.b);
+			}
+			return 0;
+		}
+		return 1;
+	}
+
+	/* Z280 byte load from BX/X/RA: ld a,(hl+ix)/... */
+	if (arg == T_A && (reg == T_HL_IX || reg == T_HL_IY || reg == T_IX_IY ||
+	    reg == T_HL_D || reg == T_IX_D || reg == T_IY_D || reg == T_PC_D)) {
+		unsigned char op = 0;
+		short has_disp = 0;
+		switch (reg) {
+		case T_HL_IX: op = 0x79; emitbyte(0xDD); break;  /* DD 79 */
+		case T_HL_IY: op = 0x7A; emitbyte(0xDD); break;
+		case T_IX_IY: op = 0x7B; emitbyte(0xDD); break;
+		case T_HL_D: op = 0x7B; has_disp = 1; emitbyte(0xFD); break;
+		case T_IX_D:
+		case T_IY_D: {
+			short d = (short)value.num.w;
+			if (d >= -128 && d <= 127) {
+				/* SX: DD/FD 7E d8 */
+				emitbyte(reg == T_IX_D ? 0xDD : 0xFD);
+				emitbyte(0x7E);
+				emitbyte(d & 0xff);
+				return 0;
+			}
+			/* X: FD 79/7A dd16 */
+			emitbyte(0xFD);
+			emitbyte(reg == T_IX_D ? 0x79 : 0x7A);
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
+			return 0;
+		}
+		case T_PC_D: op = 0x78; has_disp = 1; emitbyte(0xFD); break;
+		default: return 1;
+		}
+		emitbyte(op);
+		if (has_disp) {
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
+		}
 		return 0;
 	}
 
@@ -1126,7 +1301,7 @@ do_in(isr)
 struct instruct *isr;
 {
 	unsigned char arg, reg;
-	struct expval value;
+	struct expval value, dval;
 
 	arg = operand(&value);
 
@@ -1136,7 +1311,44 @@ struct instruct *isr;
 		return 0;
 	}
 
-	if (arg == T_HL_I || arg > T_A)
+	if (arg == T_HL_I)
+		return 1;
+
+	/* memory-mode destination: in (ix+d),(c) etc. */
+	if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY ||
+	    arg == T_IX_D || arg == T_IY_D || arg == T_HL_D ||
+	    arg == T_PC_D || arg == T_SP_D || arg == T_INDIR ||
+	    arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
+		dval = value;
+		need(',');
+		if (operand(&value) != T_C_I)
+			return 1;
+		switch (arg) {
+		case T_HL_IX: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x48); break;
+		case T_HL_IY: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x50); break;
+		case T_IX_IY: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x58); break;
+		case T_IXH: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x60); break;
+		case T_IXL: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x68); break;
+		case T_IYH: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x60); break;
+		case T_IYL: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x68); break;
+		case T_HL_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x58);
+			emitbyte(dval.num.w & 0xff); emitbyte((dval.num.w >> 8) & 0xff); break;
+		case T_IX_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x48);
+			emitbyte(dval.num.w & 0xff); emitbyte((dval.num.w >> 8) & 0xff); break;
+		case T_IY_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x50);
+			emitbyte(dval.num.w & 0xff); emitbyte((dval.num.w >> 8) & 0xff); break;
+		case T_PC_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x40);
+			emitbyte(dval.num.w & 0xff); emitbyte((dval.num.w >> 8) & 0xff); break;
+		case T_SP_D: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x40);
+			emitbyte(dval.num.w & 0xff); emitbyte((dval.num.w >> 8) & 0xff); break;
+		case T_INDIR: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x78);
+			emit_exp(2, &dval); break;
+		default: return 1;
+		}
+		return 0;
+	}
+
+	if (arg > T_A)
 		return 1;
 
 	reg = arg;
@@ -1181,6 +1393,36 @@ struct instruct *isr;
 			return 1;
 		if (arg == T_PLAIN && !value.num.w)
 			arg = T_HL_I;
+
+		/* memory-mode source: out (c),(ix+d) = [DD/FD] ED (41+code*8) */
+		if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY ||
+		    arg == T_IX_D || arg == T_IY_D || arg == T_HL_D ||
+		    arg == T_PC_D || arg == T_SP_D || arg == T_INDIR ||
+		    arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
+			switch (arg) {
+			case T_HL_IX: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x49); break;
+			case T_HL_IY: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x51); break;
+			case T_IX_IY: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x59); break;
+			case T_IXH: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x61); break;
+			case T_IXL: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x69); break;
+			case T_IYH: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x61); break;
+			case T_IYL: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x69); break;
+			case T_HL_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x59);
+				emitbyte(value.num.w & 0xff); emitbyte((value.num.w >> 8) & 0xff); break;
+			case T_IX_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x49);
+				emitbyte(value.num.w & 0xff); emitbyte((value.num.w >> 8) & 0xff); break;
+			case T_IY_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x51);
+				emitbyte(value.num.w & 0xff); emitbyte((value.num.w >> 8) & 0xff); break;
+			case T_PC_D: emitbyte(0xFD); emitbyte(0xED); emitbyte(0x41);
+				emitbyte(value.num.w & 0xff); emitbyte((value.num.w >> 8) & 0xff); break;
+			case T_SP_D: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x41);
+				emitbyte(value.num.w & 0xff); emitbyte((value.num.w >> 8) & 0xff); break;
+			case T_INDIR: emitbyte(0xDD); emitbyte(0xED); emitbyte(0x79);
+				emit_exp(2, &value); break;
+			default: return 1;
+			}
+			return 0;
+		}
 
 		if (arg > T_A)
 			return 1;
@@ -1677,7 +1919,9 @@ struct instruct *isr;
 		return do_stax(&value);
 	}
 
-	if (arg <= T_A || (arg >= T_IXH && arg <= T_IY_D)) {
+	if (arg <= T_A || (arg >= T_IXH && arg <= T_IY_D) ||
+	    arg == T_PC_D || arg == T_HL_IX || arg == T_HL_IY ||
+	    arg == T_IX_IY || arg == T_HL_D) {
 		return do_ldr8(arg, &value);
 	}
 
@@ -1752,6 +1996,26 @@ struct instruct *isr;
 		emitbyte(0xED);
 		emitbyte(0x32);
 		break;
+	case T_HL_D:			/* lda hl,(hl+dd) = ED 3A dd16 */
+		emitbyte(0xED);
+		emitbyte(0x3A);
+		break;
+	case T_PC_D:			/* lda hl,(pc+dd) = ED 22 dd16 */
+		emitbyte(0xED);
+		emitbyte(0x22);
+		break;
+	case T_HL_IX:			/* lda hl,(hl+ix) = ED 0A */
+		emitbyte(0xED);
+		emitbyte(0x0A);
+		return 0;
+	case T_HL_IY:			/* lda hl,(hl+iy) = ED 12 */
+		emitbyte(0xED);
+		emitbyte(0x12);
+		return 0;
+	case T_IX_IY:			/* lda hl,(ix+iy) = ED 1A */
+		emitbyte(0xED);
+		emitbyte(0x1A);
+		return 0;
 	case T_INDIR:			/* lda hl,(nn) = 21 nn */
 		emitbyte(0x21);
 		emit_exp(2, &value);
