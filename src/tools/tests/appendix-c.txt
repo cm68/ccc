@@ -18,17 +18,17 @@
 # work, not because the manual is wrong.
 # ===== ADC =====
 adc a,(hl)	8e
-# adc a,(hl+ix)	dd 89
-# adc a,(hl+iy)	dd 8a
-# adc a,(hl+0x1122)	fd 8b 22 11
-# adc a,(ix+iy)	dd 8b
+adc a,(hl+ix)	dd 89
+adc a,(hl+iy)	dd 8a
+adc a,(hl+0x1122)	fd 8b 22 11
+adc a,(ix+iy)	dd 8b
 adc a,(ix+0x55)	dd 8e 55
-# adc a,(ix+0x1122)	fd 89 22 11
+adc a,(ix+0x1122)	fd 89 22 11
 adc a,(iy+0x55)	fd 8e 55
-# adc a,(iy+0x1122)	fd 8a 22 11
-# adc a,(pc+0x1122)	fd 88 22 11
+adc a,(iy+0x1122)	fd 8a 22 11
+adc a,(pc+0x1122)	fd 88 22 11
 adc a,(sp+0x1122)	dd 88 22 11
-# adc a,(0x3344)	dd 8f 44 33
+adc a,(0x3344)	dd 8f 44 33
 adc a,a	8f
 adc a,b	88
 adc a,c	89
@@ -45,27 +45,27 @@ adc hl,bc	ed 4a
 adc hl,de	ed 5a
 adc hl,hl	ed 6a
 adc hl,sp	ed 7a
-# adc ix,bc	dd ed 4a
-# adc ix,de	dd ed 5a
-# adc ix,ix	dd ed 6a
-# adc ix,sp	dd ed 7a
-# adc iy,bc	fd ed 4a
-# adc iy,de	fd ed 5a
-# adc iy,iy	fd ed 6a
-# adc iy,sp	fd ed 7a
+adc ix,bc	dd ed 4a
+adc ix,de	dd ed 5a
+adc ix,ix	dd ed 6a
+adc ix,sp	dd ed 7a
+adc iy,bc	fd ed 4a
+adc iy,de	fd ed 5a
+adc iy,iy	fd ed 6a
+adc iy,sp	fd ed 7a
 # ===== ADD =====
 add a,(hl)	86
-# add a,(hl+ix)	dd 81
-# add a,(hl+iy)	dd 82
-# add a,(hl+0x1122)	fd 83 22 11
-# add a,(ix+iy)	dd 83
+add a,(hl+ix)	dd 81
+add a,(hl+iy)	dd 82
+add a,(hl+0x1122)	fd 83 22 11
+add a,(ix+iy)	dd 83
 add a,(ix+0x55)	dd 86 55
-# add a,(ix+0x1122)	fd 81 22 11
+add a,(ix+0x1122)	fd 81 22 11
 add a,(iy+0x55)	fd 86 55
-# add a,(iy+0x1122)	fd 82 22 11
-# add a,(pc+0x1122)	fd 80 22 11
+add a,(iy+0x1122)	fd 82 22 11
+add a,(pc+0x1122)	fd 80 22 11
 add a,(sp+0x1122)	dd 80 22 11
-# add a,(0x3344)	dd 87 44 33
+add a,(0x3344)	dd 87 44 33
 add a,a	87
 add a,b	80
 add a,c	81
@@ -78,17 +78,17 @@ add a,iyh	fd 84
 add a,iyl	fd 85
 add a,l	85
 add a,0x66	c6 66
-# add hl,a	ed 6d
+add hl,a	ed 6d
 add hl,bc	09
 add hl,de	19
 add hl,hl	29
 add hl,sp	39
-# add ix,a	dd ed 6d
+add ix,a	dd ed 6d
 add ix,bc	dd 09
 add ix,de	dd 19
 add ix,ix	dd 29
 add ix,sp	dd 39
-# add iy,a	fd ed 6d
+add iy,a	fd ed 6d
 add iy,bc	fd 09
 add iy,de	fd 19
 add iy,iy	fd 29
@@ -108,17 +108,17 @@ addw hl,sp	ed f6
 addw hl,0x3344	fd ed f6 44 33
 # ===== AND =====
 and (hl)	a6
-# and (hl+ix)	dd a1
-# and (hl+iy)	dd a2
-# and (hl+0x1122)	fd a3 22 11
-# and (ix+iy)	dd a3
+and (hl+ix)	dd a1
+and (hl+iy)	dd a2
+and (hl+0x1122)	fd a3 22 11
+and (ix+iy)	dd a3
 and (ix+0x55)	dd a6 55
-# and (ix+0x1122)	fd a1 22 11
+and (ix+0x1122)	fd a1 22 11
 and (iy+0x55)	fd a6 55
-# and (iy+0x1122)	fd a2 22 11
-# and (pc+0x1122)	fd a0 22 11
+and (iy+0x1122)	fd a2 22 11
+and (pc+0x1122)	fd a0 22 11
 and (sp+0x1122)	dd a0 22 11
-# and (0x3344)	dd a7 44 33
+and (0x3344)	dd a7 44 33
 and a	a7
 and b	a0
 and c	a1
@@ -243,17 +243,17 @@ call 0x3344	cd 44 33
 ccf	3f
 # ===== CP =====
 cp (hl)	be
-# cp (hl+ix)	dd b9
-# cp (hl+iy)	dd ba
-# cp (hl+0x1122)	fd bb 22 11
-# cp (ix+iy)	dd bb
+cp (hl+ix)	dd b9
+cp (hl+iy)	dd ba
+cp (hl+0x1122)	fd bb 22 11
+cp (ix+iy)	dd bb
 cp (ix+0x55)	dd be 55
-# cp (ix+0x1122)	fd b9 22 11
+cp (ix+0x1122)	fd b9 22 11
 cp (iy+0x55)	fd be 55
-# cp (iy+0x1122)	fd ba 22 11
-# cp (pc+0x1122)	fd b8 22 11
+cp (iy+0x1122)	fd ba 22 11
+cp (pc+0x1122)	fd b8 22 11
 cp (sp+0x1122)	dd b8 22 11
-# cp (0x3344)	dd bf 44 33
+cp (0x3344)	dd bf 44 33
 cp a	bf
 cp b	b8
 cp c	b9
@@ -287,17 +287,17 @@ cpw hl,0x3344	fd ed f7 44 33
 # ===== DAA / DEC / DI / DIV =====
 daa	27
 dec (hl)	35
-# dec (hl+ix)	dd 0d
-# dec (hl+iy)	dd 15
-# dec (hl+0x1122)	fd 1d 22 11
-# dec (ix+iy)	dd 1d
+dec (hl+ix)	dd 0d
+dec (hl+iy)	dd 15
+dec (hl+0x1122)	fd 1d 22 11
+dec (ix+iy)	dd 1d
 dec (ix+0x55)	dd 35 55
-# dec (ix+0x1122)	fd 0d 22 11
+dec (ix+0x1122)	fd 0d 22 11
 dec (iy+0x55)	fd 35 55
-# dec (iy+0x1122)	fd 15 22 11
-# dec (pc+0x1122)	fd 05 22 11
+dec (iy+0x1122)	fd 15 22 11
+dec (pc+0x1122)	fd 05 22 11
 dec (sp+0x1122)	dd 05 22 11
-# dec (0x3344)	dd 3d 44 33
+dec (0x3344)	dd 3d 44 33
 dec a	3d
 dec b	05
 dec bc	0b
@@ -429,17 +429,17 @@ inw hl,(c)	ed b7
 # in iyl,(c)	fd ed 68
 in l,(c)	ed 68
 inc (hl)	34
-# inc (hl+ix)	dd 0c
-# inc (hl+iy)	dd 14
-# inc (hl+0x1122)	fd 1c 22 11
-# inc (ix+iy)	dd 1c
+inc (hl+ix)	dd 0c
+inc (hl+iy)	dd 14
+inc (hl+0x1122)	fd 1c 22 11
+inc (ix+iy)	dd 1c
 inc (ix+0x55)	dd 34 55
-# inc (ix+0x1122)	fd 0c 22 11
+inc (ix+0x1122)	fd 0c 22 11
 inc (iy+0x55)	fd 34 55
-# inc (iy+0x1122)	fd 14 22 11
-# inc (pc+0x1122)	fd 04 22 11
+inc (iy+0x1122)	fd 14 22 11
+inc (pc+0x1122)	fd 04 22 11
 inc (sp+0x1122)	dd 04 22 11
-# inc (0x3344)	dd 3c 44 33
+inc (0x3344)	dd 3c 44 33
 inc a	3c
 inc b	04
 inc bc	03
@@ -631,9 +631,9 @@ ld b,iyh	fd 44
 ld b,iyl	fd 45
 ld b,l	45
 ld b,0x66	06 66
-# ld bc,(hl)	ed 06
-# ld bc,(ix+0x55)	dd ed 06 55
-# ld bc,(iy+0x55)	fd ed 06 55
+ld bc,(hl)	ed 06
+ld bc,(ix+0x55)	dd ed 06 55
+ld bc,(iy+0x55)	fd ed 06 55
 ld bc,(0x3344)	ed 4b 44 33
 ld bc,0x3344	01 44 33
 ld c,(hl)	4e
@@ -666,9 +666,9 @@ ld d,iyh	fd 54
 ld d,iyl	fd 55
 ld d,l	55
 ld d,0x66	16 66
-# ld de,(hl)	ed 16
-# ld de,(ix+0x55)	dd ed 16 55
-# ld de,(iy+0x55)	fd ed 16 55
+ld de,(hl)	ed 16
+ld de,(ix+0x55)	dd ed 16 55
+ld de,(iy+0x55)	fd ed 16 55
 ld de,(0x3344)	ed 5b 44 33
 ld de,0x3344	11 44 33
 ld e,(hl)	5e
@@ -698,24 +698,24 @@ ld h,h	64
 ld h,l	65
 ld h,0x66	26 66
 ld hl,(hl)	ed 26
-# ld hl,(hl+ix)	ed 0c
-# ld hl,(hl+iy)	ed 14
-# ld hl,(ix+iy)	ed 1c
-# ld hl,(ix+0x55)	dd ed 26 55
-# ld hl,(ix+0x1122)	ed 2c 22 11
-# ld hl,(iy+0x55)	fd ed 26 55
-# ld hl,(iy+0x1122)	ed 34 22 11
-# ld hl,(pc+0x1122)	ed 24 22 11
+ld hl,(hl+ix)	ed 0c
+ld hl,(hl+iy)	ed 14
+ld hl,(ix+iy)	ed 1c
+ld hl,(ix+0x55)	dd ed 26 55
+ld hl,(ix+0x1122)	ed 2c 22 11
+ld hl,(iy+0x55)	fd ed 26 55
+ld hl,(iy+0x1122)	ed 34 22 11
+ld hl,(pc+0x1122)	ed 24 22 11
 ld hl,(sp+0x1122)	ed 04 22 11
 ld hl,(0x3344)	2a 44 33
 ld hl,0x3344	21 44 33
-# ld ix,(hl+ix)	dd ed 0c
-# ld ix,(hl+iy)	dd ed 14
+ld ix,(hl+ix)	dd ed 0c
+ld ix,(hl+iy)	dd ed 14
 ld ix,(hl+0x1122)	dd ed 3c 22 11
-# ld ix,(ix+iy)	dd ed 1c
-# ld ix,(ix+0x1122)	dd ed 2c 22 11
-# ld ix,(iy+0x1122)	dd ed 34 22 11
-# ld ix,(pc+0x1122)	dd ed 24 22 11
+ld ix,(ix+iy)	dd ed 1c
+ld ix,(ix+0x1122)	dd ed 2c 22 11
+ld ix,(iy+0x1122)	dd ed 34 22 11
+ld ix,(pc+0x1122)	dd ed 24 22 11
 ld ix,(sp+0x1122)	dd ed 04 22 11
 ld ix,(0x3344)	dd 2a 44 33
 ld ix,0x3344	dd 21 44 33
@@ -735,13 +735,13 @@ ld ixl,e	dd 6b
 ld ixl,ixh	dd 6c
 ld ixl,ixl	dd 6d
 ld ixl,0x66	dd 2e 66
-# ld iy,(hl+ix)	fd ed 0c
-# ld iy,(hl+iy)	fd ed 14
+ld iy,(hl+ix)	fd ed 0c
+ld iy,(hl+iy)	fd ed 14
 ld iy,(hl+0x1122)	fd ed 3c 22 11
-# ld iy,(ix+iy)	fd ed 1c
-# ld iy,(ix+0x1122)	fd ed 2c 22 11
-# ld iy,(iy+0x1122)	fd ed 34 22 11
-# ld iy,(pc+0x1122)	fd ed 24 22 11
+ld iy,(ix+iy)	fd ed 1c
+ld iy,(ix+0x1122)	fd ed 2c 22 11
+ld iy,(iy+0x1122)	fd ed 34 22 11
+ld iy,(pc+0x1122)	fd ed 24 22 11
 ld iy,(sp+0x1122)	fd ed 04 22 11
 ld iy,(0x3344)	fd 2a 44 33
 ld iy,0x3344	fd 21 44 33
@@ -772,9 +772,9 @@ ld l,e	6b
 ld l,h	6c
 ld l,l	6d
 ld l,0x66	2e 66
-# ld sp,(hl)	ed 36
-# ld sp,(ix+0x55)	dd ed 36 55
-# ld sp,(iy+0x55)	fd ed 36 55
+ld sp,(hl)	ed 36
+ld sp,(ix+0x55)	dd ed 36 55
+ld sp,(iy+0x55)	fd ed 36 55
 ld sp,(0x3344)	ed 7b 44 33
 ld sp,hl	f9
 ld sp,ix	dd f9
@@ -880,17 +880,17 @@ neg	ed 44
 neg hl	ed 4c
 nop	00
 or (hl)	b6
-# or (hl+ix)	dd b1
-# or (hl+iy)	dd b2
-# or (hl+0x1122)	fd b3 22 11
-# or (ix+iy)	dd b3
+or (hl+ix)	dd b1
+or (hl+iy)	dd b2
+or (hl+0x1122)	fd b3 22 11
+or (ix+iy)	dd b3
 or (ix+0x55)	dd b6 55
-# or (ix+0x1122)	fd b1 22 11
+or (ix+0x1122)	fd b1 22 11
 or (iy+0x55)	fd b6 55
-# or (iy+0x1122)	fd b2 22 11
-# or (pc+0x1122)	fd b0 22 11
+or (iy+0x1122)	fd b2 22 11
+or (pc+0x1122)	fd b0 22 11
 or (sp+0x1122)	dd b0 22 11
-# or (0x3344)	dd b7 44 33
+or (0x3344)	dd b7 44 33
 or a	b7
 or b	b0
 or c	b1
@@ -1110,17 +1110,17 @@ rst 0x30	f7
 rst 0x38	ff
 # ===== SBC =====
 sbc a,(hl)	9e
-# sbc a,(hl+ix)	dd 99
-# sbc a,(hl+iy)	dd 9a
-# sbc a,(hl+0x1122)	fd 9b 22 11
-# sbc a,(ix+iy)	dd 9b
+sbc a,(hl+ix)	dd 99
+sbc a,(hl+iy)	dd 9a
+sbc a,(hl+0x1122)	fd 9b 22 11
+sbc a,(ix+iy)	dd 9b
 sbc a,(ix+0x55)	dd 9e 55
-# sbc a,(ix+0x1122)	fd 99 22 11
+sbc a,(ix+0x1122)	fd 99 22 11
 sbc a,(iy+0x55)	fd 9e 55
-# sbc a,(iy+0x1122)	fd 9a 22 11
-# sbc a,(pc+0x1122)	fd 98 22 11
+sbc a,(iy+0x1122)	fd 9a 22 11
+sbc a,(pc+0x1122)	fd 98 22 11
 sbc a,(sp+0x1122)	dd 98 22 11
-# sbc a,(0x3344)	dd 9f 44 33
+sbc a,(0x3344)	dd 9f 44 33
 sbc a,a	9f
 sbc a,b	98
 sbc a,c	99
@@ -1137,14 +1137,14 @@ sbc hl,bc	ed 42
 sbc hl,de	ed 52
 sbc hl,hl	ed 62
 sbc hl,sp	ed 72
-# sbc ix,bc	dd ed 42
-# sbc ix,de	dd ed 52
-# sbc ix,ix	dd ed 62
-# sbc ix,sp	dd ed 72
-# sbc iy,bc	fd ed 42
-# sbc iy,de	fd ed 52
-# sbc iy,iy	fd ed 62
-# sbc iy,sp	fd ed 72
+sbc ix,bc	dd ed 42
+sbc ix,de	dd ed 52
+sbc ix,ix	dd ed 62
+sbc ix,sp	dd ed 72
+sbc iy,bc	fd ed 42
+sbc iy,de	fd ed 52
+sbc iy,iy	fd ed 62
+sbc iy,sp	fd ed 72
 scf	37
 # ===== SET =====
 set 0,(hl)	cb c6
@@ -1270,17 +1270,17 @@ srl h	cb 3c
 srl l	cb 3d
 # ===== SUB / SUBW =====
 sub (hl)	96
-# sub (hl+ix)	dd 91
-# sub (hl+iy)	dd 92
-# sub (hl+0x1122)	fd 93 22 11
-# sub (ix+iy)	dd 93
+sub (hl+ix)	dd 91
+sub (hl+iy)	dd 92
+sub (hl+0x1122)	fd 93 22 11
+sub (ix+iy)	dd 93
 sub (ix+0x55)	dd 96 55
-# sub (ix+0x1122)	fd 91 22 11
+sub (ix+0x1122)	fd 91 22 11
 sub (iy+0x55)	fd 96 55
-# sub (iy+0x1122)	fd 92 22 11
-# sub (pc+0x1122)	fd 90 22 11
+sub (iy+0x1122)	fd 92 22 11
+sub (pc+0x1122)	fd 90 22 11
 sub (sp+0x1122)	dd 90 22 11
-# sub (0x3344)	dd 97 44 33
+sub (0x3344)	dd 97 44 33
 sub a	97
 sub b	90
 sub c	91
@@ -1308,17 +1308,17 @@ subw hl,0x3344	fd ed fe 44 33
 # ===== TSTI / XOR =====
 tsti (c)	ed 70
 xor (hl)	ae
-# xor (hl+ix)	dd a9
-# xor (hl+iy)	dd aa
-# xor (hl+0x1122)	fd ab 22 11
-# xor (ix+iy)	dd ab
+xor (hl+ix)	dd a9
+xor (hl+iy)	dd aa
+xor (hl+0x1122)	fd ab 22 11
+xor (ix+iy)	dd ab
 xor (ix+0x55)	dd ae 55
-# xor (ix+0x1122)	fd a9 22 11
+xor (ix+0x1122)	fd a9 22 11
 xor (iy+0x55)	fd ae 55
-# xor (iy+0x1122)	fd aa 22 11
-# xor (pc+0x1122)	fd a8 22 11
+xor (iy+0x1122)	fd aa 22 11
+xor (pc+0x1122)	fd a8 22 11
 xor (sp+0x1122)	dd a8 22 11
-# xor (0x3344)	dd af 44 33
+xor (0x3344)	dd af 44 33
 xor a	af
 xor b	a8
 xor c	a9

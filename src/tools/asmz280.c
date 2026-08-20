@@ -349,6 +349,40 @@ unsigned char reg;
 			emitbyte(0x4B + ((reg - T_BC) << 4));
 		}
 		emit_exp(2, &value);
+	} else if (arg == T_HL_I) {
+		/* ld rr,(hl): ED 06/16/26/36 */
+		emitbyte(0xED);
+		emitbyte(0x06 + ((reg - T_BC) << 4));
+	} else if (arg == T_IX_D || arg == T_IY_D) {
+		short disp = (short)value.num.w;
+		if (disp >= -128 && disp <= 127) {
+			/* SX: DD/FD ED 06/16/26/36 d8 */
+			emitbyte(arg == T_IX_D ? 0xDD : 0xFD);
+			emitbyte(0xED);
+			emitbyte(0x06 + ((reg - T_BC) << 4));
+			emitbyte(disp & 0xff);
+		} else if (reg == T_HL) {
+			/* X: ED 2C/34 dd16 (HL/IX/IY only) */
+			emitbyte(0xED);
+			emitbyte(arg == T_IX_D ? 0x2C : 0x34);
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
+		} else
+			return 1;
+	} else if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY) {
+		/* BX: ED 0C/14/1C (HL/IX/IY only) */
+		if (reg != T_HL)
+			return 1;
+		emitbyte(0xED);
+		emitbyte(arg == T_HL_IX ? 0x0C : arg == T_HL_IY ? 0x14 : 0x1C);
+	} else if (arg == T_PC_D) {
+		/* RA: ED 24 dd16 (HL/IX/IY only) */
+		if (reg != T_HL)
+			return 1;
+		emitbyte(0xED);
+		emitbyte(0x24);
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
 	} else if (arg == T_SP_D && reg == T_HL) {
 		/*
 		 * Z280 SR mode: ld hl|ix|iy,(sp+dd) = [DD/FD] ED 04 dd16.
@@ -359,10 +393,6 @@ unsigned char reg;
 		emitbyte(0x04);
 		emitbyte(value.num.w & 0xff);
 		emitbyte((value.num.w >> 8) & 0xff);
-	} else if (arg == T_HL_I && reg == T_HL) {
-		/* Z280 IR mode: ld hl,(hl) = ED 26 */
-		emitbyte(0xED);
-		emitbyte(0x26);
 	} else if (arg == T_HL_D && reg == T_HL) {
 		/* Z280 X mode with HL as base: ld hl,(hl+dd) = ED 3C dd16 */
 		emitbyte(0xED);
@@ -574,8 +604,9 @@ struct instruct *isr;
 	arg = operand(&value);
 
 	if (isr->arg == CARRY) {
-		if (arg == T_HL) {
+		if (arg == T_HL || arg == T_IX || arg == T_IY) {
 			prim = 1;
+			reg = arg;
 		} else if (arg != T_A)
 			return 1;
 
@@ -616,36 +647,74 @@ struct instruct *isr;
 	if (prim == 0) {
 		if (arg <= T_A) {
 			emitbyte(isr->opcode + (arg - T_B));
-		} else if (arg >= T_IXH && arg <= T_IX_D) {
+		} else if (arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
+			emitbyte(arg == T_IXH || arg == T_IXL ? 0xDD : 0xFD);
+			emitbyte(isr->opcode + (arg == T_IXH || arg == T_IYH ? 4 : 5));
+		} else if (arg == T_IX_D || arg == T_IY_D) {
+			short disp = (short)value.num.w;
+			if (disp >= -128 && disp <= 127) {
+				/* SX: DD/FD (op+6) d8 */
+				emitbyte(arg == T_IX_D ? 0xDD : 0xFD);
+				emitbyte(isr->opcode + 6);
+				emitbyte(disp & 0xff);
+			} else {
+				/* X: FD (op+1/2) dd16 */
+				emitbyte(0xFD);
+				emitbyte(isr->opcode + (arg == T_IX_D ? 1 : 2));
+				emitbyte(value.num.w & 0xff);
+				emitbyte((value.num.w >> 8) & 0xff);
+			}
+		} else if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY) {
+			/* BX: DD (op+1/2/3) */
 			emitbyte(0xDD);
-			emitbyte(isr->opcode + (arg - T_IXH) + 4);
-			if (arg == T_IX_D)
-				emitbyte(value.num.b);
-		} else if (arg >= T_IYH && arg <= T_IY_D) {
+			emitbyte(isr->opcode + (arg == T_HL_IX ? 1 : arg == T_HL_IY ? 2 : 3));
+		} else if (arg == T_HL_D) {
+			/* X mode with HL base: FD (op+3) dd16 */
 			emitbyte(0xFD);
-			emitbyte(isr->opcode + (arg - T_IYH) + 4);
-			if (arg == T_IY_D)
-				emitbyte(value.num.b);
-		} else if (arg == T_PLAIN) {
-			emitbyte(isr->opcode + 0x46);
-			emitbyte(value.num.b);
+			emitbyte(isr->opcode + 3);
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
+		} else if (arg == T_INDIR) {
+			/* DA: DD (op+7) addr16 */
+			emitbyte(0xDD);
+			emitbyte(isr->opcode + 7);
+			emit_exp(2, &value);
+		} else if (arg == T_PC_D) {
+			/* RA: FD (op+0) dd16 */
+			emitbyte(0xFD);
+			emitbyte(isr->opcode);
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
 		} else if (arg == T_SP_D) {
-			/* Z280 SR mode: op a,(sp+dd) = DD <opcode> dd16 */
+			/* SR: DD (op+0) dd16 */
 			emitbyte(0xDD);
 			emitbyte(isr->opcode);
 			emitbyte(value.num.w & 0xff);
 			emitbyte((value.num.w >> 8) & 0xff);
+		} else if (arg == T_PLAIN) {
+			emitbyte(isr->opcode + 0x46);
+			emitbyte(value.num.b);
 		} else
 			return 1;
 	} else if (prim == 1) {
+		if (arg == reg)
+			arg = T_HL;   /* adc ix,ix is adc ix,hl in the field */
 		if (arg >= T_BC && arg <= T_SP) {
+			if (reg == T_IX)
+				emitbyte(0xDD);
+			else if (reg == T_IY)
+				emitbyte(0xFD);
 			emitbyte(0xED);
 			emitbyte((0x42 + (isr->opcode == 0x88 ? 8 : 0)) +
 					 ((arg - 8) << 4));
 		} else
 			return 1;
 	} else if (prim == 2) {
-		if (arg >= T_BC && arg <= T_SP) {
+		if (arg == T_A) {
+			/* add hl,a = ED 6D */
+			emitbyte(0xED);
+			emitbyte(0x6D);
+		} else if (arg >= T_BC && arg <= T_SP) {
 			emitbyte(0x09 + ((arg - 8) << 4));
 		} else
 			return 1;
@@ -660,7 +729,11 @@ struct instruct *isr;
 		else
 			emitbyte(0xFD);
 
-		if (arg >= T_BC && arg <= T_SP) {
+		if (arg == T_A) {
+			/* add ix/iy,a = DD/FD ED 6D */
+			emitbyte(0xED);
+			emitbyte(0x6D);
+		} else if (arg >= T_BC && arg <= T_SP) {
 			emitbyte(0x09 + ((arg - 8) << 4));
 		} else
 			return 1;
@@ -678,7 +751,7 @@ struct instruct *isr;
 	arg = operand(&value);
 
 	if (arg <= T_A) {
-		emitbyte(isr->opcode + ((arg) << 3));
+		emitbyte(isr->opcode + (arg << 3));
 	} else if (arg <= T_SP) {
 		emitbyte(isr->arg + ((arg - T_BC) << 4));
 	} else if (arg == T_IX) {
@@ -687,18 +760,46 @@ struct instruct *isr;
 	} else if (arg == T_IY) {
 		emitbyte(0xFD);
 		emitbyte(isr->arg + 0x20);
-	} else if (arg >= T_IXH && arg <= T_IX_D) {
+	} else if (arg == T_IXH || arg == T_IXL || arg == T_IYH || arg == T_IYL) {
+		emitbyte(arg == T_IXH || arg == T_IXL ? 0xDD : 0xFD);
+		emitbyte(isr->opcode + ((arg == T_IXH || arg == T_IYH ? 4 : 5) << 3));
+	} else if (arg == T_IX_D || arg == T_IY_D) {
+		short disp = (short)value.num.w;
+		if (disp >= -128 && disp <= 127) {
+			/* SX: DD/FD (op + 6<<3) d8 */
+			emitbyte(arg == T_IX_D ? 0xDD : 0xFD);
+			emitbyte(isr->opcode + (6 << 3));
+			emitbyte(disp & 0xff);
+		} else {
+			/* X: FD (op + 1/2<<3) dd16 */
+			emitbyte(0xFD);
+			emitbyte(isr->opcode + ((arg == T_IX_D ? 1 : 2) << 3));
+			emitbyte(value.num.w & 0xff);
+			emitbyte((value.num.w >> 8) & 0xff);
+		}
+	} else if (arg == T_HL_IX || arg == T_HL_IY || arg == T_IX_IY) {
+		/* BX: DD (op + 1/2/3<<3) */
 		emitbyte(0xDD);
-		emitbyte(isr->opcode + ((arg - T_IXH + 4) << 3));
-		if (arg == T_IX_D)
-			emitbyte(value.num.b);
-	} else if (arg >= T_IYH && arg <= T_IY_D) {
+		emitbyte(isr->opcode + ((arg == T_HL_IX ? 1 : arg == T_HL_IY ? 2 : 3) << 3));
+	} else if (arg == T_HL_D) {
+		/* X mode with HL base: FD (op + 3<<3) dd16 */
 		emitbyte(0xFD);
-		emitbyte(isr->opcode + ((arg - T_IYH + 4) << 3));
-		if (arg == T_IY_D)
-			emitbyte(value.num.b);
+		emitbyte(isr->opcode + (3 << 3));
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
+	} else if (arg == T_INDIR) {
+		/* DA: DD (op + 7<<3) addr16 */
+		emitbyte(0xDD);
+		emitbyte(isr->opcode + (7 << 3));
+		emit_exp(2, &value);
+	} else if (arg == T_PC_D) {
+		/* RA: FD op dd16 */
+		emitbyte(0xFD);
+		emitbyte(isr->opcode);
+		emitbyte(value.num.w & 0xff);
+		emitbyte((value.num.w >> 8) & 0xff);
 	} else if (arg == T_SP_D) {
-		/* Z280 SR mode: inc/dec (sp+dd) = DD 04/05 dd16 */
+		/* SR: DD op dd16 */
 		emitbyte(0xDD);
 		emitbyte(isr->opcode);
 		emitbyte(value.num.w & 0xff);
