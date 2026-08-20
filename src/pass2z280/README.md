@@ -188,11 +188,11 @@ Nothing falls into that block — the last body jumps past it, and the bodies
 were jumped over rather than run, so the control value is still live when the
 comparisons are reached.
 
-Case values are bytes in this compiler, so the chain is a `cp` against A. A
-control expression need not be a byte — a state machine over an `int` is the
-usual shape — so a word control tests its high byte once before comparing the
-low one, and any value that does not fit a byte cannot match and goes to the
-default. `MAXSWNEST` (8) bounds switch nesting.
+Case values are sixteen-bit ints, so a value over 255 widens the switch to a
+pair table (`swtabw`) with a sixteen-bit compare. Within a byte the chain is a
+`cp` against A; a control expression need not be a byte — a state machine over
+an `int` is the usual shape — so a word control in a byte switch tests its high
+byte once before comparing the low one. `MAXSWNEST` (8) bounds switch nesting.
 
 `break` never appears: cpp lowered it to `goto __S<n>B` and appended the label.
 

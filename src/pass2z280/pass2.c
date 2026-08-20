@@ -175,13 +175,12 @@ main(int argc, char **argv)
 	 * linking a program with a statement missing from it.
 	 */
 	/*
-	 * A case value outside 0..255 cannot be dispatched at all: every
-	 * shape the dispatch has compares eight bits, and a word control
-	 * goes to the no-match label before the table is consulted, so
-	 * the arm is unreachable.  Said here, while the source being
-	 * compiled is still named, rather than left to the .error in the
-	 * output - that only surfaces if the assembler runs, and a -s
-	 * run never gets that far.
+	 * A case value that will not fit sixteen bits cannot be dispatched
+	 * at all: a case label is an int, and the widest dispatch compares
+	 * sixteen bits.  Said here, while the source being compiled is
+	 * still named, rather than left to the .error in the output - that
+	 * only surfaces if the assembler runs, and a -s run never gets that
+	 * far.
 	 */
 	if (nbadcase) {
 		char nbuf[12];
@@ -193,8 +192,7 @@ main(int argc, char **argv)
 		errout(argv[2]);
 		errout(": ");
 		errout(q);
-		errout(" switch case value(s) outside 0..255 - the dispatch"
-		    " compares a byte, so those arms can never be reached\n");
+		errout(" switch case value(s) do not fit sixteen bits\n");
 		return 1;
 	}
 	if (nincomplete) {

@@ -106,11 +106,11 @@ static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
  * control value is still in the register when the comparisons are
  * reached.
  *
- * Case values are bytes in this compiler, so the chain is a cp against
- * A.  A control expression need not be one - a state machine over an
- * int is the usual shape - so a word control tests its high byte once
- * before comparing the low one, and any value that does not fit a byte
- * cannot match and goes to the default.
+ * Case values are sixteen-bit ints, so a value over 255 widens the
+ * switch to the swwide pair table; within a byte the chain is a cp
+ * against A.  A control expression need not be one - a state machine
+ * over an int is the usual shape - so a word control in a byte switch
+ * tests its high byte once before comparing the low one.
  */
 /*
  * Nested switches.  A level costs a context struct and nothing else
@@ -1021,39 +1021,28 @@ parseStmt(void)
 				 * built from, so the check costs a walk and no
 				 * memory at all.
 				 *
-				 * A byte, because that is what the dispatch
-				 * compares - see the masks in swdispatch.  So
-				 * this also catches the pair that differ only
-				 * above the low byte, which would silently
-				 * share an arm rather than being diagnosed.
+				 * Sixteen bits, because that is what the wide
+				 * dispatch compares - see swwide.  Two cases
+				 * that share a low byte but differ above it
+				 * are distinct words and no longer collide.
 				 */
 				unsigned int v =
 				    (unsigned int)(e->u.val & 0xffffL);
 				int i;
 
 				/*
-				 * A case value that does not fit a byte cannot
-				 * be dispatched.  That is by design - the
-				 * three shapes above all compare eight bits -
-				 * and the design says such a value "cannot
-				 * match and goes to the default".
+				 * A case value that does not fit sixteen bits
+				 * cannot be dispatched: a case label is an int,
+				 * and the widest dispatch - swwide - compares
+				 * sixteen bits.  A value over 255 is fine; it
+				 * widens the switch.  Only a value outside the
+				 * int range is refused.
 				 *
-				 * Going to the default SILENTLY is the part
-				 * that is not worth keeping.  "case 256:" is
-				 * ordinary C, it compiled without a word, and
-				 * it took the default arm.  Where two such
-				 * values shared a low byte the duplicate check
-				 * below fired instead, which is how this was
-				 * found - Morrow's formatmw.c switches a
-				 * sector size over 128, 256, 512, 1024, 2048
-				 * and four of those mask to zero.
-				 *
-				 * So say so.  The limit stays; a program that
-				 * meets it now stops rather than running the
-				 * wrong arm, and the fix in the source is to
-				 * switch on something that fits - formatmw
-				 * divides by 128 and its labels become
-				 * 1,2,4,8,16.
+				 * Going to the default silently is the part not
+				 * worth keeping: "case 65536:" is ordinary C,
+				 * and it used to take the default arm without a
+				 * word.  So say so, counted rather than fatal,
+				 * and as a .error in the output.
 				 *
 				 * outf does %s, %c and int - there is no %ld.
 				 */

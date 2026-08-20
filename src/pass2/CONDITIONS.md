@@ -211,22 +211,19 @@ the slot from what `cpir` leaves in HL and BC.
 A count or span of 256 would store as a zero byte, so anything that large stays
 on the chain. `MAXSWCASE` bounds it at 256; `MAXSWNEST` (8) bounds nesting.
 
-Case values are **bytes**. A control expression need not be one — a state
-machine over an `int` is the usual shape — so a word control tests its high byte
-once before comparing the low one, and any value that does not fit a byte cannot
-match.
+Case values are sixteen-bit **ints**. A value over 255 widens the switch to a
+pair table (`swtabw`) with a sixteen-bit compare; within a byte the three shapes
+compare eight bits. A control expression need not be a byte — a state machine
+over an `int` is the usual shape — so a word control in a byte switch tests its
+high byte once before comparing the low one.
 
-Such a value is a **hard error**, not a quiet trip to the default. It used to be
-the latter: `case 256:` is ordinary C, it compiled without a word, and it took
-the default arm. Where two out-of-range values happened to share a low byte the
+What is still a **hard error** is a value that does not fit sixteen bits — a
+`long` case label such as `case 65536:`. It used to be the wider error, over
+anything past a byte: `case 256:` is ordinary C, and it took the default arm
+without a word. Where two out-of-range values happened to share a low byte the
 duplicate-case check fired instead, on a switch that was perfectly good C —
 which is how this surfaced, on Morrow's `formatmw.c` switching a sector size
-over 128, 256, 512, 1024 and 2048, four of which mask to zero.
-
-The limit itself is worth keeping: all three shapes compare eight bits, and
-widening the pool to words would halve the case headroom and add code to a pass
-that has none to spare, for one option-parsing switch. The fix belongs in the
-source — switch on something that fits. `formatmw` divides the size by 128 and
-its labels become 1, 2, 4, 8, 16.
+over 128, 256, 512, 1024 and 2048. Those values now dispatch directly as a wide
+switch; the old `formatmw` workaround of dividing by 128 is obsolete.
 
 `break` never appears: cpp lowered it to `goto __S<n>B` and appended the label.

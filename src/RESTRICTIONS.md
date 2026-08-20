@@ -25,35 +25,20 @@ are NOT supported and must NOT be used anywhere in this project:
   bss at its full size, and crt0 clears bss, so `union diskbuf disk0;`
   already means what `= 0` was reaching for. Where you need a view over
   known bytes, declare a `char` array of the right size and overlay it.
-- **switch case labels outside 0..255** - a case label is one byte. All three
-  dispatch shapes compare eight bits, and a word control tests its high byte
-  and goes to the no-match label before the table is consulted, so a label
-  outside that range names an arm that can never be reached. `case 256:`,
-  `case 512:`, `case 1024:` and `case 2048:` are all unreachable, and so is
-  `case -1:`.
-
-  c1 refuses to emit such a switch rather than quietly emitting one that
-  cannot work:
+- **switch case labels must fit in sixteen bits** - a case label is one `int`.
+  Values 0..255 take the three byte dispatch shapes (dense index, sparse
+  table, compare chain). A value outside that range widens the whole switch
+  to a sixteen-bit pair table (`swtabw`), so `case 256:`, `case 512:` and
+  `case -1:` all dispatch correctly. What is refused is a value that will not
+  fit an int - a `long` case label such as `case 65536:` or `case -40000:`:
 
   ```
-  sw.c: 1 switch case value(s) outside 0..255 - the dispatch compares
-  a byte, so those arms can never be reached
+  sw.c: 1 switch case value(s) do not fit sixteen bits
   ```
 
   It is counted rather than fatal where it is found, so one run names them
   all. A `.error` goes into the assembly too, which is what catches anyone
   assembling a `.s` kept from a `-s` run.
-
-  Scale the selector into range instead - `switch (size / 128)` with cases
-  1, 2, 4, 8, 16. Guard the remainder while you are there: `size / 128`
-  cannot tell 200 from 128, so `switch (size % 128 ? 0 : size / 128)` keeps
-  the accepted set exact, 0 matching no arm and landing on the default.
-
-  Met porting Morrow's FORMATMW, whose sector size switch is exactly those
-  five values; `tests/formatmw.c` carries the scaled form. It surfaced as
-  `.error duplicate case 0` from the assembler, because four of the five
-  labels share a low byte - the ones that do NOT collide were accepted in
-  silence and took the default.
 
 These restrictions apply to every source in the tree - cpp/, pass1/, pass2/,
 shared headers, tools/, libsrc/ and tests/. Auto aggregate initialization is a
