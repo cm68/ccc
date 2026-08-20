@@ -166,8 +166,13 @@ Found porting od (the -w power-of-two clamp).  A cousin of entry 1.
 Workaround in cmd/od: `w &= w - 1`, the same value in two's
 complement.
 
-6. WRONG CODE: long minus an inline address-of-subscript difference  [HALF FIXED]
----------------------------------------------------------------------------------
+6. WRONG CODE: long minus an inline address-of-subscript difference  [FIXED]
+----------------------------------------------------------------------------
+FIXED 2026-08-15 in two halves: a71fa8e (pass1) and da20bfe (pass2,
+the long helper checking its operands before using them).  Both repro
+forms print 77 under usersim, verified after da20bfe; cmd/od's odcvt
+is restored to the original folded 2.11 text.
+
 HALF FIXED 2026-08-15, commit a71fa8e - the pass1 half.  The scaling
 shortcut for byte-sized elements returned before typing the
 difference, so it kept its POINTER type; the enclosing subtraction
@@ -378,6 +383,46 @@ rule table.  Printing the tree where reduction stops - dumpexpr at
 the unreduced marker in lower.c - answered it in one look, and is
 what to do first next time.
 
+20. logical not stored through a struct-member pointer
+------------------------------------------------------
+Found porting less (option.c's boolean toggles) and promoted from a
+footnote to an entry when the unwind sweep found it still failing
+after entries 16-19 closed.  Both spellings fail, one expression
+each:
+
+	struct opt {
+		char oletter;
+		int *ovar;
+		int odefault;
+	};
+	f(o)
+	struct opt *o;
+	{
+		*(o->ovar) = ! *(o->ovar);
+		return (0);
+	}
+	g(o)
+	struct opt *o;
+	{
+		*(o->ovar) = ! o->odefault;
+		return (0);
+	}
+
+Verified 2026-08-15 (gaps/nottoggle.c).  THE BYTE FORM HAS ITS
+RULE: with ovar a char *, both spellings compile and compute
+correctly (gaps/nottoggle2.c compiles, nottoggle3.c runs right
+under usersim).  The missing rule is specifically the WORD store
+of a logical not through a member pointer.
+
+cmd/less no longer exercises the shape at all: its option
+variables - seven booleans, three three-states, three numbers no
+bigger than a screen, two of them carrying -1 as "not set" - were
+all retyped to char, which is the honest size for every one of
+them on this machine, and the original `! *(o->ovar)` spelling
+came back as a byte store.  The entry stays open because the word
+form is legal C that ought to compile; nothing in the tree waits
+on it any more.
+
 ===========================================================================
 c0: front end
 ===========================================================================
@@ -574,3 +619,306 @@ on the simulator - store and comparison both - through a global
 pointer, a register pointer, (ix+0) and a subscript, high and low
 against reend; and cmd/sed builds with both split sites unwound and
 runs its ranges and substitutions correctly.
+
+16. static functions are emitted with global linkage  [FIXED]
+-------------------------------------------------------------
+FIXED as of the 2026-08-15 compiler: gaps/staticfn.c now exports
+only _g, and a rebuilt libc carries no global _icvt - cmd/od's
+converter took its 2.11 name back the same day.
+Found unwinding od's icvt: doprnt.c's icvt() was made static to free
+the name, libc was rebuilt, and the duplicate-symbol error did not
+move.  mxnm says why - static or not, every function comes out
+"global def":
+
+	static
+	f()
+	{
+		return 1;
+	}
+
+	static int
+	h()
+	{
+		return 2;
+	}
+
+	g()
+	{
+		return f() + h();
+	}
+
+	$ mxnm staticfn.o
+	  0x0000  text     global  def    _f
+	  0x0005  text     global  def    _h
+	  0x000a  text     global  def    _g
+
+Both spellings of static leak.  Verified 2026-08-15.  Until fixed,
+static is no namespace at all: every static function in libc squats
+on its name tree-wide (doprnt's icvt and pputc today), and two
+compilation units with a same-named static helper cannot link.
+
+cmd/od keeps its conversion function named odcvt - original 2.11
+text otherwise - and takes the icvt name back when this is fixed.
+
+17. WRONG CODE: comparison over an added ternary  [FIXED]
+---------------------------------------------------------
+FIXED as of the 2026-08-15 compiler: gaps/tern.c prints f(200)=1,
+and cmd/less line.c carries the original NEW_COLUMN macro again.
+Found porting less (line.c's NEW_COLUMN macro, which decides when a
+character no longer fits the line).  The comparison answers without
+consulting the values.
+
+	int state;
+	int ue_width;
+	int sc_width = 80;
+	f(newcol)
+	int newcol;
+	{
+		if (newcol + (state ? ue_width : 0) > sc_width)
+			return (1);
+		return (0);
+	}
+
+f(200) returns 0.  The answer is 1.  Verified under usersim on
+2026-08-15 (gaps/tern.c).  Every line less drew came
+out empty until the macro became a plain helper function computing
+the sum into a variable first - cmd/less/line.c, newcolumn().
+
+18. WRONG CODE: __malloc loses its size parameter before growing  [FIXED]
+-------------------------------------------------------------------------
+FIXED as of the 2026-08-15 compiler: gaps/chain6.c grows the break
+past the granted block (1adb to 2f84 for a 5.2K calloc), no stray
+writes, chain intact - and cmd/less ch.c is the PRISTINE 2.11
+original now, calloc and all.
+Found porting less, and IT IS NOT LESS'S BUG - it is live in every
+program linked against libc that allocates more than an arena block.
+Ask calloc for ~5K from a frame with register struct pointers and
+the arena grows by ONE BLOCK, 129 bytes, while the caller is handed
+the full 5K - which sits beyond the break, and the segv checker
+lights up on the first write past it.
+
+The source is not the problem.  __malloc (lib/libc/malloc.c) rounds
+its byte count at the top:
+
+	nw = ((nw - 1 + sizeof(struct store)*2)/sizeof(struct store))
+		* sizeof(struct store);
+
+and grows by
+
+	temp = ((nw+sizeof(struct store)-1+BLOCK)/BLOCK)*BLOCK;
+
+For nw ~5166 that is ~5289 bytes of sbrk.  The observed growth is
+exactly one BLOCK, which the arithmetic only produces for nw < 127:
+by the time the grow expression runs, THE PARAMETER IS GONE -
+clobbered somewhere across the allocator's search loops, a frame
+with two register struct pointers and a static temp doing double
+duty.  Root cause in c1 not yet isolated; the behavior and the
+arithmetic pin the symptom to nw's death exactly.
+
+Repro: gaps/chain6.c linked with the current libc
+(or fresh-malloc.o, same result - this is live, not a stale object).
+Prints the break before and after calloc(4, sizeof(struct){2 ptrs,
+long, char[1024]}); the delta is 129 where ~5.2K was granted.
+Verified under usersim 2026-08-15.
+
+Until this is fixed: cmd/less carries a static buffer pool instead
+of calloc (ch.c), and any port that mallocs kilobytes should suspect
+its allocations before its logic.
+
+19. frame-dependent corruptions, observed in less's ch.c, no
+standalone repro  [FIXED]
+------------------------------------------------------------
+FIXED as of the 2026-08-15 compiler, by the accumulated pass fixes
+rather than any one commit, and verified by the test this entry
+prescribed: the faithful kilobyte-struct pool - init stride, anchor
+walks, double relinks, member-array subscripting, long members -
+went back into less (gaps/ch-struct.c) and the full pty battery
+passed, byte-identical results to the scalar spelling.  One false
+alarm on the way is worth recording: the first retest read as a
+REGRESSION because the test harness did not answer less's ESC[6n
+size probe, and every measurement was of a pager waiting for a
+terminal - a harness for a program that queries its terminal must
+BE a terminal.  cmd/less keeps the scalar pool anyway: on this
+machine it is smaller and simpler, and the choice is now taste
+rather than necessity.
+
+Three shapes went wrong ONLY inside fch_get/ch_init's frames - the
+minimal extractions (gaps/chain9.c, chainA.c) compile and run
+correctly, so these are register-pressure- or frame-layout-
+dependent, recorded here as observations with their live workaround
+sites, which are also their repros:
+
+	- the doubly-linked relink `bp->next->prev = bp->prev`
+	  corrupted the anchor (cmd/less/ch.c, LRU relink through
+	  plain temporaries now)
+	- the circular-list anchor compare `bp != END_OF_CHAIN`
+	  never fired in a three-register frame (ch.c walks are
+	  counted by nbufs now)
+	- subscripting a kilobyte-struct member array through a
+	  struct pointer sprayed stores outside the object (ch.c
+	  goes through a plain char pointer now)
+	- pointer plus sizeof(kilobyte struct) advanced FOUR bytes
+	  per step instead of 1030 in ch_init's three-register
+	  frame, overlapping every pool buffer in a 44-byte span -
+	  forward paging looked right only because each page
+	  painted before the next read overwrote it (gaps/
+	  stride.c prints stride=1030 standalone, correctly)
+
+The family's common factor is the kilobyte struct: member offsets
+past 255 and struct-pointer arithmetic with a large sizeof.  Four
+local spellings were fixed one at a time and re-broke as unrelated
+edits moved the frames, so cmd/less/ch.c now removes the CLASS: the
+pool is parallel scalar arrays - a flat char array walked by char
+pointer, word arrays indexed by small int, LRU by clock stamp
+instead of a linked list.  When c1 claims this family, the test is
+a struct-spelled pool put back in less - or any honest program
+chaining kilobyte structs from a register-variable frame.
+
+identifiers truncate at sixteen characters (limitation)
+-------------------------------------------------------
+c0 warns "symbol truncated" and keeps the first sixteen, so two
+names agreeing there still match and the program is right - less's
+END_OPTION_STRING compiled with warnings once its collisions were
+renamed away.  asz has its own shorter horizon for labels.  Recorded
+so the warning is recognized; the fix is shorter names, not a wider
+symbol table, on a compiler that has to fit in 64k itself.
+
+21. WRONG CODE, context-dependent: char compared with a negative
+constant
+----------------------------------------------------------------
+Found by the range-audit sweep, retyping diff's option selector to
+char: `opt == D_EDIT` with D_EDIT -1 stopped matching, and diff -e
+silently dropped its ed command lines - the text survived, the 4a
+and 2,3c lines did not.  Retyping opt back to int restores output
+byte-identical to host diff.
+
+The minimal extractions PASS standalone (gaps/charneg.c and the
+enriched charneg2.c both print the right answer, verified under
+usersim 2026-08-16), so like entry 19 this one lives in frame
+context, and the live site is the repro: cmd/diff, diff.h's opt,
+which stays int with the story beside it.  A sign-extension lost
+somewhere between the byte load and the word compare, but only in
+company.
+
+The sweep's standing rule either way: a char compared against a
+negative constant is entry-21 territory - keep such variables int
+until this closes, however provable their range.
+
+22. WRONG CODE: pointer pre-increment compared against an inline &arr[N]
+-----------------------------------------------------------------------
+Found porting v7 make's yacc parser skeleton (cmd/pwbmake/y.tab.c),
+the state-stack overflow check:
+
+	if (++yyps > &yys[YYMAXDEPTH])
+		yyerror("yacc stack overflow");
+
+The bound operand is a computed address of a LOCAL array - &yys[150]
+lowers to (ADD (LOCALVAR frame) 300) - and the other is a pre-
+increment pointer that also lives in the frame.  c1 computes the
+bound into hl, then evaluates the pre-increment, which loads the
+frame pointer into hl and overwrites the bound without saving it;
+sbc hl,de then runs against the size constant 300 still sitting in
+de, not the address.  The check fires on the very first push, so
+every parse "overflows" before reading a token.
+
+	int arr[150];
+	main()
+	{
+		register int *p1, *p2, *p3, *p4, *p5;
+		p1 = p2 = p3 = p4 = p5 = &arr[0];
+		if (++p1 > &arr[150])	/* false: &arr[0] > &arr[150] is not */
+			return 1;
+		return 0;
+	}
+
+Returns 1, not 0 (verified against the .s: the bound is computed,
+then ld l,(iy-6); ld h,(iy-5) clobbers it with p1, and sbc compares
+against the leftover 300).  The bug wants the pre-increment operand
+in the frame, which is why it hides in a register-poor function -
+four register pointers hold the registers so p1 spills.  With the
+array at file scope the bound is a SYMREF and the codegen orders the
+operands the other way, correctly; with p1 in a register the bound
+is pushed before the increment and popped after, also correctly.
+
+Workaround in cmd/pwbmake: pre-compute the bound into a variable and
+split the increment from the test:
+
+	int *yyslim = &yys[YYMAXDEPTH];
+	...
+	++yyps;
+	if (yyps > yyslim)
+		yyerror("yacc stack overflow");
+23. WRONG CODE: 32-bit `long` handling, four sites in the awk port
+-----------------------------------------------------------------------
+All four came out of porting 2.11BSD awk (cmd/awk), whose `obj` is a
+`long` packing a cell pointer in the low word, a type in the next byte
+and a subtype on top.  Every one is a place c1 drops or misroutes the
+32 bits; all four have source-level workarounds, and awk now runs.
+
+23a. a long narrowed with &0xffffL hands over the HIGH word
+    (fixed: narrow through int / zero-extend through unsigned)
+
+`(long)(x) & 0xffffL` returns the HIGH word, not the low, whenever x
+is a runtime value with a nonzero high word.  `(int)(x & 0xffffL)`
+alone is fine, and a constant folds correctly - the fault wants a
+runtime long.  It bit both halves of awk's packed obj:
+
+	objptr(o) = (cell *)((o) & 0xffffL)   -> high word (0x100)
+	objmk(p,..)= (long)(p) & 0xffffL      -> the node's narg[0], not nobj
+
+The objmk one is the subtle case: in nodetoobj, `(cell *)a->nobj`
+lowered to a four-byte load of the struct field - nobj AND the
+neighbouring narg[0] - and the &0xffff then returned narg[0] (0xd7bd)
+instead of nobj (0xd78d).  The obj looked right in the debug print
+because y=0x...d7bd prints the same low word objptr would; the pointer
+was 48 bytes off.  That is why `print` dumped the text segment.
+
+Workaround in awk.def: narrow objptr through int (which c1 does
+truncate) and widen objmk through unsigned (which zero-extends):
+
+	#define objptr(o) ((cell *)(int)(o))
+	#define objmk(p,t,s) ((obj)(((long)(unsigned)(p)) | ((long)(t)<<16) | ((long)(s)<<24)))
+
+gaps/longptrcast.c and longinit.c are the repros.
+
+23b. a long global initialised from a shift folds to 16 bits
+    (fixed: use literals)
+
+	obj true = objmk(0, OBOOL, BTRUE);   /* (long)2<<16 | (long)1<<24 */
+
+comes out two bytes and zero; the same value as a literal
+(`obj zero = 0x01020000L`) is four bytes and right.  Workaround in
+run.c: spell true/false as literals.
+
+23c. the nested ternary in fcmp loses the sign of -1  (fixed: if/else)
+
+	#define fcmp(a,b) ((a)>(b)?1:(a)<(b)?-1:0)
+
+returns 255 for the -1 when the operands are 32-bit struct fields
+(relop's `fcmp(objptr(x)->fval, objptr(y)->fval)`), so `1 > 3` came
+out true and `1 < 3` false while `1 == 3` (which only needs the 0) was
+right.  A standalone extraction with function parameters returns -1
+correctly - the bug wants the struct-field operands, same as 23a.
+Workaround: make fcmp a real function with if/else, in intmath.c.
+
+23d. setsymtab's 2nd and 4th parameters read back garbage  [NOT REPRODUCIBLE]
+-----------------------------------------------------------------------------
+Checked 2026-08-19: the frame offsets (s=6, f=8 long, t=12), fentbxw/
+fexitw, the qldiy/qstix long helpers and the 5-word argument push/pop
+are all correct in the generated code, and a runtime guard on s and t
+never fired across a battery of awk scripts.  A host build under
+valgrind instead found four UNINITIALISED-obj reads in the awk source
+(nodetoobj, arrayel, indirect, jump) that were themselves producing
+the garbage-on-print ("funny variable"); those are fixed.  The frame
+corruption itself does not reproduce on the current compiler, so it is
+recorded rather than chased further.
+
+The original observation: setsymtab(cbuf, s, 0L, CON|STR, symtab)
+from yylexstr; s and t are right at the top (fprintf) but the stores
+p->sval = s, p->tval = t read 0x0201 and 0x012a.  n, the long f, and
+tab survive; only the two parameters either side of the long do not.
+
+The common thread: every one of these is a `long` the compiler must
+keep in two 16-bit halves, and c1 loses one half.  When a long is
+involved, trust only the literal, the int-narrowed read, the
+unsigned-widened pack, and an if/else compare until this entry closes.

@@ -1,0 +1,4 @@
+# keep only the .c test sources; everything else is build output
+*
+!*.c
+!/.gitignore
