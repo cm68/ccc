@@ -1,0 +1,26 @@
+libf — software floating point
+==============================
+
+WORK IN PROGRESS.  ccc has no native float/double type, so FLOAT is an
+unsigned long holding the bits of a 1-sign / 7-exponent (bias 64) /
+24-mantissa value (the leading 1 in bit 23 is explicit).  See float.h
+for the format and the interface; float.c is the arithmetic, mathf.c
+the elementary functions.  fbcd.s and finc.s are the older assembly
+helpers, kept here but no longer called by the C code.
+
+The archive is built for both variants like libc and libu: libf.a
+(Z80) and libf280.a (Z280).  float.c and mathf.c are compiled with
+-I.. because ccc's preprocessor searches the include path, not the
+source directory, so "float.h" would otherwise resolve to the empty
+stub in include/.
+
+Known defect
+------------
+
+fatof parses a fraction digit-by-digit as d * tenth, where tenth is
+0.1 held inexactly in this format.  fatof("3.5") therefore yields
+3.4999... rather than exactly 3.5, and ftoa truncates instead of
+rounding, so ftoa(fatof("3.5"), 2) prints "3.49".
+
+The fix is to accumulate the fraction as an integer (parse "3.5" as
+35/10, not 3 + 5*0.1) or to round to nearest in ftoa; not yet done.
