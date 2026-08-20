@@ -1,233 +1,299 @@
-rules.c:1089  V
-rules.c:1090  V
-rules.c:1111  =(H,V):b
-rules.c:1112  =(H,V):b
-rules.c:1128  EF
-rules.c:1148  =(E,V)
-rules.c:1152  +(D(V),num)
-rules.c:1160  +(I,H)
-rules.c:1178  +(O,H)
-rules.c:1266  /(B,E)
-rules.c:1268  %(B,E)
-rules.c:1270  %(B,E)
-rules.c:1298  /(H,B)
-rules.c:1302  %(H,B)
-rules.c:1352  =(I,B):bV
-rules.c:1369  =(V,num)
-rules.c:1370  =(V,num)
-rules.c:1371  =(V,num)
-rules.c:1383  =(E,num)
-rules.c:1426  +(V,O)
-rules.c:1447  +(V,B)
-rules.c:1450  +(B,V)
-rules.c:1461  +(H,V)
-rules.c:1479  cmpx(V,num)
-rules.c:1481  cmp(V,O)
-rules.c:1482  cmpx(V,O)
-rules.c:1485  n(V,B)
-rules.c:1486  e(V,H)
-rules.c:1487  n(V,H)
-rules.c:1494  cmpx(V,E)
-rules.c:1515  =(V,E)
-rules.c:1520  =(E,H)
-rules.c:1521  =(H,E)
-rules.c:1523  =(B,E)
-rules.c:1524  =(E,B)
-rules.c:1526  =(E,E)
-rules.c:1535  ;(any,H)
-rules.c:1536  ;(any,E)
-rules.c:1537  ;(any,B)
-rules.c:1538  ;(any,A)
-rules.c:1541  =(C,H)
-rules.c:1542  =(C,E)
-rules.c:1543  =(C,B)
-rules.c:1544  =(C,A)
-rules.c:1568  X(V):s
-rules.c:1569  W(V):s
-rules.c:1578  X(B):s
-rules.c:1579  W(B):s
-rules.c:1581  X(I):s
-rules.c:1582  W(I):s
-rules.c:1585  X(O):s
-rules.c:1586  W(O):s
-rules.c:1587  W(H):s
-rules.c:1613  Z(E):b
-rules.c:1614  Z(A)
-rules.c:1615  Z(K)
-rules.c:1616  Z(H)
-rules.c:1659  =(O,C):lV
-rules.c:1660  =(I,C):lV
-rules.c:1665  =(I,C):l
-rules.c:1666  =(O,C):l
-rules.c:1700  =(H,C):l
-rules.c:1780  j(D(B)):l
-rules.c:1781  k(D(B)):l
-rules.c:1784  i(D(B)):l
-rules.c:1787  d(D(B)):l
-rules.c:1814  =(D(O),E):s
-rules.c:1845  =(D(I),O):s
-rules.c:1852  =(D(H),num):lV
-rules.c:1880  =(D(I),num):l
-rules.c:1897  =(D(V),num):l
-rules.c:1901  =(D(B),H):l
-rules.c:1929  !(H)
-rules.c:1932  !(B)
-rules.c:1933  !(E)
-rules.c:1934  !(K)
-rules.c:1935  !(V)
-rules.c:1938  =(B,A)
-rules.c:1940  =(E,A)
-rules.c:1944  +(B,smal)
-rules.c:1945  +(E,num)
-rules.c:1946  +(E,smal)
-rules.c:1953  m(E)
-rules.c:1965  k(B)S
-rules.c:1970  j(V):bS
-rules.c:1971  j(V):bS
-rules.c:1972  k(V):bS
-rules.c:1973  k(V):bS
-rules.c:2024  k(D(B)):b
-rules.c:2026  i(D(H)):b
-rules.c:2028  d(D(H)):b
-rules.c:2030  j(D(H)):b
-rules.c:2031  k(D(H)):b
-rules.c:2036  j(D(B)):s
-rules.c:2039  k(D(B)):s
-rules.c:2056  d(V)S
-rules.c:2057  j(V)S
-rules.c:2058  k(V)S
-rules.c:2059  i(V)
-rules.c:2065  k(V)
-rules.c:2087  k(D(V)):s
-rules.c:2118  j(I):bS
-rules.c:2119  k(I):bS
-rules.c:2122  j(I):bF
-rules.c:2144  j(D(V)):b
-rules.c:2146  k(D(V)):b
-rules.c:2148  i(D(V)):b
-rules.c:2150  d(D(V)):b
-rules.c:2163  i(O):bF
-rules.c:2164  d(O):bF
-rules.c:2167  j(O):bS
-rules.c:2168  k(O):bS
-rules.c:2180  =(H,num)
-rules.c:2181  =(H,A):b
-rules.c:2182  =(H,V):b
-rules.c:2216  =(D(B),A):b
-rules.c:2217  =(D(E),A):b
-rules.c:2219  =(D(E),H):s
-rules.c:2249  =(D(V),B):b
-rules.c:2251  =(D(V),E):b
-rules.c:2273  =(D(H),V):b
-rules.c:2312  =(D(I),B):s
-rules.c:2314  =(D(I),E):b
-rules.c:2316  =(D(I),E):s
-rules.c:2350  =(D(H),E):b
-rules.c:2357  =(D(H),H):b
-rules.c:2375  i(H):sS
-rules.c:2376  d(H):sS
-rules.c:2377  j(H):sS
-rules.c:2378  k(H):sS
-rules.c:2382  =(D(B),H):b
-rules.c:2386  =(D(E),num):s
-rules.c:2394  D(H):?F
-rules.c:2397  =(B,D(H)):s
-rules.c:2407  =(E,I)
-rules.c:2413  =(E,O)
-rules.c:2414  =(B,D(O)):s
-rules.c:2415  =(E,D(O)):s
-rules.c:2416  =(H,D(O)):s
-rules.c:2417  =(E,D(H)):s
-rules.c:2418  =(H,D(H)):s
-rules.c:2419  =(I,D(H)):s
-rules.c:2422  ?OREQ(H,num):b
-rules.c:2423  ?OREQ(I,K):b
-rules.c:2491  -(num,H)
-rules.c:2495  -(num,A):b
-rules.c:2531  +(D(I),num):b
-rules.c:2533  -(D(I),num):b
-rules.c:2545  +(H,O)
-rules.c:2587  y(num,H):b
-rules.c:2600  y(A,E):b
-rules.c:2601  y(A,H):b
-rules.c:2604  w(A,K):b
-rules.c:2605  w(A,E):b
-rules.c:2606  w(A,H):b
-rules.c:2610  w(A,E):b
-rules.c:2611  w(A,H):b
-rules.c:2630  y(H,eigh)
-rules.c:2650  y(H,E)
-rules.c:2654  w(H,E)
-rules.c:2656  w(H,E)
-rules.c:2658  w(H,B)
-rules.c:2666  =(A,D(I)):b
-rules.c:2667  =(A,D(O)):b
-rules.c:2668  =(A,A)
-rules.c:2669  =(A,num):b
-rules.c:2676  =(A,H):b
-rules.c:2677  =(A,B):b
-rules.c:2678  =(A,E):b
-rules.c:2693  i(V):bF
-rules.c:2694  i(V):bF
-rules.c:2706  i(A):b
-rules.c:2707  d(A):b
-rules.c:2710  =(O,E):s
-rules.c:2742  &(D(I),num):b
-rules.c:2743  |(D(I),num):b
-rules.c:2744  ^(D(I),num):b
-rules.c:2753  +(A,D(O)):b
-rules.c:2754  -(A,D(O)):b
-rules.c:2755  &(A,D(O)):b
-rules.c:2756  |(A,D(O)):b
-rules.c:2757  ^(A,D(O)):b
-rules.c:2758  +(A,D(I)):b
-rules.c:2759  -(A,D(I)):b
-rules.c:2760  &(A,D(I)):b
-rules.c:2761  |(A,D(I)):b
-rules.c:2762  ^(A,D(I)):b
-rules.c:2780  +(H,K):b
-rules.c:2781  -(H,K):b
-rules.c:2782  &(H,K):b
-rules.c:2783  |(H,K):b
-rules.c:2784  ^(H,K):b
-rules.c:2794  -(A,E):b
-rules.c:2795  &(A,E):b
-rules.c:2797  ^(A,E):b
-rules.c:2802  &(A,K):bF
-rules.c:2884  p(H,E)
-rules.c:2903  <(O,E)
-rules.c:2904  p(O,E)
-rules.c:2905  cmpx(O,E)
-rules.c:2913  <(O,B)
-rules.c:2914  p(O,B)
-rules.c:2915  cmpx(O,B)
-rules.c:2919  p(H,O)
-rules.c:2920  cmpx(H,O)
-rules.c:2923  p(H,B)
-rules.c:2936  p(H,E)
-rules.c:2938  cmpx(O,E)
-rules.c:2940  p(O,E)
-rules.c:2941  cmpx(H,O)
-rules.c:2942  <(H,O)
-rules.c:2943  p(H,O)
-rules.c:2965  p(B,E)
-rules.c:2968  p(B,E)
-rules.c:3004  q(A,zero)
-rules.c:3018  p(A,K)
-rules.c:3019  >(A,K)
-rules.c:3025  <(D(I),num):b
-rules.c:3026  p(D(I),num):b
-rules.c:3027  >(D(I),num):b
-rules.c:3028  q(D(I),num):b
-rules.c:3042  e(A,V)
-rules.c:3043  n(A,V)
-rules.c:3050  <(A,V)
-rules.c:3052  q(A,V)
-rules.c:3054  <(A,V)
-rules.c:3061  <(A,V)
-rules.c:3062  q(A,V)
-rules.c:3066  cmp(D(I),num):b
-rules.c:3085  >(A,K)
-rules.c:3089  >(D(I),num):b
-rules.c:3090  q(D(I),num):b
-rules.c:3104  q(B,num)
+rules.c:1141  op=9 lop=234 rop=227 sub=0 sfx=0
+rules.c:1142  op=9 lop=234 rop=228 sub=0 sfx=0
+rules.c:1143  op=9 lop=234 rop=230 sub=0 sfx=0
+rules.c:1144  op=9 lop=234 rop=229 sub=0 sfx=0
+rules.c:1165  op=34 lop=227 rop=0 sub=0 sfx=32
+rules.c:1168  op=34 lop=230 rop=0 sub=0 sfx=32
+rules.c:1169  op=34 lop=228 rop=0 sub=0 sfx=64
+rules.c:1170  op=34 lop=233 rop=0 sub=0 sfx=0
+rules.c:1171  op=34 lop=216 rop=0 sub=0 sfx=0
+rules.c:1265  op=40 lop=201 rop=254 sub=216 sfx=0 (transform)
+rules.c:1273  op=40 lop=226 rop=227 sub=0 sfx=0
+rules.c:1291  op=40 lop=231 rop=227 sub=0 sfx=0
+rules.c:1300  op=40 lop=216 rop=231 sub=0 sfx=0
+rules.c:1312  op=40 lop=216 rop=230 sub=0 sfx=0
+rules.c:1314  op=40 lop=230 rop=216 sub=0 sfx=0
+rules.c:1316  op=40 lop=227 rop=216 sub=0 sfx=0
+rules.c:1321  op=40 lop=230 rop=251 sub=0 sfx=0
+rules.c:1322  op=40 lop=228 rop=254 sub=0 sfx=0
+rules.c:1323  op=40 lop=228 rop=251 sub=0 sfx=0
+rules.c:1338  op=40 lop=201 rop=254 sub=226 sfx=1
+rules.c:1339  op=40 lop=227 rop=231 sub=0 sfx=0
+rules.c:1348  op=40 lop=229 rop=201 sub=231 sfx=1
+rules.c:1349  op=40 lop=229 rop=201 sub=226 sfx=1
+rules.c:1363  op=40 lop=227 rop=233 sub=0 sfx=1
+rules.c:1395  op=41 lop=231 rop=216 sub=0 sfx=0
+rules.c:1431  op=41 lop=254 rop=227 sub=0 sfx=0
+rules.c:1435  op=41 lop=254 rop=229 sub=0 sfx=1
+rules.c:1449  op=41 lop=229 rop=251 sub=0 sfx=0
+rules.c:1451  op=41 lop=201 rop=254 sub=226 sfx=1
+rules.c:1471  op=41 lop=231 rop=230 sub=0 sfx=0
+rules.c:1487  op=41 lop=231 rop=231 sub=0 sfx=0
+rules.c:1493  op=41 lop=229 rop=201 sub=231 sfx=1
+rules.c:1494  op=41 lop=229 rop=201 sub=226 sfx=1
+rules.c:1496  op=41 lop=227 rop=233 sub=0 sfx=1
+rules.c:1497  op=41 lop=229 rop=228 sub=0 sfx=1
+rules.c:1503  op=43 lop=230 rop=228 sub=0 sfx=0
+rules.c:1521  op=43 lop=227 rop=230 sub=0 sfx=0
+rules.c:1529  op=44 lop=230 rop=228 sub=0 sfx=0
+rules.c:1531  op=44 lop=230 rop=228 sub=0 sfx=0
+rules.c:1543  op=44 lop=227 rop=230 sub=0 sfx=0
+rules.c:1551  op=45 lop=229 rop=233 sub=0 sfx=1
+rules.c:1552  op=45 lop=229 rop=228 sub=0 sfx=1
+rules.c:1553  op=45 lop=229 rop=227 sub=0 sfx=1
+rules.c:1557  op=45 lop=229 rop=228 sub=0 sfx=1
+rules.c:1558  op=45 lop=229 rop=227 sub=0 sfx=1
+rules.c:1589  op=45 lop=227 rop=228 sub=0 sfx=0
+rules.c:1591  op=45 lop=227 rop=228 sub=0 sfx=0
+rules.c:1593  op=45 lop=227 rop=230 sub=0 sfx=0
+rules.c:1640  op=46 lop=254 rop=227 sub=0 sfx=1
+rules.c:1653  op=46 lop=229 rop=228 sub=0 sfx=1
+rules.c:1654  op=46 lop=229 rop=227 sub=0 sfx=1
+rules.c:1657  op=46 lop=227 rop=237 sub=0 sfx=0
+rules.c:1665  op=46 lop=227 rop=228 sub=0 sfx=0
+rules.c:1700  op=47 lop=201 rop=254 sub=226 sfx=1
+rules.c:1701  op=47 lop=229 rop=201 sub=231 sfx=1
+rules.c:1702  op=47 lop=229 rop=201 sub=226 sfx=1
+rules.c:1704  op=47 lop=227 rop=233 sub=0 sfx=1
+rules.c:1705  op=47 lop=229 rop=228 sub=0 sfx=1
+rules.c:1710  op=47 lop=229 rop=233 sub=0 sfx=9
+rules.c:1734  op=47 lop=230 rop=227 sub=0 sfx=0
+rules.c:1736  op=48 lop=201 rop=254 sub=226 sfx=1
+rules.c:1737  op=48 lop=229 rop=201 sub=231 sfx=1
+rules.c:1738  op=48 lop=229 rop=201 sub=226 sfx=1
+rules.c:1740  op=48 lop=227 rop=233 sub=0 sfx=1
+rules.c:1741  op=48 lop=229 rop=228 sub=0 sfx=1
+rules.c:1750  op=49 lop=201 rop=254 sub=226 sfx=1
+rules.c:1751  op=49 lop=229 rop=201 sub=231 sfx=1
+rules.c:1752  op=49 lop=229 rop=201 sub=226 sfx=1
+rules.c:1754  op=49 lop=227 rop=233 sub=0 sfx=1
+rules.c:1755  op=49 lop=229 rop=228 sub=0 sfx=1
+rules.c:1779  op=60 lop=216 rop=231 sub=0 sfx=0
+rules.c:1781  op=60 lop=216 rop=227 sub=0 sfx=0
+rules.c:1802  op=60 lop=216 rop=230 sub=0 sfx=0
+rules.c:1819  op=60 lop=232 rop=228 sub=0 sfx=0
+rules.c:1820  op=60 lop=232 rop=231 sub=0 sfx=0
+rules.c:1843  op=60 lop=229 rop=216 sub=0 sfx=0
+rules.c:1844  op=60 lop=201 rop=254 sub=226 sfx=1
+rules.c:1846  op=61 lop=216 rop=254 sub=0 sfx=0
+rules.c:1847  op=61 lop=216 rop=231 sub=0 sfx=0
+rules.c:1848  op=61 lop=216 rop=230 sub=0 sfx=0
+rules.c:1849  op=61 lop=216 rop=227 sub=0 sfx=0
+rules.c:1853  op=61 lop=216 rop=230 sub=0 sfx=0
+rules.c:1854  op=61 lop=232 rop=228 sub=0 sfx=0
+rules.c:1855  op=61 lop=232 rop=231 sub=0 sfx=0
+rules.c:1865  op=61 lop=229 rop=216 sub=0 sfx=0
+rules.c:1866  op=61 lop=201 rop=254 sub=226 sfx=1
+rules.c:1869  op=61 lop=234 rop=254 sub=0 sfx=0 (transform)
+rules.c:1870  op=61 lop=0 rop=0 sub=0 sfx=0 (transform)
+rules.c:1871  op=62 lop=216 rop=254 sub=0 sfx=0
+rules.c:1873  op=62 lop=216 rop=231 sub=0 sfx=0
+rules.c:1875  op=62 lop=216 rop=228 sub=0 sfx=0
+rules.c:1882  op=62 lop=231 rop=228 sub=0 sfx=0
+rules.c:1883  op=62 lop=231 rop=230 sub=0 sfx=0
+rules.c:1884  op=62 lop=227 rop=231 sub=0 sfx=0
+rules.c:1891  op=62 lop=231 rop=228 sub=0 sfx=0
+rules.c:1892  op=62 lop=227 rop=231 sub=0 sfx=0
+rules.c:1900  op=62 lop=229 rop=252 sub=0 sfx=0
+rules.c:1903  op=62 lop=201 rop=254 sub=226 sfx=1
+rules.c:1904  op=62 lop=229 rop=216 sub=0 sfx=0
+rules.c:1910  op=62 lop=229 rop=216 sub=0 sfx=0
+rules.c:1914  op=62 lop=201 rop=254 sub=226 sfx=1
+rules.c:1916  op=62 lop=230 rop=254 sub=0 sfx=0
+rules.c:1919  op=63 lop=216 rop=231 sub=0 sfx=0
+rules.c:1969  op=63 lop=231 rop=228 sub=0 sfx=0
+rules.c:1977  op=63 lop=231 rop=230 sub=0 sfx=0
+rules.c:1980  op=63 lop=227 rop=231 sub=0 sfx=0
+rules.c:1985  op=63 lop=231 rop=228 sub=0 sfx=0
+rules.c:1986  op=63 lop=227 rop=231 sub=0 sfx=0
+rules.c:2037  op=63 lop=201 rop=254 sub=226 sfx=1
+rules.c:2045  op=63 lop=229 rop=216 sub=0 sfx=0
+rules.c:2047  op=63 lop=229 rop=216 sub=0 sfx=0
+rules.c:2050  op=63 lop=229 rop=216 sub=0 sfx=0
+rules.c:2052  op=63 lop=201 rop=254 sub=226 sfx=1
+rules.c:2053  op=64 lop=216 rop=254 sub=0 sfx=0
+rules.c:2054  op=64 lop=216 rop=231 sub=0 sfx=0
+rules.c:2055  op=64 lop=216 rop=228 sub=0 sfx=0
+rules.c:2057  op=64 lop=230 rop=216 sub=0 sfx=0
+rules.c:2058  op=64 lop=216 rop=230 sub=0 sfx=0
+rules.c:2061  op=64 lop=227 rop=228 sub=0 sfx=0
+rules.c:2062  op=64 lop=231 rop=228 sub=0 sfx=0
+rules.c:2063  op=64 lop=231 rop=230 sub=0 sfx=0
+rules.c:2064  op=64 lop=227 rop=231 sub=0 sfx=0
+rules.c:2065  op=64 lop=227 rop=230 sub=0 sfx=0
+rules.c:2067  op=64 lop=227 rop=228 sub=0 sfx=0
+rules.c:2068  op=64 lop=231 rop=228 sub=0 sfx=0
+rules.c:2069  op=64 lop=227 rop=231 sub=0 sfx=0
+rules.c:2071  op=64 lop=230 rop=228 sub=0 sfx=0
+rules.c:2072  op=64 lop=230 rop=228 sub=0 sfx=0
+rules.c:2077  op=64 lop=229 rop=233 sub=0 sfx=0
+rules.c:2079  op=64 lop=201 rop=254 sub=226 sfx=1
+rules.c:2080  op=64 lop=229 rop=233 sub=0 sfx=0
+rules.c:2082  op=64 lop=201 rop=254 sub=226 sfx=1
+rules.c:2083  op=65 lop=216 rop=254 sub=0 sfx=0
+rules.c:2085  op=65 lop=216 rop=231 sub=0 sfx=0
+rules.c:2087  op=65 lop=216 rop=228 sub=0 sfx=0
+rules.c:2088  op=65 lop=227 rop=216 sub=0 sfx=0
+rules.c:2089  op=65 lop=230 rop=216 sub=0 sfx=0
+rules.c:2090  op=65 lop=216 rop=230 sub=0 sfx=0
+rules.c:2108  op=65 lop=227 rop=228 sub=0 sfx=0
+rules.c:2109  op=65 lop=231 rop=228 sub=0 sfx=0
+rules.c:2110  op=65 lop=231 rop=230 sub=0 sfx=0
+rules.c:2111  op=65 lop=227 rop=231 sub=0 sfx=0
+rules.c:2112  op=65 lop=227 rop=230 sub=0 sfx=0
+rules.c:2114  op=65 lop=227 rop=228 sub=0 sfx=0
+rules.c:2115  op=65 lop=231 rop=228 sub=0 sfx=0
+rules.c:2116  op=65 lop=227 rop=231 sub=0 sfx=0
+rules.c:2117  op=65 lop=227 rop=230 sub=0 sfx=0
+rules.c:2118  op=65 lop=230 rop=228 sub=0 sfx=0
+rules.c:2122  op=65 lop=229 rop=233 sub=0 sfx=0
+rules.c:2124  op=65 lop=201 rop=254 sub=226 sfx=1
+rules.c:2143  op=65 lop=229 rop=233 sub=0 sfx=0
+rules.c:2145  op=65 lop=201 rop=254 sub=226 sfx=1
+rules.c:2158  op=65 lop=230 rop=228 sub=0 sfx=0
+rules.c:2161  op=78 lop=227 rop=254 sub=0 sfx=1
+rules.c:2162  op=78 lop=226 rop=233 sub=0 sfx=1
+rules.c:2173  op=80 lop=227 rop=216 sub=0 sfx=1
+rules.c:2174  op=80 lop=227 rop=216 sub=0 sfx=1
+rules.c:2193  op=80 lop=228 rop=216 sub=0 sfx=0
+rules.c:2275  op=80 lop=201 rop=228 sub=254 sfx=2
+rules.c:2289  op=80 lop=201 rop=227 sub=254 sfx=19
+rules.c:2293  op=80 lop=201 rop=232 sub=254 sfx=19
+rules.c:2295  op=80 lop=201 rop=232 sub=254 sfx=3
+rules.c:2307  op=80 lop=201 rop=254 sub=254 sfx=19
+rules.c:2322  op=80 lop=226 rop=230 sub=0 sfx=17
+rules.c:2334  op=80 lop=226 rop=229 sub=0 sfx=2
+rules.c:2339  op=80 lop=216 rop=254 sub=0 sfx=0
+rules.c:2340  op=80 lop=216 rop=254 sub=0 sfx=0
+rules.c:2341  op=80 lop=216 rop=254 sub=0 sfx=0
+rules.c:2353  op=80 lop=228 rop=254 sub=0 sfx=0
+rules.c:2391  op=80 lop=216 rop=228 sub=0 sfx=0
+rules.c:2396  op=80 lop=228 rop=227 sub=0 sfx=0
+rules.c:2397  op=80 lop=227 rop=228 sub=0 sfx=0
+rules.c:2399  op=80 lop=230 rop=228 sub=0 sfx=0
+rules.c:2400  op=80 lop=228 rop=230 sub=0 sfx=0
+rules.c:2402  op=80 lop=228 rop=228 sub=0 sfx=0
+rules.c:2406  op=80 lop=232 rop=227 sub=0 sfx=0
+rules.c:2407  op=80 lop=232 rop=228 sub=0 sfx=0
+rules.c:2408  op=80 lop=232 rop=230 sub=0 sfx=0
+rules.c:2409  op=80 lop=232 rop=229 sub=0 sfx=0
+rules.c:2425  op=80 lop=231 rop=232 sub=0 sfx=19
+rules.c:2426  op=80 lop=226 rop=232 sub=0 sfx=19
+rules.c:2431  op=80 lop=226 rop=232 sub=0 sfx=3
+rules.c:2432  op=80 lop=231 rop=232 sub=0 sfx=3
+rules.c:2456  op=80 lop=201 rop=254 sub=231 sfx=17
+rules.c:2458  op=80 lop=201 rop=254 sub=231 sfx=18
+rules.c:2466  op=80 lop=227 rop=232 sub=0 sfx=3
+rules.c:2500  op=80 lop=201 rop=228 sub=231 sfx=2
+rules.c:2541  op=80 lop=201 rop=231 sub=231 sfx=1
+rules.c:2562  op=80 lop=201 rop=231 sub=227 sfx=1
+rules.c:2575  op=80 lop=201 rop=231 sub=230 sfx=2
+rules.c:2577  op=80 lop=201 rop=231 sub=226 sfx=2
+rules.c:2584  op=80 lop=201 rop=254 sub=227 sfx=19
+rules.c:2612  op=80 lop=201 rop=254 sub=226 sfx=3
+rules.c:2629  op=80 lop=201 rop=254 sub=216 sfx=3
+rules.c:2633  op=80 lop=201 rop=227 sub=230 sfx=3
+rules.c:2637  op=80 lop=230 rop=229 sub=0 sfx=0
+rules.c:2639  op=80 lop=228 rop=229 sub=0 sfx=0
+rules.c:2643  op=80 lop=227 rop=254 sub=0 sfx=0 (transform)
+rules.c:2644  op=80 lop=227 rop=229 sub=0 sfx=1
+rules.c:2645  op=80 lop=227 rop=216 sub=0 sfx=1
+rules.c:2648  op=80 lop=201 rop=229 sub=230 sfx=1
+rules.c:2649  op=80 lop=201 rop=229 sub=228 sfx=1
+rules.c:2651  op=80 lop=201 rop=227 sub=228 sfx=2
+rules.c:2669  op=80 lop=201 rop=231 sub=216 sfx=2
+rules.c:2697  op=80 lop=201 rop=228 sub=216 sfx=2
+rules.c:2714  op=80 lop=201 rop=230 sub=216 sfx=1
+rules.c:2716  op=80 lop=201 rop=228 sub=216 sfx=1
+rules.c:2761  op=80 lop=201 rop=216 sub=227 sfx=1
+rules.c:2766  op=80 lop=201 rop=216 sub=226 sfx=2
+rules.c:2817  op=80 lop=201 rop=230 sub=226 sfx=2
+rules.c:2819  op=80 lop=201 rop=228 sub=226 sfx=1
+rules.c:2855  op=80 lop=201 rop=228 sub=227 sfx=1
+rules.c:2879  op=80 lop=201 rop=229 sub=227 sfx=2
+rules.c:2883  op=80 lop=201 rop=227 sub=227 sfx=1
+rules.c:2887  op=80 lop=201 rop=227 sub=230 sfx=1
+rules.c:2891  op=80 lop=201 rop=254 sub=228 sfx=2
+rules.c:2899  op=80 lop=230 rop=201 sub=227 sfx=2
+rules.c:2909  op=80 lop=228 rop=226 sub=0 sfx=0
+rules.c:2915  op=80 lop=228 rop=231 sub=0 sfx=0
+rules.c:2916  op=80 lop=230 rop=201 sub=231 sfx=2
+rules.c:2917  op=80 lop=228 rop=201 sub=231 sfx=2
+rules.c:2918  op=80 lop=227 rop=201 sub=231 sfx=2
+rules.c:2919  op=80 lop=228 rop=201 sub=227 sfx=2
+rules.c:2920  op=80 lop=227 rop=201 sub=227 sfx=2
+rules.c:2921  op=80 lop=226 rop=201 sub=227 sfx=2
+rules.c:2924  op=80 lop=229 rop=201 sub=226 sfx=1
+rules.c:2925  op=80 lop=229 rop=201 sub=231 sfx=1
+rules.c:2926  op=80 lop=229 rop=229 sub=0 sfx=0
+rules.c:2927  op=80 lop=229 rop=254 sub=0 sfx=1
+rules.c:2934  op=80 lop=229 rop=227 sub=0 sfx=1
+rules.c:2935  op=80 lop=229 rop=230 sub=0 sfx=1
+rules.c:2936  op=80 lop=229 rop=228 sub=0 sfx=1
+rules.c:3010  op=201 lop=227 rop=0 sub=0 sfx=12
+rules.c:3083  op=203 lop=228 rop=0 sub=0 sfx=0
+rules.c:3107  op=204 lop=228 rop=0 sub=0 sfx=2
+rules.c:3132  op=206 lop=228 rop=0 sub=0 sfx=1
+rules.c:3133  op=206 lop=229 rop=0 sub=0 sfx=0
+rules.c:3134  op=206 lop=233 rop=0 sub=0 sfx=0
+rules.c:3135  op=206 lop=227 rop=0 sub=0 sfx=0
+rules.c:3156  op=207 lop=216 rop=0 sub=0 sfx=2
+rules.c:3157  op=207 lop=230 rop=0 sub=0 sfx=66
+rules.c:3158  op=207 lop=226 rop=0 sub=0 sfx=66
+rules.c:3159  op=207 lop=231 rop=0 sub=0 sfx=2
+rules.c:3160  op=207 lop=227 rop=0 sub=0 sfx=66
+rules.c:3172  op=208 lop=216 rop=0 sub=0 sfx=2
+rules.c:3181  op=208 lop=230 rop=0 sub=0 sfx=66
+rules.c:3183  op=208 lop=226 rop=0 sub=0 sfx=66
+rules.c:3186  op=208 lop=231 rop=0 sub=0 sfx=2
+rules.c:3221  op=210 lop=201 rop=0 sub=230 sfx=3
+rules.c:3266  op=210 lop=201 rop=0 sub=227 sfx=1
+rules.c:3280  op=210 lop=216 rop=0 sub=0 sfx=0
+rules.c:3327  op=210 lop=201 rop=0 sub=216 sfx=1
+rules.c:3340  op=210 lop=231 rop=0 sub=0 sfx=9
+rules.c:3351  op=210 lop=227 rop=0 sub=0 sfx=26
+rules.c:3366  op=210 lop=216 rop=0 sub=0 sfx=9
+rules.c:3367  op=210 lop=216 rop=0 sub=0 sfx=9
+rules.c:3370  op=210 lop=229 rop=0 sub=0 sfx=1
+rules.c:3377  op=210 lop=254 rop=0 sub=0 sfx=1
+rules.c:3379  op=210 lop=254 rop=0 sub=0 sfx=2
+rules.c:3415  op=211 lop=201 rop=0 sub=230 sfx=3
+rules.c:3417  op=211 lop=216 rop=0 sub=0 sfx=25
+rules.c:3418  op=211 lop=216 rop=0 sub=0 sfx=25
+rules.c:3426  op=211 lop=201 rop=0 sub=227 sfx=1
+rules.c:3427  op=211 lop=201 rop=0 sub=230 sfx=2
+rules.c:3433  op=211 lop=216 rop=0 sub=0 sfx=24
+rules.c:3447  op=211 lop=226 rop=0 sub=0 sfx=25
+rules.c:3448  op=211 lop=226 rop=0 sub=0 sfx=9
+rules.c:3465  op=211 lop=201 rop=0 sub=216 sfx=1
+rules.c:3467  op=211 lop=231 rop=0 sub=0 sfx=25
+rules.c:3477  op=211 lop=227 rop=0 sub=0 sfx=26
+rules.c:3482  op=211 lop=254 rop=0 sub=0 sfx=1
+rules.c:3484  op=211 lop=254 rop=0 sub=0 sfx=2
+rules.c:3497  op=212 lop=201 rop=0 sub=230 sfx=3
+rules.c:3510  op=212 lop=201 rop=0 sub=227 sfx=1
+rules.c:3514  op=212 lop=216 rop=0 sub=0 sfx=24
+rules.c:3525  op=212 lop=201 rop=0 sub=216 sfx=1
+rules.c:3527  op=212 lop=231 rop=0 sub=0 sfx=9
+rules.c:3533  op=212 lop=227 rop=0 sub=0 sfx=26
+rules.c:3538  op=212 lop=229 rop=0 sub=0 sfx=1
+rules.c:3540  op=212 lop=254 rop=0 sub=0 sfx=1
+rules.c:3542  op=212 lop=254 rop=0 sub=0 sfx=2
+rules.c:3547  op=213 lop=201 rop=0 sub=230 sfx=3
+rules.c:3548  op=213 lop=230 rop=0 sub=0 sfx=24
+rules.c:3549  op=213 lop=216 rop=0 sub=0 sfx=25
+rules.c:3550  op=213 lop=216 rop=0 sub=0 sfx=25
+rules.c:3556  op=213 lop=201 rop=0 sub=230 sfx=1
+rules.c:3558  op=213 lop=201 rop=0 sub=227 sfx=1
+rules.c:3559  op=213 lop=201 rop=0 sub=230 sfx=2
+rules.c:3563  op=213 lop=216 rop=0 sub=0 sfx=24
+rules.c:3564  op=213 lop=216 rop=0 sub=0 sfx=0
+rules.c:3566  op=213 lop=201 rop=0 sub=216 sfx=2
+rules.c:3571  op=213 lop=226 rop=0 sub=0 sfx=25
+rules.c:3575  op=213 lop=201 rop=0 sub=216 sfx=1
+rules.c:3577  op=213 lop=231 rop=0 sub=0 sfx=25
+rules.c:3581  op=213 lop=227 rop=0 sub=0 sfx=26
+rules.c:3585  op=213 lop=254 rop=0 sub=0 sfx=1
+rules.c:3587  op=213 lop=254 rop=0 sub=0 sfx=2
+rules.c:3593  op=216 lop=0 rop=0 sub=0 sfx=0 (transform)
+rules.c:3594  op=216 lop=0 rop=0 sub=0 sfx=0 (transform)
