@@ -37,6 +37,7 @@
 #define IEI         22
 #define ILDCTL      23
 #define ILDA        24
+#define INEG        25
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -70,8 +71,8 @@ struct instruct isr_table[] = {
 	{ IEI, "ei", 0xFB, 0x7F },
 
 	/* extended basic instructions */
-	{ IBASIC_EXT, "neg", 0x44, 0xED },
-	{ IBASIC_EXT, "retn", 0x44, 0xED },
+	{ INEG, "neg", 0x44, 0xED },
+	{ IBASIC_EXT, "retn", 0x45, 0xED },
 	{ IBASIC_EXT, "reti", 0x4D, 0xED },
 	{ IBASIC_EXT, "retil", 0x55, 0xED },
 	{ IBASIC_EXT, "pcache", 0x65, 0xED },
@@ -541,6 +542,25 @@ struct instruct *isr;
 {
 	emitbyte(isr->arg);
 	emitbyte(isr->opcode);
+	return 0;
+}
+
+/* neg a (bare "neg") or neg hl ("neg hl") - the operand is optional */
+static char
+do_neg(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	emitbyte(0xED);
+	if (arg == 255)
+		emitbyte(isr->opcode);
+	else if (arg == T_HL)
+		emitbyte(0x4C);
+	else
+		return 1;
 	return 0;
 }
 
@@ -1165,14 +1185,14 @@ struct instruct *isr;
 			} else {
 				emitbyte(0xFD);
 				emitbyte(0xED);
-				emitbyte(0xF1 + (isr->opcode - 0xC0));
+				emitbyte(0xF0 + (isr->opcode - 0xC0));
 			}
 			emitbyte(disp & 0xff);
 		} else {
-			/* X mode: FD ED <C8/D1 + delta> <disp16> */
+			/* X mode: FD ED <C8/D0 + delta> <disp16> */
 			emitbyte(0xFD);
 			emitbyte(0xED);
-			emitbyte((arg == T_IX_D ? 0xC8 : 0xD1) +
+			emitbyte((arg == T_IX_D ? 0xC8 : 0xD0) +
 			         (isr->opcode - 0xC0));
 			emitbyte(value.num.w & 0xff);
 			emitbyte((value.num.w >> 8) & 0xff);
@@ -1192,10 +1212,10 @@ struct instruct *isr;
 		emitbyte(0xED);
 		emitbyte(isr->opcode + (field << 3));
 	} else if (arg == T_PLAIN) {
-		/* IM mode: FD ED <F9 + delta> <imm8> */
+		/* IM mode: FD ED <F8 + delta> <imm8> (F8, same base as DA) */
 		emitbyte(0xFD);
 		emitbyte(0xED);
-		emitbyte(0xF9 + (isr->opcode - 0xC0));
+		emitbyte(0xF8 + (isr->opcode - 0xC0));
 		emitbyte(value.num.w & 0xff);
 	} else
 		return 1;
@@ -1374,6 +1394,8 @@ struct instruct *isr;
 		}
 		emitbyte(isr->opcode);
 	}
+	else
+		return 1;
 	return 0;
 }
 
@@ -1568,7 +1590,8 @@ static char (*isr_handlers[])() = {
 	do_addw,
 	do_ei,
 	do_ldctl,
-	do_lda
+	do_lda,
+	do_neg
 };
 
 /*
