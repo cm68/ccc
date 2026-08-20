@@ -42,7 +42,7 @@ HOSTDIRS = ccclib cpp pass1 pass1z280 pass2 pass2z280 peep peep280 tools
 
 # Target: the Z80 runtime, compiled by the compiler the host phase
 # just installed, into micronix/.
-TARGETDIRS = include ccclib libc libu
+TARGETDIRS = include ccclib libc libu libf
 # tabled: libcpm
 
 #
@@ -93,7 +93,7 @@ selfcheck: cpm
 # whether or not CP/M is in the build lists today.  A cleanup list
 # that tracks the build list leaves droppings behind exactly when a
 # component is switched off, which is when nobody is looking.
-ALLDIRS = ccclib cpp pass1 pass1z280 pass2 pass2z280 peep peep280 tools cpm3 libc libcpm libu include
+ALLDIRS = ccclib cpp pass1 pass1z280 pass2 pass2z280 peep peep280 tools cpm3 libc libcpm libu libf include
 
 clean:
 	@for d in $(ALLDIRS); do $(SUBMAKE) -C $$d clean; done

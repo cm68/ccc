@@ -162,7 +162,9 @@ sbcd:				;now store as ascii
 
 
 	psect	data
-ten:	deff	10.0
-tenth:	deff	0.1
+; deff was a float-constant directive asz dropped; these are the 32-bit
+; 1-sign/7-exp/24-mantissa encodings, bias 64: [mant-low, mant-mid, mant-high, sign+exp].
+ten:	defb	00h, 00h, 0A0h, 44h	; 10.0
+tenth:	defb	0CDh, 0CCh, 0CCh, 3Dh	; 0.1
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -43,9 +43,11 @@ lfdec:
 	jp	incdec
 
 	psect	data
+; deff was a float-constant directive asz dropped; these are the 32-bit
+; 1-sign/7-exp/24-mantissa encodings, bias 64: [mant-low, mant-mid, mant-high, sign+exp].
 one:
-	deff	1.0
+	defb	00h, 00h, 80h, 41h	; 1.0
 mone:
-	deff	-1.0
+	defb	00h, 00h, 80h, 0C1h	; -1.0
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

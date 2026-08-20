@@ -62,11 +62,10 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
 	tolower.s toupper.s xtoi.s fputc.s fgetc.s memcpy.s
 #
-# asfloat.s fbcd.s finc.s float.s frelop.s frexp.s frndint.s ftol.s
-# ltof.s are not built.  pass2 no longer emits calls to any of them,
-# and fbcd.s and finc.s cannot even assemble: they use deff, which the
-# assembler no longer has, because there was never one Z80 float
-# format for it to assemble to.
+# asfloat.s float.s frelop.s frexp.s frndint.s ftol.s ltof.s are not
+# built.  pass2 no longer emits calls to any of them.  fbcd.s and
+# finc.s moved to libf, where their deff constants are now spelled as
+# defb.
 #
 
 CSRCS = \
