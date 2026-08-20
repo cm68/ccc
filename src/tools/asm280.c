@@ -115,6 +115,7 @@ unsigned char operand();
 #define T_IX_IY (T_BIAS + 48)  /* Z280 (IX + IY): base index */
 #define T_HL_D  (T_BIAS + 49)  /* Z280 (HL + dd): indexed, 16-bit */
 #define T_USP   (T_BIAS + 50)  /* Z280 user stack pointer */
+#define T_DEHL  (T_BIAS + 51)  /* Z280 DE:HL pair (divw/divuw) */
 
 #ifdef DEBUG
 char *tokname[] = {
@@ -148,6 +149,7 @@ struct oprnd op_table[] = {
 	{ T_A, "a" },
 	{ T_BC, "bc" },
 	{ T_DE, "de" },
+	{ T_DEHL, "dehl" },
 	{ T_HL, "hl" },
 	{ T_SP, "sp" },
 	{ T_AF, "af" },

@@ -38,6 +38,8 @@
 #define ILDCTL      23
 #define ILDA        24
 #define INEG        25
+#define ILDUD       26
+#define IEXTS       27
 #define IEND        0
 
 /* arithmetic sub-types */
@@ -182,6 +184,22 @@ struct instruct isr_table[] = {
 	{ IADDW, "subw", 0xCE, 0 },
 	{ IADDW, "cpw", 0xC7, 0 },
 
+	/* Z280 32-bit multiply/divide: same encoding family, result DEHL */
+	{ IADDW, "multw", 0xC2, 0 },
+	{ IADDW, "multuw", 0xC3, 0 },
+	{ IADDW, "divw", 0xCA, 0 },
+	{ IADDW, "divuw", 0xCB, 0 },
+
+	/* Z280 user-space load; arg distinguishes ldud from ldup */
+	{ ILDUD, "ldud", 0, 0 },
+	{ ILDUD, "ldup", 0, 1 },
+
+	/* Z280 sign extend */
+	{ IEXTS, "exts", 0, 0 },
+
+	/* Z280 test-and-set (the manual's name for the SLL slot) */
+	{ IBITSH, "tset", 0x30, 0 },
+
 	/* Z280 load control register */
 	{ ILDCTL, "ldctl", 0, 0 },
 
@@ -265,6 +283,7 @@ extern unsigned char skipwhite();
 #define T_IX_IY (T_BIAS + 48)	/* Z280 (IX + IY): base index */
 #define T_HL_D  (T_BIAS + 49)	/* Z280 (HL + dd): indexed, 16-bit */
 #define T_USP   (T_BIAS + 50)	/* Z280 user stack pointer */
+#define T_DEHL  (T_BIAS + 51)	/* Z280 DE:HL pair (divw/divuw) */
 
 /*
  * store indirect
@@ -1622,8 +1641,8 @@ struct instruct *isr;
 
 	arg = operand(&value);
 
-	/* "ADDW HL,src" — the destination spelled out */
-	if (arg == T_HL && peekchar() == ',') {
+	/* "ADDW HL,src" (or "DIVW DEHL,src") — the destination spelled out */
+	if ((arg == T_HL || arg == T_DEHL) && peekchar() == ',') {
 		need(',');
 		arg = operand(&value);
 	}
@@ -2028,6 +2047,72 @@ struct instruct *isr;
 	return 0;
 }
 
+/* Z280 load user data / program: ldud/ldup a,(hl)/(ix+d) and the store */
+static char
+do_ldud(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value, dval;
+
+	arg = operand(&value);
+	dval = value;
+
+	if (arg == T_A) {
+		need(',');
+		reg = operand(&value);
+		if (reg == T_HL_I) {
+			emitbyte(0xED);
+			emitbyte(isr->arg ? 0x96 : 0x86);
+			return 0;
+		}
+		if (reg == T_IX_D || reg == T_IY_D) {
+			emitbyte(reg == T_IX_D ? 0xDD : 0xFD);
+			emitbyte(0xED);
+			emitbyte(isr->arg ? 0x96 : 0x86);
+			emitbyte(value.num.b);
+			return 0;
+		}
+		return 1;
+	}
+	if (arg == T_HL_I || arg == T_IX_D || arg == T_IY_D) {
+		need(',');
+		reg = operand(&value);
+		if (reg != T_A)
+			return 1;
+		if (arg == T_HL_I) {
+			emitbyte(0xED);
+			emitbyte(isr->arg ? 0x9E : 0x8E);
+			return 0;
+		}
+		emitbyte(arg == T_IX_D ? 0xDD : 0xFD);
+		emitbyte(0xED);
+		emitbyte(isr->arg ? 0x9E : 0x8E);
+		emitbyte(dval.num.b);
+		return 0;
+	}
+	return 1;
+}
+
+/* Z280 sign extend: exts a / exts hl */
+static char
+do_exts(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	emitbyte(0xED);
+	if (arg == 255 || arg == T_A)
+		emitbyte(0x64);
+	else if (arg == T_HL)
+		emitbyte(0x6C);
+	else
+		return 1;
+	return 0;
+}
+
 static char (*isr_handlers[])() = {
 	0,
 	do_basic,
@@ -2054,7 +2139,9 @@ static char (*isr_handlers[])() = {
 	do_ei,
 	do_ldctl,
 	do_lda,
-	do_neg
+	do_neg,
+	do_ldud,
+	do_exts
 };
 
 /*

@@ -1,11 +1,9 @@
 # Appendix C (Instructions in Alphabetic Order), in asz280 syntax.
 # instruction<TAB>expected bytes.  De-duplicated: ldw/incw/decw are ld/inc/dec.
 #
-# Every unprivileged Z280 instruction assembles and must match.  The
-# privileged/EPU family (EPUM/MEPU/EPUF/EPUI) and the system-mode
-# LDUD/LDUP/EXTS/MULTW/DIVW/TSET are deliberately not here - the
-# assembler does not implement them.  Cross-checked against Appendix D,
-# which runs in the reverse order.
+# Every Z280 instruction assembles and must match, except the privileged
+# EPU family (EPUM/MEPU/EPUF/EPUI), which the assembler does not implement.
+# Cross-checked against Appendix D, which runs in the reverse order.
 # ===== ADC =====
 adc a,(hl)	8e
 adc a,(hl+ix)	dd 89
@@ -1324,3 +1322,80 @@ xor 0x66	ee 66
 
 
 
+# ===== LDUD / LDUP =====
+ldud a,(hl)	ed 86
+ldud a,(ix+0x55)	dd ed 86 55
+ldud a,(iy+0x55)	fd ed 86 55
+ldud (hl),a	ed 8e
+ldud (ix+0x55),a	dd ed 8e 55
+ldud (iy+0x55),a	fd ed 8e 55
+ldup a,(hl)	ed 96
+ldup a,(ix+0x55)	dd ed 96 55
+ldup a,(iy+0x55)	fd ed 96 55
+ldup (hl),a	ed 9e
+ldup (ix+0x55),a	dd ed 9e 55
+ldup (iy+0x55),a	fd ed 9e 55
+# ===== EXTS =====
+exts a	ed 64
+exts hl	ed 6c
+# ===== MULTW / MULTUW =====
+multw hl,(hl)	dd ed c2
+multw hl,(ix+0x1122)	fd ed c2 22 11
+multw hl,(iy+0x1122)	fd ed d2 22 11
+multw hl,(pc+0x1122)	dd ed f2 22 11
+multw hl,(0x3344)	dd ed d2 44 33
+multw hl,bc	ed c2
+multw hl,de	ed d2
+multw hl,hl	ed e2
+multw hl,ix	dd ed e2
+multw hl,iy	fd ed e2
+multw hl,sp	ed f2
+multw hl,0x3344	fd ed f2 44 33
+multuw hl,(hl)	dd ed c3
+multuw hl,(ix+0x1122)	fd ed c3 22 11
+multuw hl,(iy+0x1122)	fd ed d3 22 11
+multuw hl,(pc+0x1122)	dd ed f3 22 11
+multuw hl,(0x3344)	dd ed d3 44 33
+multuw hl,bc	ed c3
+multuw hl,de	ed d3
+multuw hl,hl	ed e3
+multuw hl,ix	dd ed e3
+multuw hl,iy	fd ed e3
+multuw hl,sp	ed f3
+multuw hl,0x3344	fd ed f3 44 33
+# ===== DIVW / DIVUW =====
+divw dehl,(hl)	dd ed ca
+divw dehl,(ix+0x1122)	fd ed ca 22 11
+divw dehl,(iy+0x1122)	fd ed da 22 11
+divw dehl,(pc+0x1122)	dd ed fa 22 11
+divw dehl,(0x3344)	dd ed da 44 33
+divw dehl,bc	ed ca
+divw dehl,de	ed da
+divw dehl,hl	ed ea
+divw dehl,ix	dd ed ea
+divw dehl,iy	fd ed ea
+divw dehl,sp	ed fa
+divw dehl,0x3344	fd ed fa 44 33
+divuw dehl,(hl)	dd ed cb
+divuw dehl,(ix+0x1122)	fd ed cb 22 11
+divuw dehl,(iy+0x1122)	fd ed db 22 11
+divuw dehl,(pc+0x1122)	dd ed fb 22 11
+divuw dehl,(0x3344)	dd ed db 44 33
+divuw dehl,bc	ed cb
+divuw dehl,de	ed db
+divuw dehl,hl	ed eb
+divuw dehl,ix	dd ed eb
+divuw dehl,iy	fd ed eb
+divuw dehl,sp	ed fb
+divuw dehl,0x3344	fd ed fb 44 33
+# ===== TSET =====
+tset (hl)	cb 36
+tset (ix+0x55)	dd cb 55 36
+tset (iy+0x55)	fd cb 55 36
+tset a	cb 37
+tset b	cb 30
+tset c	cb 31
+tset d	cb 32
+tset e	cb 33
+tset h	cb 34
+tset l	cb 35
