@@ -50,6 +50,7 @@ Multiple symbols can be listed, comma-separated:
 | `.dw val,...` | `.defw` | Define words (16-bit) |
 | `.dl val,...` | `.defl` | Define longs (32-bit) |
 | `.ds count` | | Define space (reserve bytes) |
+| `.align n` | | Pad with zero bytes to the next multiple of n |
 
 Examples:
 ```
@@ -58,6 +59,12 @@ Examples:
 .dl 0x12345678
 .ds 100
 ```
+
+`.align n` advances to the next multiple of n, measured from the start
+of the current segment.  It pads with zero bytes: none if the location
+is already there, at most n-1 if it is not.  n must be a constant the
+assembler already knows - a number, or a name equated to one - and it
+need not be a power of two.
 
 ### Symbol Definition
 
