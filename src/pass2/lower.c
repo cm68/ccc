@@ -1641,6 +1641,22 @@ rewrite1(Expr *e)
 	}
 
 	/*
+	 * A shift whose left operand is a bare symbol.  The address is
+	 * the value, and the shift rules take it from HL, so load it up
+	 * front and let the (H,num) forms carry every context.  Without
+	 * it "(unsigned)djcomm >> 8" - how a driver writes a 24-bit
+	 * controller address one byte at a time - emitted no shift at
+	 * all, and the store that followed read whatever HL last held.
+	 */
+	if ((e->op == LSHIFT || e->op == RSHIFT) && e->left && e->right &&
+	    issymish(e->left)) {
+		/* a bare SYM reduces to SYMREF first, emitting nothing */
+		e->left = rewrite1(e->left);
+		if (e->left->op == SYMREF)
+			e->left = symtohl(e->left);
+	}
+
+	/*
 	 * A 32-bit binary operator, before the children are reduced: both
 	 * operands want HL:DE, so the ordinary depth-first walk would put
 	 * the second one on top of the first.
