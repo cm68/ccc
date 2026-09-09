@@ -720,6 +720,21 @@ r_m1cmp(void)
 	comma = strchr(win[j3].key + 3, ',');
 	if (!comma)
 		return 0;			/* unconditional: nothing to translate */
+	/*
+	 * A branch to a local "$+N" target is not the branch that consumes
+	 * the answer.  It is the short skip over an scf that a relational
+	 * compare against 0ffffh emits:
+	 *
+	 *	ld de,-1 / or a / sbc hl,de / jr nz,$+3 / scf / jp c,L
+	 *
+	 * the flag the skip tests is read again by that scf and the real
+	 * branch after it, so rewriting z/nz to c/nc here changes what the
+	 * scf sees and corrupts the comparison.  This rule is for the
+	 * == -1 test, whose consuming branch names a label right after the
+	 * sbc.  Leave a skip alone.
+	 */
+	if (comma[1] == '$')
+		return 0;
 	n = comma - (win[j3].key + 3);
 	if (n < 1 || n > 2)
 		return 0;
