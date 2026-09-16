@@ -278,7 +278,7 @@ skipExpr(unsigned char pri)
         size = (unsigned char)cur.v.str[0];
         symname = (char *)cur.v.str + 1;
         fmtstr(namebuf, "str%d", globalStrCtr++);
-        setSeg(SEG_TEXT);
+        setSeg(SEG_DATA);
         asmLabel(namebuf);
         asmDbStr((unsigned char *)symname, size);
         gettoken();

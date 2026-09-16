@@ -66,7 +66,7 @@ doInitlzr(struct name *v)
                     if (str) {
                         unsigned char slen = str[0];
                         fmtstr(strname, "str%d", globalStrCtr++);
-                        setSeg(SEG_TEXT);
+                        setSeg(SEG_DATA);
                         asmLabel(strname);
                         asmDbStr((unsigned char *)str + 1, slen);
                     }
@@ -97,7 +97,7 @@ doInitlzr(struct name *v)
 
                 fmtstr(strname, "str%d", globalStrCtr++);
                 if (!inarray) {
-                    setSeg(SEG_TEXT);
+                    setSeg(SEG_DATA);
                     asmLabel(strname);
                     asmDbStr((unsigned char *)str + 1, slen);
                 }
