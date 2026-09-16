@@ -63,7 +63,10 @@ The default is "a.out".
 .ti -10
 -r	Emit relocatable output, to be linked again later.  The
 relocation information and the symbol table are kept, and undefined
-symbols are not an error.
+symbols are not an error.  Together with -Ttext, -Tdata or -Tbss the
+segment bases are recorded in the output header, so a later link
+places this object's segments at those absolute addresses instead of
+packing them contiguously - see INCREMENTAL SEGMENT EDITING below.
 
 .ti -10
 -s	Strip the symbol table from the output.
@@ -101,6 +104,39 @@ segment was given.
 -v	Report what the link is doing.  Repeat it for more.
 
 .in -10
+.in -5
+.bd
+INCREMENTAL SEGMENT EDITING
+.in +5
+.br
+A flat link packs every object's text, then data, then bss, back to
+back from -Ttext.  That is not always wanted: a kernel may need some
+code above its data, or a data object at a fixed address the hardware
+imposes.  The way to say so is to link that piece by itself with -r
+and a -T option, which stamps its segment bases into the object, and
+then to name that object in the final link:
+
+.in +5
+.br
+.bd
+ld -r -Ttext=0x8000 -o init.rel init.o
+.br
+ld -r -Tdata=0xf000 -o u.rel u.o
+.br
+ld -Ttext=0x1000 -o image main.o init.rel u.rel
+.in -5
+.br
+In the last line init.rel's text is placed at 0x8000 and u.rel's data
+at 0xf000, while main.o is packed normally.  The gaps between pieces
+are zero-filled in the output, so a loader that copies each segment
+contiguously - the Micronix second level does - lands every piece at
+its own address.
+
+Only text and data may be placed this way; a placed object with bss is
+an error.  Name the placed objects in address order, text and data
+alike: a piece whose address is lower than the one before it is an
+error and is reported as such.
+
 .in -5
 .bd
 SEE ALSO
