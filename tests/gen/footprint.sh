@@ -31,6 +31,11 @@ set -e
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
+# The compiler fork under test: the micronix tree's passes, where the
+# compiler is edited now.  root stays this (ccc) tree - its tests/sim
+# symlink is the machine the measurement runs on.
+mxroot=${COMPILER_ROOT:-$(cd "$root/../micronix/src/micronix" && pwd)}
+mxhost=$mxroot/../../libexec
 FLOOR=${FLOOR:-256}
 work=${FPWORK:-$here/fpwork}
 JOBS=${FPJOBS:-$( n=$(nproc 2>/dev/null || echo 4); echo $((n * 2)) )}
@@ -40,31 +45,37 @@ rm -rf "$work"
 base=$(dirname "$work")
 out="$work-out"
 rm -rf "$out"; mkdir -p "$out"
-mkdir -p "$work/cpp" "$work/pass1" "$work/pass2" "$work/inc" "$work/lib"
-for d in cpp pass1 pass2; do
-	cp "$root"/src/$d/*.c "$root"/src/$d/*.h "$work/$d/" 2>/dev/null || true
+mkdir -p "$work/cpp" "$work/c0" "$work/c1" "$work/inc" "$work/lib"
+for d in cpp c0 c1; do
+	cp "$mxroot"/libexec/$d/*.c "$mxroot"/libexec/$d/*.h "$work/$d/" 2>/dev/null || true
 done
 # The staging above is the whole test vector, so an empty one measures
 # nothing and says everything fits.  It read $root/ccc/* until the tree
 # moved under src/, and the "|| true" that lets a directory without
 # headers through hid it: fifty-five sources became none and the table
 # came out empty rather than wrong.
-for d in cpp pass1 pass2; do
+for d in cpp c0 c1; do
 	set -- "$work/$d"/*.c
 	[ -f "$1" ] || { echo "footprint: no sources staged for $d" >&2; exit 1; }
 done
-cp "$root"/src/include/*.h "$work/inc/"
-cp -r "$root"/src/include/sys "$work/inc/" 2>/dev/null || true
-cp "$root"/src/ccclib/*.h "$work/lib/" 2>/dev/null || true
+cp "$mxroot"/include/*.h "$work/inc/"
+cp -r "$mxroot"/include/sys "$work/inc/" 2>/dev/null || true
+cp "$mxroot"/lib/include/*.h "$work/lib/" 2>/dev/null || true
+cp -r "$mxroot"/lib/include/sys "$work/lib/" 2>/dev/null || true
 
-make -C "$root/src/cpp" mx-ccc >/dev/null
-make -C "$root/src/pass1" mx-ccc >/dev/null
-make -C "$root/src/pass2" mx-ccc >/dev/null
-make -C "$root/src/peep" mx-ccc >/dev/null
-cp "$root/src/cpp/mxccc/cpp.mx" "$root/src/pass1/mxccc/c0.mx" \
-   "$root/src/pass2/mxccc/c1.mx" "$root/src/peep/mxccc/peep.mx" "$work/"
+# The passes cross-built for micronix by the fork's own makefiles - the
+# binaries the native build would run - renamed to the .mx names the
+# rest of the script invokes them by.
+make -C "$mxroot/libexec/cpp" >/dev/null
+make -C "$mxroot/libexec/c0" >/dev/null
+make -C "$mxroot/libexec/c1" >/dev/null
+make -C "$mxroot/libexec/peep" >/dev/null
+cp "$mxroot/libexec/cpp/cpp" "$work/cpp.mx"
+cp "$mxroot/libexec/c0/c0"   "$work/c0.mx"
+cp "$mxroot/libexec/c1/c1"   "$work/c1.mx"
+cp "$mxroot/libexec/peep/peep" "$work/peep.mx"
 
-export root work base out FLOOR SIMBIN
+export root mxroot mxhost work base out FLOOR SIMBIN
 SIMBIN="$root/tests/sim"
 
 
@@ -85,24 +96,21 @@ measure() {
 	s=s; h=h; o="$out/$tag.o"
 	res="$out/$tag"
 	: >"$res"
-	gapof() { grep -o 'gap [0-9-]*' "$1" 2>/dev/null | tail -1 | cut -d' ' -f2; }
+	gapof() { grep -o 'gap=[0-9-]*' "$1" 2>/dev/null | tail -1 | cut -d'=' -f2; }
 	bad() { echo "$1" >>"$res"; : >"$out/$tag.bad"; }
 
 	rm -rf "$jd"; cp -al "$work" "$jd" 2>/dev/null || cp -a "$work" "$jd"
 	SIM="$SIMBIN -S -d $jd"
 
-	# -Icpp because pass1 and pass2 both include lexeme.h and lexops.h,
-	# which live with cpp.  Without it the host chain could not
-	# preprocess a single pass1 or pass2 source: cpp stopped at the
-	# missing header, c0 was handed nothing, and the comparison against
-	# what the simulator produced came out as "c0 DIVERGES" on all
-	# twenty-nine of them.  A staging fault reported as a compiler one.
+	# The fork's host passes, named as hostcc installs them.  -Ilib and
+	# -Iinc carry the C-library and system headers the way the fork's
+	# own cross build lays them out; each pass's headers ride beside it.
 	(cd "$jd" &&
-	 "$root"/src/cpp/cpp -DCCC -iinc -I$d -Icpp -Ilib -o $h $d/$b.c &&
-	 "$root"/src/pass1/c0 $h.x $h.ast $h.dat &&
-	 "$root"/src/pass2/c1 $h.ast $h.dat $h.s) >/dev/null 2>&1 || true
+	 "$mxhost"/mxpass0 -I$d -Ilib -Iinc -o $h $d/$b.c &&
+	 "$mxhost"/mxc0 $h.x $h.ast $h.dat &&
+	 "$mxhost"/mxc1 $h.ast $h.dat $h.s) >/dev/null 2>&1 || true
 
-	(cd "$jd" && timeout 300 $SIM cpp.mx -DCCC -iinc -I$d -Icpp -Ilib \
+	(cd "$jd" && timeout 300 $SIM cpp.mx -I$d -Ilib -Iinc \
 		-o $s $d/$b.c </dev/null) >"$o.cpp" 2>&1 || true
 	gc=$(gapof "$o.cpp"); : "${gc:=?}"
 	if grep -q "out of memory" "$o.cpp"; then
@@ -164,7 +172,7 @@ measure() {
 	# exactly, which is the question worth asking: does peep.mx do what
 	# peep does?
 	if [ -s "$jd/$s.s" ]; then
-		(cd "$jd" && "$root"/src/peep/peep $s.s $h.p) >/dev/null 2>&1 || true
+		(cd "$jd" && "$mxhost"/mxpeep $s.s $h.p) >/dev/null 2>&1 || true
 		(cd "$jd" && timeout 600 $SIM peep.mx $s.s $s.p \
 			</dev/null) >"$o.pp" 2>&1 || true
 		gp=$(gapof "$o.pp"); : "${gp:=?}"
@@ -183,11 +191,11 @@ measure() {
 			bad "$d/$b: gap $g under the $FLOOR-byte floor"
 		fi
 	done
-	rm -rf "$jd"; rm -f "$o".*
+	[ -z "$KEEP" ] && { rm -rf "$jd"; rm -f "$o".*; }
 	return 0
 }
 list=""
-for d in cpp pass1 pass2; do
+for d in cpp c0 c1; do
 	for f in "$work"/$d/*.c; do
 		b=$(basename "$f" .c)
 		[ "$b" = test ] && continue
@@ -216,7 +224,7 @@ for one in $list; do
 	[ -f "$out/$tag.bad" ] && fail=1
 done
 
-rm -rf "$work" "$out" "$base"/fpw[0-9][0-9][0-9]
+[ -z "$KEEP" ] && rm -rf "$work" "$out" "$base"/fpw[0-9][0-9][0-9]
 if [ "$fail" = 0 ]; then
 	echo "footprint: every pass fits every source, no gap under $FLOOR"
 else

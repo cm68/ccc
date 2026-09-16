@@ -238,9 +238,15 @@ regression:
 prodtest: all
 	$(SUBMAKE) -C tests/gen
 
+# The tipping-point guard: compile the compiler's own sources (cpp, c0,
+# c1) under the simulator and read each pass's brk/gap, failing on an
+# out-of-memory, a gap below FLOOR, or divergence from the host.
+footprint:
+	$(SUBMAKE) -C tests/gen footprint
+
 .PHONY: all host target install clean clobber stage1 test tests valgrind \
 	tags sizecheck micronix cpm selfcheck selfhost libcheck \
-	regression prodtest
+	regression prodtest footprint
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
