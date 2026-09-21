@@ -97,6 +97,17 @@ is the end of text.
 is the end of data.
 
 .ti -10
+-Sdata	Fold every section of the input objects - text, data and
+bss - into the data segment, instead of the normal three-segment
+layout.  With -r this is how a piece of code is turned into a
+data-only object that can be parked at a fixed high address and later
+overlaid.  The bss becomes emitted zero bytes rather than a segment,
+because nothing will clear it.
+
+.ti -10
+-Stext	The same fold, but into the text segment.
+
+.ti -10
 -V	List the object files that were linked, with the address each
 segment was given.
 

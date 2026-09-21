@@ -52,6 +52,7 @@ unsigned short data_base;
 unsigned short bss_base;
 int data_set;                   /* -Tdata given, so it is absolute */
 int bss_set;                    /* -Tbss given, so it is absolute */
+int seg_fold;                   /* -Sdata/-Stext: fold every section into one */
 
 /*
  * running totals for segment layout
@@ -59,6 +60,7 @@ int bss_set;                    /* -Tbss given, so it is absolute */
 unsigned short text_pos;
 unsigned short data_pos;
 unsigned short bss_pos;
+unsigned short high_pos;        /* data-only objects parked after bss */
 
 /*
  * final segment sizes
@@ -254,6 +256,8 @@ usage()
     fprintf(stderr, "  -Ttext=addr   set text segment base address\n");
     fprintf(stderr, "  -Tdata=addr   set data segment base address\n");
     fprintf(stderr, "  -Tbss=addr    set bss segment base address\n");
+    fprintf(stderr, "  -Sdata        fold every section into data (with -r, bss as zeros)\n");
+    fprintf(stderr, "  -Stext        fold every section into text (with -r, bss as zeros)\n");
     exit(1);
 }
 
@@ -456,13 +460,19 @@ unsigned char
 decode_seg(type)
 unsigned char type;
 {
+    unsigned char seg;
+
     switch (type & 0x07) {
     case 4: return SEG_ABS;
-    case 5: return SEG_TEXT;
-    case 6: return SEG_DATA;
-    case 7: return SEG_BSS;
+    case 5: seg = SEG_TEXT; break;
+    case 6: seg = SEG_DATA; break;
+    case 7: seg = SEG_BSS; break;
     default: return SEG_EXT;
     }
+    /* -Sdata/-Stext folds every relocatable section into one segment */
+    if (seg_fold && seg != SEG_ABS)
+        seg = seg_fold;
+    return seg;
 }
 
 /*
@@ -1899,6 +1909,30 @@ pass1_layout()
             obj->text_off = obj->hdr_text_off - text_base;
             obj->data_off = 0;      /* filled in once data_base is known */
             obj->bss_off = 0;
+        } else if (seg_fold == SEG_DATA) {
+            /* fold every section into data, [text][data][bss] per object */
+            obj->text_off = data_pos;
+            obj->data_off = data_pos + obj->text_size;
+            obj->bss_off = data_pos + obj->text_size + obj->data_size;
+            data_pos += obj->text_size + obj->data_size + obj->bss_size;
+        } else if (seg_fold == SEG_TEXT) {
+            /* fold every section into text, [text][data][bss] per object */
+            obj->text_off = text_pos;
+            obj->data_off = text_pos + obj->text_size;
+            obj->bss_off = text_pos + obj->text_size + obj->data_size;
+            text_pos += obj->text_size + obj->data_size + obj->bss_size;
+        } else if (!rflag && obj->text_size == 0 && obj->data_size > 0 &&
+                   obj->bss_size == 0) {
+            /* A data-only object that was not placed, in a final link:
+             * the -r -Sdata fold of init-only code.  Park it after bss,
+             * in the region the kernel reclaims, rather than in the
+             * regular data segment.  obj->data_off holds the high-
+             * relative offset for now; the real offset is added below
+             * once total_data/total_bss are known. */
+            obj->text_off = 0;
+            obj->data_off = high_pos;
+            obj->bss_off = 0;
+            high_pos += obj->data_size;
         } else {
             obj->text_off = text_pos;
             obj->data_off = data_pos;
@@ -1919,6 +1953,19 @@ pass1_layout()
     total_text = text_pos;
     total_data = data_pos;
     total_bss = bss_pos;
+
+    /*
+     * Now that total_data and total_bss are known, the data-only objects
+     * parked after bss get their real offsets: _ebss (= data_base +
+     * total_data + total_bss) plus their high-relative offset.  Only in
+     * a plain link - under -r or -Sdata/-Stext there is no separate bss
+     * to park anything after.
+     */
+    if (!rflag && !seg_fold)
+        for (obj = objects; obj; obj = obj->next)
+            if (obj->text_size == 0 && obj->data_size > 0 &&
+                obj->bss_size == 0 && !obj->placed)
+                obj->data_off += total_data + total_bss;
 
     /*
      * data and bss bases are absolute addresses, like text_base.  When
@@ -2241,12 +2288,13 @@ unsigned char v;
 }
 
 void
-apply_relocs(obj, reloc_off, seg_size, seg_base, is_text)
+apply_relocs(obj, reloc_off, seg_size, seg_base, is_text, reloc_base)
 struct object *obj;
 long reloc_off;
 int seg_size;
 unsigned short seg_base;
 int is_text;
+unsigned short reloc_base;      /* offset to add to pos for -r relocations */
 {
     int pos = 0;
     unsigned char b;
@@ -2290,23 +2338,31 @@ int is_text;
                     /* -r preserves the relocation, so the operand must
                      * stay relative to the output segment; adding the
                      * base here would be applied again on the final
-                     * link. */
-                    add = rflag ? obj->text_off : text_base + obj->text_off;
+                     * link.  Under -Sdata/-Stext the section is folded
+                     * into the other segment, so its base moves there. */
+                    add = rflag ? obj->text_off
+                         : (seg_fold == SEG_DATA ? data_base : text_base)
+                           + obj->text_off;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_TEXT;
                     }
                     break;
                 case 0x48:  /* data segment */
-                    add = rflag ? obj->data_off : data_base + obj->data_off;
+                    add = rflag ? obj->data_off
+                         : (seg_fold == SEG_TEXT ? text_base : data_base)
+                           + obj->data_off;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_DATA;
                     }
                     break;
                 case 0x4c:  /* bss segment */
-                    add = rflag ? obj->bss_off : bss_base + obj->bss_off;
-                      bssrel = 1;
+                    add = rflag ? obj->bss_off
+                         : (seg_fold == SEG_DATA ? data_base :
+                            seg_fold == SEG_TEXT ? text_base : bss_base)
+                           + obj->bss_off;
+                    bssrel = 1;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_BSS;
@@ -2334,11 +2390,22 @@ int is_text;
                         if (rflag && hilo)
                             need_reloc = 1;
                     } else {
-                        /* word reloc or external symbol: use full value */
-                        add = s->value;
-                        /* in -r mode, preserve symbol hi/lo relocations */
-                        if (rflag && (s->seg == SEG_EXT || hilo))
+                        /* word reloc or external symbol.  In -r mode a
+                         * reference to a symbol that stays in the output
+                         * symbol table - still undefined, or a global -
+                         * is preserved with its addend intact for the
+                         * final link to resolve; adding the value now
+                         * would double-count it there. */
+                        if (rflag && (s->seg == SEG_EXT ||
+                                      (s->type & 0x08))) {
+                            add = 0;
                             need_reloc = 1;
+                        } else {
+                            add = s->value;
+                            /* in -r mode, preserve symbol hi/lo relocations */
+                            if (rflag && hilo)
+                                need_reloc = 1;
+                        }
                     }
                 }
             } else if ((b & ~3) == 0xfc) {
@@ -2367,11 +2434,22 @@ int is_text;
                         if (rflag && hilo)
                             need_reloc = 1;
                     } else {
-                        /* word reloc or external symbol: use full value */
-                        add = s->value;
-                        /* in -r mode, preserve symbol hi/lo relocations */
-                        if (rflag && (s->seg == SEG_EXT || hilo))
+                        /* word reloc or external symbol.  In -r mode a
+                         * reference to a symbol that stays in the output
+                         * symbol table - still undefined, or a global -
+                         * is preserved with its addend intact for the
+                         * final link to resolve; adding the value now
+                         * would double-count it there. */
+                        if (rflag && (s->seg == SEG_EXT ||
+                                      (s->type & 0x08))) {
+                            add = 0;
                             need_reloc = 1;
+                        } else {
+                            add = s->value;
+                            /* in -r mode, preserve symbol hi/lo relocations */
+                            if (rflag && hilo)
+                                need_reloc = 1;
+                        }
                     }
                 }
             }
@@ -2429,12 +2507,16 @@ int is_text;
              * carries the segment base (text_base/data_base) and would
              * turn a -Tdata=-r link's offsets absolute. */
             if (need_reloc) {
+                /* -Sdata/-Stext re-targets a segment relocation at the
+                 * folded segment. */
+                if (seg_fold && outseg)
+                    outseg = seg_fold;
                 if (is_text)
                     add_outreloc(&text_relocs, &textRelocTl,
-                                 pos + obj->text_off, s, outseg, hilo);
+                                 pos + reloc_base, s, outseg, hilo);
                 else
                     add_outreloc(&data_relocs, &dataRelocTl,
-                                 pos + obj->data_off, s, outseg, hilo);
+                                 pos + reloc_base, s, outseg, hilo);
             }
 
             pos += size;
@@ -2556,7 +2638,7 @@ int seg_size;
  * copy segment data with relocations applied
  */
 void
-copy_segment(obj, seg_start, seg_size, reloc_off, seg_base, is_text, dest)
+copy_segment(obj, seg_start, seg_size, reloc_off, seg_base, is_text, dest, reloc_base)
 struct object *obj;
 int seg_start;
 int seg_size;
@@ -2564,6 +2646,7 @@ long reloc_off;
 unsigned short seg_base;
 int is_text;
 FILE *dest;
+unsigned short reloc_base;      /* offset to add to pos for -r relocations */
 {
     static unsigned char cbuf[WINSZ];
     long obase;
@@ -2613,7 +2696,7 @@ FILE *dest;
         /* it fits: one read, patch it, one write */
         if (fread(segbuf, 1, seg_size, obj->fp) != seg_size)
             error("read error");
-        apply_relocs(obj, reloc_off, seg_size, seg_base, is_text);
+        apply_relocs(obj, reloc_off, seg_size, seg_base, is_text, reloc_base);
         if (!is_text)
             patch_lnksyms(obj, seg_size);
         if (fwrite(segbuf, 1, seg_size, dest) != seg_size)
@@ -2646,7 +2729,7 @@ FILE *dest;
     winbase = -1;
     windirty = 0;
 
-    apply_relocs(obj, reloc_off, seg_size, seg_base, is_text);
+    apply_relocs(obj, reloc_off, seg_size, seg_base, is_text, reloc_base);
     if (!is_text)
         patch_lnksyms(obj, seg_size);
 
@@ -2750,6 +2833,13 @@ pass2_output()
             (unsigned short)(bss_base - data_base) + total_bss;
         if (bss_end > data_extent)
             data_extent = bss_end;
+        /* the data-only objects parked after bss extend the data
+         * stream past _ebss into the reclaimed region */
+        if (high_pos) {
+            unsigned short high_end = bss_end + high_pos;
+            if (high_end > data_extent)
+                data_extent = high_end;
+        }
     }
     write_word(total_text);
     if (rflag) {
@@ -2795,23 +2885,67 @@ pass2_output()
             if (obj->fp == NULL)
                 error2("cannot reopen", obj->path);
 
-            if (obj->text_size) {
-                if (obj->text_off < cur_text)
-                    error("objects out of address order (text)");
-                write_zeros(outfp, obj->text_off - cur_text);
-                copy_segment(obj, 16, obj->text_size,
-                             obj->textRelocOff,
-                             text_base + obj->text_off, 1, outfp);
-                cur_text = obj->text_off + obj->text_size;
-            }
-            if (obj->data_size) {
-                if (obj->data_off < cur_data)
-                    error("objects out of address order (data)");
-                write_zeros(datafp, obj->data_off - cur_data);
-                copy_segment(obj, 16 + obj->text_size, obj->data_size,
-                             obj->dataRelocOff,
-                             data_base + obj->data_off, 0, datafp);
-                cur_data = obj->data_off + obj->data_size;
+            if (seg_fold == SEG_DATA) {
+                /* every section into data, [text][data][bss] per object */
+                if (obj->text_size) {
+                    if (obj->text_off < cur_data)
+                        error("objects out of address order (data)");
+                    write_zeros(datafp, obj->text_off - cur_data);
+                    copy_segment(obj, 16, obj->text_size, obj->textRelocOff,
+                                 data_base + obj->text_off, 0, datafp,
+                                 obj->text_off);
+                    cur_data = obj->text_off + obj->text_size;
+                }
+                if (obj->data_size) {
+                    if (obj->data_off < cur_data)
+                        error("objects out of address order (data)");
+                    write_zeros(datafp, obj->data_off - cur_data);
+                    copy_segment(obj, 16 + obj->text_size, obj->data_size,
+                                 obj->dataRelocOff, data_base + obj->data_off,
+                                 0, datafp, obj->data_off);
+                    cur_data = obj->data_off + obj->data_size;
+                }
+                /* bss rides as zeros in the gaps the trailing pass fills */
+            } else if (seg_fold == SEG_TEXT) {
+                /* every section into text, [text][data][bss] per object */
+                if (obj->text_size) {
+                    if (obj->text_off < cur_text)
+                        error("objects out of address order (text)");
+                    write_zeros(outfp, obj->text_off - cur_text);
+                    copy_segment(obj, 16, obj->text_size, obj->textRelocOff,
+                                 text_base + obj->text_off, 1, outfp,
+                                 obj->text_off);
+                    cur_text = obj->text_off + obj->text_size;
+                }
+                if (obj->data_size) {
+                    if (obj->data_off < cur_text)
+                        error("objects out of address order (text)");
+                    write_zeros(outfp, obj->data_off - cur_text);
+                    copy_segment(obj, 16 + obj->text_size, obj->data_size,
+                                 obj->dataRelocOff, text_base + obj->data_off,
+                                 1, outfp, obj->data_off);
+                    cur_text = obj->data_off + obj->data_size;
+                }
+                /* bss rides as zeros in the gaps the trailing pass fills */
+            } else {
+                if (obj->text_size) {
+                    if (obj->text_off < cur_text)
+                        error("objects out of address order (text)");
+                    write_zeros(outfp, obj->text_off - cur_text);
+                    copy_segment(obj, 16, obj->text_size, obj->textRelocOff,
+                                 text_base + obj->text_off, 1, outfp,
+                                 obj->text_off);
+                    cur_text = obj->text_off + obj->text_size;
+                }
+                if (obj->data_size) {
+                    if (obj->data_off < cur_data)
+                        error("objects out of address order (data)");
+                    write_zeros(datafp, obj->data_off - cur_data);
+                    copy_segment(obj, 16 + obj->text_size, obj->data_size,
+                                 obj->dataRelocOff, data_base + obj->data_off,
+                                 0, datafp, obj->data_off);
+                    cur_data = obj->data_off + obj->data_size;
+                }
             }
 
             fclose(obj->fp);
@@ -3197,6 +3331,17 @@ char **argv;
                 } else {
                     usage();
                 }
+                break;
+
+            case 'S':
+                /* -Sdata / -Stext: fold every section (text, data, bss)
+                 * into one segment.  bss becomes emitted zero bytes. */
+                if (strncmp(&arg[2], "data", 4) == 0)
+                    seg_fold = SEG_DATA;
+                else if (strncmp(&arg[2], "text", 4) == 0)
+                    seg_fold = SEG_TEXT;
+                else
+                    usage();
                 break;
 
             default:
