@@ -53,6 +53,7 @@ unsigned short bss_base;
 int data_set;                   /* -Tdata given, so it is absolute */
 int bss_set;                    /* -Tbss given, so it is absolute */
 int seg_fold;                   /* -Sdata/-Stext: fold every section into one */
+int high_flag;                  /* -Shigh: park data-only objects after bss */
 
 /*
  * running totals for segment layout
@@ -258,6 +259,7 @@ usage()
     fprintf(stderr, "  -Tbss=addr    set bss segment base address\n");
     fprintf(stderr, "  -Sdata        fold every section into data (with -r, bss as zeros)\n");
     fprintf(stderr, "  -Stext        fold every section into text (with -r, bss as zeros)\n");
+    fprintf(stderr, "  -Shigh        park an unplaced data-only object after bss\n");
     exit(1);
 }
 
@@ -1921,8 +1923,8 @@ pass1_layout()
             obj->data_off = text_pos + obj->text_size;
             obj->bss_off = text_pos + obj->text_size + obj->data_size;
             text_pos += obj->text_size + obj->data_size + obj->bss_size;
-        } else if (!rflag && obj->text_size == 0 && obj->data_size > 0 &&
-                   obj->bss_size == 0) {
+        } else if (high_flag && !rflag && obj->text_size == 0 &&
+                   obj->data_size > 0 && obj->bss_size == 0) {
             /* A data-only object that was not placed, in a final link:
              * the -r -Sdata fold of init-only code.  Park it after bss,
              * in the region the kernel reclaims, rather than in the
@@ -1961,7 +1963,7 @@ pass1_layout()
      * a plain link - under -r or -Sdata/-Stext there is no separate bss
      * to park anything after.
      */
-    if (!rflag && !seg_fold)
+    if (high_flag && !rflag && !seg_fold)
         for (obj = objects; obj; obj = obj->next)
             if (obj->text_size == 0 && obj->data_size > 0 &&
                 obj->bss_size == 0 && !obj->placed)
@@ -3335,11 +3337,16 @@ char **argv;
 
             case 'S':
                 /* -Sdata / -Stext: fold every section (text, data, bss)
-                 * into one segment.  bss becomes emitted zero bytes. */
+                 * into one segment.  bss becomes emitted zero bytes.
+                 * -Shigh: in a final link, park an unplaced data-only
+                 * object (a -r -Sdata fold) after bss instead of into the
+                 * regular data segment. */
                 if (strncmp(&arg[2], "data", 4) == 0)
                     seg_fold = SEG_DATA;
                 else if (strncmp(&arg[2], "text", 4) == 0)
                     seg_fold = SEG_TEXT;
+                else if (strncmp(&arg[2], "high", 4) == 0)
+                    high_flag = 1;
                 else
                     usage();
                 break;

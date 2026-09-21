@@ -108,6 +108,14 @@ because nothing will clear it.
 -Stext	The same fold, but into the text segment.
 
 .ti -10
+-Shigh	In a final link, park an unplaced data-only object - a
+-r -Sdata fold - after bss instead of into the regular data segment.
+The object lands at _ebss, so a kernel can reclaim it (as buffer
+headers, say) once the code it holds has run.  Only the objects of this
+form are moved; ordinary data-only objects still pack normally, so
+this has no effect on a link that names no such object.
+
+.ti -10
 -V	List the object files that were linked, with the address each
 segment was given.
 

@@ -166,8 +166,10 @@ int
 moveover(char *from, char *to)
 {
     unlink(to);
-    if (link(from, to) != 0)
+    if (link(from, to) != 0) {
+        perror("link");
         return -1;
+    }
     unlink(from);
     return 0;
 }
