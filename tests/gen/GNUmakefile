@@ -25,6 +25,13 @@
 #             with something that fires it or its name lands in the
 #             report.
 #
+#             A rule is compared on its pattern, not on the rules.c
+#             line it sits on.  The line is a convenience for reading
+#             the report; the pattern is the identity.  Keyed on the
+#             whole line, one edit above a rule would renumber every
+#             rule below it and the entire blessed list would read as
+#             newly dead in one run.
+#
 #   sim       the completeness leg again, but with the compiler itself
 #             running under the simulator: c0.mx/c1.mx compile the
 #             corpus and every output must be byte-identical to the
@@ -76,7 +83,9 @@ cover: corpus
 	@sed -n '/=== never fired ===/,$$p' cover.out | tail -n +2 | \
 		sed 's/^ *//' | sort > unfired.now
 	@if [ -f unfired.ok ]; then \
-		new=$$(comm -13 unfired.ok unfired.now); \
+		new=$$(awk 'NR == FNR { k = $$0; sub(/^rules\.c:[0-9]+ */, "", k); ok[k] = 1; next } \
+			{ k = $$0; sub(/^rules\.c:[0-9]+ */, "", k); \
+			  if (!(k in ok)) print }' unfired.ok unfired.now); \
 		if [ -n "$$new" ]; then \
 			echo "cover: rules that STOPPED firing (or new rules"; \
 			echo "nothing exercises) - extend the generator or"; \
