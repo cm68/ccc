@@ -49,9 +49,9 @@ for src in $srcs; do
 	# the same relative name: cpp records the source file it was
 	# given in the lexeme stream, so a full path here and a bare
 	# name under CP/M would differ for that reason alone.
-	( cd "$work" && "$top"/desthost/lib/pass0 -DCCC -o h t.c ) >/dev/null 2>&1
-	( cd "$work" && "$top"/desthost/lib/c0 h.x h.ast h.dat ) >/dev/null 2>&1
-	( cd "$work" && "$top"/desthost/lib/c1 h.ast h.dat h.s ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/libexec/pass0 -DCCC -o h t.c ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/libexec/c0 h.x h.ast h.dat ) >/dev/null 2>&1
+	( cd "$work" && "$top"/desthost/libexec/c1 h.ast h.dat h.s ) >/dev/null 2>&1
 
 	# and the same three under CP/M
 	( cd "$work" && "$sim" -d . cpp.com -DCCC -o t t.c ) >/dev/null 2>&1
@@ -66,7 +66,7 @@ for src in $srcs; do
 	cmp -s "$work/t.s" "$work/h.stripped" || bad="$bad .s"
 
 	# and it has to be assembleable, not merely equal
-	if ! "$top"/desthost/lib/asz "$work/t.s" -o "$work/t.o" >/dev/null 2>&1; then
+	if ! "$top"/desthost/libexec/asz "$work/t.s" -o "$work/t.o" >/dev/null 2>&1; then
 		bad="$bad asm"
 	fi
 

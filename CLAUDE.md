@@ -51,7 +51,10 @@ for the new location.
 
 The three staging trees are named for the machine they are for: `desthost/`
 holds host binaries, `destmicronix/` and `destcpm/` hold Z80 ones, each laid
-out as that machine's system root (`bin`, `lib`, `usr/include`).
+out as that machine's system root: `bin` for the programs a person runs,
+`lib` for what a program is linked against, `libexec` for the programs the
+driver runs (the passes, the assembler, the linker), and `usr/include`.
+CP/M has no `libexec` — everything there is a `.com` in `bin`.
 
 **IMPORTANT:** Do NOT run compiler passes (c0, c1, cpp, etc.) directly from the command line. Compiler passes are ONLY to be run:
 - From the GNUmakefile using target rules (e.g., `make stage1`)

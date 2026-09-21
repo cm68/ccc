@@ -391,22 +391,28 @@ regression:
 %: %.c
 	../desthost/bin/ccc -O -k -o $@ $<
 
-# Generate .ast from .c (cpp creates .x, cc1 parses to AST)
+# Generate .ast from .c: the preprocessor writes .x, pass1 (c0) parses
+# that into the .ast with its data beside it in .dat.  The passes are
+# in libexec, under the names the driver runs them by - these rules
+# run them the same way the driver does, for looking at an
+# intermediate, not for building.
 %.ast: %.c
-	../desthost/lib/pass0 -DCCC -i../destmicronix/include -I. $<
-	../desthost/bin/cc1 -o $@ $*.x
+	../desthost/libexec/pass0 -DCCC -i../destmicronix/include -I. -o $* $<
+	../desthost/libexec/c0 $*.x $@ $*.dat
 
 # Generate pretty-printed .pp from .ast
 %.pp: %.ast
-	../desthost/lib/astpp $< > $@
+	../desthost/libexec/astpp $< > $@
 
 # Generate .s from .ast (pass2)
 %.s: %.ast
-	../pass2/cc2 -o $@ $<
+	../desthost/libexec/c1 $< $*.dat $@
 
-# Generate .o from .s (assemble)
+# Generate .o from .s (assemble).  Reached for a .s that has no .c
+# beside it: given both, make prefers its own built-in "foo.o: foo.c"
+# and quietly runs the host compiler.
 %.o: %.s
-	../desthost/bin/wsas -o $@ $<
+	../desthost/libexec/asz -o $@ $<
 
 # Clean test artifacts.  The globs stop at this directory, so the
 # baseline/ tree - whose .x, .err and .rc files are checked in and

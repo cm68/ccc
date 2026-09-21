@@ -71,8 +71,8 @@ case " $LEGS " in *" cpm "*)
 	      $top/destcpm/bin/c1.com" ;;
 esac
 case " $LEGS " in *" mx "*)
-	need="$need $mxsim $top/destmicronix/lib/pass0 $top/destmicronix/lib/c0 \
-	      $top/destmicronix/lib/c1" ;;
+	need="$need $mxsim $top/destmicronix/libexec/pass0 \
+	      $top/destmicronix/libexec/c0 $top/destmicronix/libexec/c1" ;;
 esac
 for f in $need; do
 	[ -f "$f" ] || { echo "missing $f - make, make micronix, make cpm" >&2
@@ -142,11 +142,13 @@ for p in $passes; do
 	# directory is drive A, so that is what it is called.
 	# the usersim's filesystem root is the work directory, so the
 	# images it runs have to be inside it
-	# destmicronix is a system root - the passes sit in lib under the
-	# names the driver runs them by, not as .mx files in bin.
+	# destmicronix is a system root - the passes sit in libexec
+	# under the names the driver runs them by, not as .mx files in
+	# bin and not beside the libraries in lib.
 	case " $LEGS " in *" mx "*)
-		cp "$top"/destmicronix/lib/pass0 "$top"/destmicronix/lib/c0 \
-		   "$top"/destmicronix/lib/c1 "$work"/ ;;
+		cp "$top"/destmicronix/libexec/pass0 \
+		   "$top"/destmicronix/libexec/c0 \
+		   "$top"/destmicronix/libexec/c1 "$work"/ ;;
 	esac
 
 	inc="-iB: -IA: -IC: -ID:"

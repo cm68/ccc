@@ -3,10 +3,10 @@
 #
 # The compiler is four passes and a shared support library:
 #
-#   cpp     preprocessor and token normalizer   -> desthost/lib/pass0
-#   pass1   parser, emits the AST               -> desthost/lib/c0
-#   pass2   code generator                      -> desthost/lib/c1
-#   peep    peephole optimizer                  -> desthost/lib/peep
+#   cpp     preprocessor and token normalizer   -> desthost/libexec/pass0
+#   pass1   parser, emits the AST               -> desthost/libexec/c0
+#   pass2   code generator                      -> desthost/libexec/c1
+#   peep    peephole optimizer                  -> desthost/libexec/peep
 #   ccclib  support code the passes share       -> libccc.a
 #
 # tools is the Whitesmith's object toolchain plus the ccc driver and
@@ -67,7 +67,8 @@ target: host
 install: all
 
 # The self-hosted passes: ccc compiling its own sources into Micronix
-# binaries for the simulator, installed into destmicronix/bin.
+# binaries for the simulator, installed into destmicronix/libexec
+# under the names the driver looks for them by.
 # The self-hosted compiler: ccc compiling its own sources into
 # Micronix binaries.  tools is in this list and the four passes are
 # not enough without it - a root holding c0 and c1 but no driver, no

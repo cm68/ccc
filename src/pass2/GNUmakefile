@@ -234,14 +234,14 @@ mx-ccc: $(GENERATED)
 		-L$(MXDIR)/lib -lccc -lc -lu -lc
 	@$(SIZE) mxccc/c1.mx
 
-# The self-hosted pass, installed into destmicronix/lib under the
+# The self-hosted pass, installed into destmicronix/libexec under the
 # name the driver runs it by - the compiler as it runs on the machine
-# it targets.  A system root, not a pile of .mx files: bin/lib laid
-# out the way Micronix wants them, so the tree can be copied straight
-# onto a filesystem and used.
+# it targets.  A system root, not a pile of .mx files: bin, lib and
+# libexec laid out the way Micronix wants them, so the tree can be
+# copied straight onto a filesystem and used.
 mx-install: mx-ccc
-	@mkdir -p $(MXDIR)/lib
-	$(INSTALL) mxccc/c1.mx $(MXDIR)/lib/c1
+	@mkdir -p $(MXLIBEXEC)
+	$(INSTALL) mxccc/c1.mx $(MXLIBEXEC)/c1
 
 # The CP/M image.  Same sources, same driver, -m cpm: the runtime
 # comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm

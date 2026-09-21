@@ -71,8 +71,9 @@ jobs:
 
     - name: Show build artifacts
       run: |
-        ls -lh desthost/bin desthost/lib destmicronix/lib
-        file desthost/lib/pass0 desthost/lib/c0 desthost/lib/c1 desthost/lib/peep
+        ls -lh desthost/bin desthost/lib desthost/libexec destmicronix/lib
+        file desthost/libexec/pass0 desthost/libexec/c0 \
+             desthost/libexec/c1 desthost/libexec/peep
 
     # The invariant that clobber removes what a build makes: after it,
     # the tree must look the way it did on checkout.  The install

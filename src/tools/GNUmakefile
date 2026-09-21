@@ -157,10 +157,10 @@ clobber: clean
 	rm -rf $(CRUFTDIRS)
 
 # The driver is the user command; the assembler, the linker and the
-# AST printer are things the driver runs, so they go in lib beside the
-# passes.  wslib, mxnm and mxsize are ordinary tools a person uses on
-# an object file and stay on the path - under the mx names, because on
-# the path is exactly where "nm" and "size" would be the host's.
+# AST printer go in libexec beside the passes, not in lib.  mxar, mxnm
+# and mxsize are ordinary tools a person uses on an object file and
+# stay on the path - under the mx names, because on the path is
+# exactly where "nm" and "size" would be the host's.
 LIBTOOLS = asz asz280 mxld astpp
 BINTOOLS = ccc mxar mxnm mxsize zsim
 
@@ -248,15 +248,16 @@ mx-ccc: $(MXALL)
 	@$(SIZE) $(MXALL)
 
 # Into destmicronix as a system root: the user commands in bin, the
-# things the driver runs in the lib beside them - the same split the
-# host install makes, because it is the same driver making it.
+# things the driver runs in the libexec beside them - the same split
+# the host install makes, because it is the same driver making it.
 #
 # MXLIBEXEC in the mkdir as well as bin and lib.  It was not there, so
 # this worked only while the directory happened to survive from an
 # older build and stopped the moment anything cleaned - "cp: target
 # destmicronix/libexec: No such file or directory" out of a tree that
-# had just built everything.  The passes install into $(MXDIR)/lib and
-# so never noticed.
+# had just built everything.  The passes went into $(MXDIR)/lib then
+# and so never noticed; they install under $(MXLIBEXEC) with these
+# tools now, which is where the driver looks for them.
 #
 mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib $(MXLIBEXEC)

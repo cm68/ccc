@@ -83,15 +83,19 @@ HOSTDIR ?= $(TOP)/desthost
 MXDIR   ?= $(TOP)/destmicronix
 CPMDIR  ?= $(TOP)/destcpm
 
-# An installation is bin/ and lib/ beside each other: the driver is
-# the only thing a user runs, and it finds everything else in the lib
-# next to its own directory - see libdir in tools/ccc.c.  That is why
-# the passes install to lib and not bin.  It is v7's arrangement, and
-# it is what lets /usr/local/bin/ccc work without being rebuilt.
+# An installation is three directories beside each other: bin for the
+# programs a person runs, lib for what a program is linked against,
+# and libexec for the programs the driver runs.  The driver finds the
+# other two from the directory it was found in - see libdir and
+# libexecdir in tools/ccc.c - which is what lets /usr/local/bin/ccc
+# work without being rebuilt.
 HOSTLIB = $(HOSTDIR)/lib
 #
 # Programs run by other programs.  The passes, the assembler and the
 # linker go here and not in lib, which is for things to link against.
+# The Micronix install puts them under the same names in the same
+# directory: it is the same driver looking for them, and over there
+# they are equally things a driver runs rather than a person.
 #
 HOSTLIBEXEC = $(HOSTDIR)/libexec
 MXLIBEXEC = $(MXDIR)/libexec
@@ -153,8 +157,7 @@ INSTALL = cp -u
 # The host linker is mxld.  "ld" here would be the build machine's
 # own, so the file installed is called mxld and this has to ask for it
 # by that name; the Micronix build gets ld, being that machine's.  The
-# same goes for size, installed as mxsize.  wslib has not been renamed
-# and is in bin, being a program a person uses.
+# same goes for size, installed as mxsize.
 #
 CCC     = $(HOSTDIR)/bin/ccc
 AS      = $(HOSTLIBEXEC)/asz
